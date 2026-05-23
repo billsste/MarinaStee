@@ -1,65 +1,116 @@
-import Image from "next/image";
+import Link from "next/link";
+import { ArrowRight } from "lucide-react";
+import { AgentHero } from "@/components/agent-hero";
+import { ActivityFeed } from "@/components/dashboard/activity-feed";
+import { KpiStrip } from "@/components/dashboard/kpi-strip";
+import { WORK_ORDERS } from "@/lib/mock-data";
 
-export default function Home() {
+export default function DashboardPage() {
+  // Open work orders count (static; WO list isn't store-backed yet)
+  const openWO = WORK_ORDERS.filter((w) =>
+    ["open", "scheduled", "in_progress", "blocked"].includes(w.status)
+  ).length;
+  const urgentWO = WORK_ORDERS.filter((w) => w.priority === "urgent" || w.flagged).length;
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <div className="pb-24">
+      <AgentHero />
+
+      <section className="mx-auto w-full max-w-[1080px] px-6 pb-10">
+        <div className="mb-3 flex items-end justify-between">
+          <div>
+            <h2 className="text-[15px] font-medium text-fg">Today at a glance</h2>
+            <p className="text-[12px] text-fg-subtle">
+              Operational snapshot — point-and-click as a fallback to the agent.
+            </p>
+          </div>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+
+        <KpiStrip />
+
+        <div className="mt-6 grid grid-cols-1 gap-3 lg:grid-cols-3">
+          <Panel title="Recent activity" className="lg:col-span-2" href="/work-orders">
+            <ActivityFeed />
+          </Panel>
+          <Panel title="Open work orders" href="/work-orders">
+            <div className="space-y-3">
+              <KpiInline label="Open / scheduled / in-progress" value={`${openWO}`} />
+              <KpiInline label="Flagged or urgent" value={`${urgentWO}`} tone={urgentWO > 0 ? "warn" : "ok"} />
+              <div className="border-t border-hairline pt-3">
+                <div className="mb-1.5 text-[10px] uppercase tracking-wide text-fg-tertiary">
+                  Quick actions
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <QuickAction label="Assign a transient slip" href="/rentals/spaces" />
+                  <QuickAction label="Send arrivals reminder" href="/boaters" />
+                  <QuickAction label="Open POS terminal" href="/ledger" />
+                  <QuickAction label="Run end-of-day reconciliation" href="/ledger" />
+                </div>
+              </div>
+            </div>
+          </Panel>
         </div>
-      </main>
+      </section>
     </div>
+  );
+}
+
+function Panel({
+  title,
+  className,
+  children,
+  href,
+}: {
+  title: string;
+  className?: string;
+  children: React.ReactNode;
+  href?: string;
+}) {
+  return (
+    <div
+      className={`rounded-[12px] border border-hairline bg-surface-1 ${className ?? ""}`}
+    >
+      <div className="flex items-center justify-between border-b border-hairline px-4 py-2.5">
+        <h3 className="text-[13px] font-medium text-fg">{title}</h3>
+        {href && (
+          <Link
+            href={href}
+            className="inline-flex items-center gap-1 text-[11px] text-primary hover:underline"
+          >
+            Open <ArrowRight className="size-3" />
+          </Link>
+        )}
+      </div>
+      <div className="p-3">{children}</div>
+    </div>
+  );
+}
+
+function KpiInline({
+  label,
+  value,
+  tone = "neutral",
+}: {
+  label: string;
+  value: string;
+  tone?: "ok" | "warn" | "neutral";
+}) {
+  const valueTone = tone === "warn" ? "text-status-warn" : "text-fg";
+  return (
+    <div className="flex items-center justify-between rounded-[8px] border border-hairline bg-surface-2 px-3 py-2">
+      <span className="text-[12px] text-fg-muted">{label}</span>
+      <span className={"text-[16px] font-semibold tracking-tight " + valueTone}>{value}</span>
+    </div>
+  );
+}
+
+function QuickAction({ label, href }: { label: string; href: string }) {
+  return (
+    <Link
+      href={href}
+      className="rounded-[8px] border border-hairline bg-surface-1 px-3 py-2 text-left text-[13px] text-fg-muted transition-colors hover:border-hairline-strong hover:bg-surface-2 hover:text-fg"
+    >
+      {label}
+    </Link>
   );
 }

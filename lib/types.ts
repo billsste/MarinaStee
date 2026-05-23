@@ -1,0 +1,527 @@
+// Marina Stee domain types — Customers (Boaters), Rentals, POS.
+// Mock-data-friendly: all relations are id refs, resolved at the page layer.
+
+export type StatusKey = "ok" | "warn" | "danger" | "info" | "neutral";
+
+export type BillingCadence = "annual" | "seasonal" | "monthly" | "transient";
+
+export type CommunicationChannel = "email" | "sms" | "voice";
+
+export type ContactRole = "self" | "spouse" | "captain" | "manager" | "other";
+
+export interface Contact {
+  id: string;
+  name: string;
+  role: ContactRole;
+  email?: string;
+  phone?: string;
+  preferred_channel: CommunicationChannel;
+  can_be_billed: boolean;
+}
+
+export interface Address {
+  line1: string;
+  line2?: string;
+  city: string;
+  state: string;
+  zip: string;
+  country: string;
+}
+
+export interface CardOnFile {
+  id: string;
+  brand: "visa" | "mastercard" | "amex" | "discover";
+  last4: string;
+  exp_month: number;
+  exp_year: number;
+  nickname?: string;
+  is_default: boolean;
+  processor_token: string;
+}
+
+export interface Vessel {
+  id: string;
+  boater_id: string;
+  co_owner_ids: string[];
+  name: string;
+  year?: number;
+  make?: string;
+  model?: string;
+  color?: string;
+  vessel_type?: "powerboat" | "sailboat" | "pontoon" | "houseboat" | "pwc" | "other";
+  fuel_type?: "gasoline" | "diesel" | "electric" | "none";
+  loa_inches?: number;        // length overall
+  low_inches?: number;        // length over water
+  beam_inches?: number;
+  draft_inches?: number;
+  height_inches?: number;
+  hull_vin?: string;
+  registration?: string;
+  power_hp?: number;
+  photo_url?: string;
+  notes?: string;
+  active: boolean;
+}
+
+export interface Slip {
+  id: string;              // e.g. "A29"
+  dock: string;            // e.g. "Damsite A Dock"
+  invoice_category: string; // e.g. "BOGGS Cove"
+  number: string;          // e.g. "29"
+  max_loa_inches: number;
+  max_beam_inches: number;
+  has_power: boolean;
+  has_water: boolean;
+}
+
+export type ReservationStatus = "scheduled" | "occupied" | "completed" | "cancelled";
+export type ReservationType = "annual" | "seasonal" | "monthly" | "transient" | "recurring";
+
+export interface Reservation {
+  id: string;
+  number: string;           // R513
+  seq: string;              // "1/2"
+  boater_id: string;
+  vessel_id: string;
+  slip_id: string;
+  contract_id?: string;
+  arrival_date: string;
+  departure_date: string;
+  status: ReservationStatus;
+  type: ReservationType;
+}
+
+export type LedgerEntryType = "invoice" | "payment" | "refund" | "credit" | "adjustment";
+
+export type LedgerEntryStatus =
+  | "open"
+  | "paid"
+  | "partial"
+  | "void"
+  | "refunded"
+  | "partial_refund"
+  | "pending"
+  | "processing"
+  | "failed";
+
+export type PaymentMethod =
+  | "card"
+  | "ach"
+  | "check"
+  | "cash"
+  | "fuel_charge"
+  | "restaurant_charge"
+  | "ship_store_charge"
+  | "credit_applied"
+  | null;
+
+export type RefundReason =
+  | "cancellation"
+  | "dispute"
+  | "goodwill"
+  | "weather_credit"
+  | "duplicate"
+  | "other";
+
+export type QbSyncStatus = "pending" | "syncing" | "synced" | "error" | "skipped";
+
+export interface LedgerEntry {
+  id: string;
+  boater_id: string;
+  type: LedgerEntryType;
+  number?: string;            // MG5507 for invoices
+  date: string;
+  amount: number;             // positive for invoices/payments, negative for refunds/credits
+  open_balance: number;
+  method: PaymentMethod;
+  applied_to_invoice_ids?: string[];   // for payments
+  applied_payment_id?: string;          // for refunds
+  refund_reason?: RefundReason;
+  refund_notes?: string;
+  issued_by_user_id?: string;
+  processor_ref?: string;
+  status: LedgerEntryStatus;
+  line_items?: { description: string; amount: number }[];
+  // Cross-platform connections
+  linked_work_order_id?: string;
+  linked_quote_id?: string;
+  linked_pos_order_id?: string;
+  linked_reservation_id?: string;
+  // QuickBooks sync
+  qb_sync_status?: QbSyncStatus;
+  qb_ref?: string;            // QB document id like "QB-INV-1042"
+  qb_error?: string;
+  qb_synced_at?: string;
+  gl_account?: string;        // "Fuel Sales", "Slip Fee Revenue", "Retail Sales", "Restaurant", "Services", "A/R"
+}
+
+export type WorkOrderStatus =
+  | "open"
+  | "scheduled"
+  | "in_progress"
+  | "blocked"
+  | "completed"
+  | "cancelled";
+
+export type WorkOrderPriority = "low" | "normal" | "high" | "urgent";
+
+export type WorkOrderActivityType =
+  | "winterization"
+  | "bottom_paint"
+  | "service"
+  | "inspection"
+  | "haul_out"
+  | "other";
+
+export interface WorkOrder {
+  id: string;
+  number: string;                   // "WO-0042"
+  boater_id: string;
+  vessel_id?: string;
+  slip_id?: string;
+  subject: string;
+  description?: string;
+  status: WorkOrderStatus;
+  priority: WorkOrderPriority;
+  assignee_user_id?: string;
+  start_date?: string;
+  end_date?: string;
+  due_date?: string;
+  activity_type?: WorkOrderActivityType;
+  billable_minutes?: number;
+  flagged?: boolean;
+  quote_id?: string;                // linked quote
+  linked_ledger_entry_ids?: string[];
+}
+
+// ============================================================
+// Quote (lives inside Work Order)
+// ============================================================
+
+export type QuoteStatus =
+  | "draft"
+  | "sent"
+  | "viewed"
+  | "signed"
+  | "expired"
+  | "invoiced"
+  | "voided";
+
+export type QuoteLineKind = "part" | "labor" | "fee" | "discount";
+
+export interface QuoteLineItem {
+  id: string;
+  kind: QuoteLineKind;
+  name: string;
+  description?: string;
+  qty: number;
+  unit_price: number;
+  total: number;                    // qty * unit_price, signed (-) for discounts
+}
+
+export interface Quote {
+  id: string;
+  number: string;                   // "Q-0042"
+  work_order_id: string;
+  boater_id: string;
+  status: QuoteStatus;
+  line_items: QuoteLineItem[];
+  tax_rate: number;                 // 0..1, e.g. 0.0667 for 6.667%
+  parts_subtotal: number;           // derived but stored for fast render
+  labor_subtotal: number;
+  fees_subtotal: number;
+  discount_subtotal: number;
+  tax_amount: number;
+  total: number;
+  sent_at?: string;
+  viewed_at?: string;
+  signed_at?: string;
+  signer_name?: string;
+  signature_data_url?: string;      // base64 PNG when mocked
+  signature_token?: string;         // tokenized URL for /sign/<token>
+  expires_at?: string;
+  payment_method?: "card" | "cash" | "charge_to_account" | "split" | null;
+  paid_at?: string;
+  linked_invoice_ledger_entry_id?: string;
+  linked_payment_ledger_entry_id?: string;
+}
+
+export type CommunicationDirection = "outbound" | "inbound";
+
+export type CommunicationStatus =
+  | "queued"
+  | "sending"
+  | "delivered"
+  | "opened"
+  | "clicked"
+  | "replied"
+  | "bounced"
+  | "failed";
+
+export interface Communication {
+  id: string;
+  boater_id: string;
+  type: CommunicationChannel;
+  direction: CommunicationDirection;
+  subject?: string;             // emails
+  body_preview: string;
+  full_body?: string;
+  sender_label: string;          // "Sync, Service" | "Peterson, Tiffany"
+  sender_is_system: boolean;
+  recipient: string;
+  sent_at: string;
+  status: CommunicationStatus;
+  related_entity?: {
+    type: "invoice" | "contract" | "reservation" | "work_order";
+    id: string;
+  };
+}
+
+export type ContractTemplateType =
+  | "annual_slip"
+  | "seasonal_slip"
+  | "transient_slip"
+  | "dry_storage"
+  | "mooring"
+  | "rental"
+  | "winterization"
+  | "service";
+
+export interface ContractTemplate {
+  id: string;
+  name: string;
+  type: ContractTemplateType;
+  version: number;
+  default_term_months: number;
+  default_billing_cadence: BillingCadence;
+  default_annual_rate?: number;
+  body_preview: string;
+  required_signers: ("boater" | "manager" | "witness")[];
+  auto_renew: boolean;
+}
+
+export type ContractStatus =
+  | "draft"
+  | "sent"
+  | "partially_signed"
+  | "executed"
+  | "active"
+  | "expired"
+  | "terminated"
+  | "renewed";
+
+export interface Contract {
+  id: string;
+  number: string;
+  boater_id: string;
+  template_id: string;
+  template_version: number;
+  vessel_id?: string;
+  slip_id?: string;
+  status: ContractStatus;
+  effective_start: string;
+  effective_end: string;
+  signed_at?: string;
+  annual_rate?: number;
+  billing_cadence: BillingCadence;
+  signed_pdf_url?: string;
+  renewed_into_contract_id?: string;
+  superseded_by_id?: string;
+}
+
+export interface Boater {
+  id: string;
+  display_name: string;       // "Emmons, David"
+  legal_name?: string;        // only if different (LLC, trust)
+  first_name: string;
+  last_name: string;
+  code?: string;              // "DSM A29" — slip-encoded shorthand
+  photo_url?: string;
+  active: boolean;
+  billing_cadence: BillingCadence;
+  tags: string[];
+  trust_score?: number;       // 0..100, derived
+  last_seen_at?: string;
+  communication_prefs: {
+    preferred_channel: CommunicationChannel;
+    do_not_contact_before?: string; // HH:mm
+    do_not_contact_after?: string;
+    language: string;
+  };
+  primary_contact: Contact;
+  additional_contacts: Contact[];
+  address: Address;
+  shipping_address?: Address; // only when different
+  notes?: string;
+}
+
+export interface User {
+  id: string;
+  name: string;               // "Peterson, Tiffany"
+  role: "manager" | "dockhand" | "accounting" | "system";
+}
+
+// ============================================================
+// Rentals domain
+// ============================================================
+
+export type RentalGroupType =
+  | "slips"
+  | "jet_ski"
+  | "buoy"
+  | "dry_storage"
+  | "mooring"
+  | "day_rental";
+
+export type OccupancyType = "Standard" | "Jet Ski" | "Buoy" | "Dry Storage" | "Mooring";
+
+export type SpaceStatus = "vacant" | "occupied" | "reserved" | "out_of_service";
+
+export interface RentalGroup {
+  id: string;
+  name: string;                 // "Damsite A Dock", "Damsite Buoy"
+  type: RentalGroupType;
+  check_in_time: string;        // "12:00 AM" formatted
+  check_out_time: string;
+  total_spaces: number;         // denormalized for fast list rendering
+  occupied_spaces: number;
+  notes?: string;
+}
+
+export interface RentalSpace {
+  id: string;                   // "DSM-A-29"
+  group_id: string;
+  number: string;               // "01", "29", "JS-04"
+  occupancy_type: OccupancyType;
+  length_inches?: number;
+  beam_inches?: number;
+  draft_inches?: number;
+  height_inches?: number;
+  has_power: boolean;
+  has_water: boolean;
+  has_pump_out: boolean;
+  active: boolean;
+  status: SpaceStatus;
+  current_reservation_id?: string;
+  meter_id?: string;
+}
+
+export type RateCadence = "daily" | "weekly" | "monthly" | "seasonal" | "annual";
+
+export interface Rate {
+  id: string;
+  name: string;                 // "2026 Annual Slip — Standard"
+  occupancy_type: OccupancyType;
+  cadence: RateCadence;
+  amount: number;
+  effective_start?: string;
+  effective_end?: string;
+  applies_to_group_ids?: string[]; // omitted = all groups of that occupancy type
+}
+
+export type FeeBillingMode =
+  | "single_billing"            // one-time charge
+  | "bill_with_rental"          // added to a rental invoice
+  | "recurring_monthly"
+  | "recurring_annual";
+
+export interface AdditionalFee {
+  id: string;
+  name: string;                 // "Hoist Fee", "Transfer Fee", "Pump-out"
+  description?: string;
+  amount: number;
+  billing_mode: FeeBillingMode;
+  accounting_line_item: string; // "2025/2026 Marina Del Sur Slip Fees"
+  applies_to_group_ids?: string[];
+}
+
+export interface MeterReading {
+  id: string;
+  space_id: string;
+  meter_number: string;         // "01-", "02-A"
+  current_reading: number;
+  current_ts: string;
+  prev_reading: number;
+  prev_ts: string;
+  rate_per_unit?: number;       // $/kWh or $/gallon (water)
+  unit?: "kWh" | "gallons";
+  photo_url?: string;
+  billed_into_invoice_id?: string;
+}
+
+export type FuelType = "gasoline" | "diesel";
+
+export interface FuelInventory {
+  id: string;
+  fuel_type: FuelType;
+  tank_capacity_gallons: number;
+  current_level_gallons: number;
+  current_price_per_gallon: number;
+  cost_per_gallon: number;
+  reorder_threshold_pct: number; // 0..100
+  last_updated_at: string;
+}
+
+export interface FuelDelivery {
+  id: string;
+  fuel_type: FuelType;
+  delivery_date: string;
+  gallons_delivered: number;
+  cost_per_gallon: number;
+  total_cost: number;
+  supplier: string;
+  notes?: string;
+}
+
+export interface FuelSale {
+  id: string;
+  fuel_type: FuelType;
+  gallons: number;
+  price_per_gallon: number;
+  total: number;
+  sold_at: string;
+  pedestal_id?: string;
+  space_id?: string;
+  boater_id?: string;           // when charged to boater account
+  patron_id?: string;           // walk-in
+  payment_method: "card" | "cash" | "charge_to_account";
+}
+
+// ============================================================
+// POS domain (lightweight — Rentals milestone scope only)
+// ============================================================
+
+export type PosLocationKey = "fuel_dock" | "ship_store" | "restaurant" | "harbormaster";
+
+export interface PosLocation {
+  id: string;
+  key: PosLocationKey;
+  name: string;
+  allows_charge_to_account: boolean;
+  default_tax_rate: number;     // 0..1
+}
+
+export type PosPaymentMethod = "card" | "cash" | "charge_to_account" | "split";
+
+export interface PosOrder {
+  id: string;
+  number: string;
+  location_id: string;
+  customer_kind: "boater" | "patron" | "anonymous";
+  boater_id?: string;
+  patron_id?: string;
+  line_items: { sku: string; name: string; qty: number; unit_price: number; total: number }[];
+  subtotal: number;
+  tax: number;
+  total: number;
+  payment_method: PosPaymentMethod;
+  status: "draft" | "open" | "paid" | "voided" | "refunded";
+  created_at: string;
+  closed_at?: string;
+  linked_ledger_entry_id?: string;
+  // QuickBooks sync
+  qb_sync_status?: QbSyncStatus;
+  qb_ref?: string;
+  qb_error?: string;
+  qb_synced_at?: string;
+}

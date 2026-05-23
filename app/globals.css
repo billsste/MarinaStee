@@ -1,26 +1,136 @@
 @import "tailwindcss";
 
+/*
+ * Marina Stee design tokens
+ * Linear-derived surface ladder + teal/naval accent + operational status colors.
+ * Light tokens live on :root; dark tokens override on .dark (set by next-themes).
+ */
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --canvas: #fafafa;
+  --surface-1: #ffffff;
+  --surface-2: #f4f5f7;
+  --surface-3: #ebedf0;
+  --surface-4: #e2e5ea;
+
+  --hairline: #e5e7eb;
+  --hairline-strong: #d4d7dc;
+  --hairline-tertiary: #c1c4ca;
+
+  --fg-primary: #0c0d0e;
+  --fg-muted: #3f4248;
+  --fg-subtle: #6b6f78;
+  --fg-tertiary: #9aa0a8;
+
+  --primary: #0d9488;
+  --primary-hover: #14b8a6;
+  --primary-pressed: #0f766e;
+  --primary-soft: #ccfbf1;
+  --on-primary: #ffffff;
+
+  --status-ok: #10b981;
+  --status-warn: #f59e0b;
+  --status-danger: #ef4444;
+  --status-info: #3b82f6;
+}
+
+.dark {
+  --canvas: #050608;
+  --surface-1: #0f1011;
+  --surface-2: #141516;
+  --surface-3: #18191a;
+  --surface-4: #1c1d1e;
+
+  --hairline: #1f2226;
+  --hairline-strong: #2a2d33;
+  --hairline-tertiary: #3a3d44;
+
+  --fg-primary: #f7f8f8;
+  --fg-muted: #c3cad4;
+  --fg-subtle: #8a8f98;
+  --fg-tertiary: #62666d;
+
+  --primary: #14b8a6;
+  --primary-hover: #2dd4bf;
+  --primary-pressed: #0d9488;
+  --primary-soft: #0d3530;
+  --on-primary: #04201d;
+
+  --status-ok: #34d399;
+  --status-warn: #fbbf24;
+  --status-danger: #f87171;
+  --status-info: #60a5fa;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
+  --color-canvas: var(--canvas);
+  --color-surface-1: var(--surface-1);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-surface-4: var(--surface-4);
+
+  --color-hairline: var(--hairline);
+  --color-hairline-strong: var(--hairline-strong);
+  --color-hairline-tertiary: var(--hairline-tertiary);
+
+  --color-fg: var(--fg-primary);
+  --color-fg-muted: var(--fg-muted);
+  --color-fg-subtle: var(--fg-subtle);
+  --color-fg-tertiary: var(--fg-tertiary);
+
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-pressed: var(--primary-pressed);
+  --color-primary-soft: var(--primary-soft);
+  --color-on-primary: var(--on-primary);
+
+  --color-status-ok: var(--status-ok);
+  --color-status-warn: var(--status-warn);
+  --color-status-danger: var(--status-danger);
+  --color-status-info: var(--status-info);
+
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+
+  --radius-button: 8px;
+  --radius-card: 12px;
+  --radius-panel: 16px;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html,
+body {
+  background: var(--canvas);
+  color: var(--fg-primary);
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  font-feature-settings: "cv11", "ss01";
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Hairline utility — uses theme-aware border color */
+.hairline {
+  border-color: var(--hairline);
+}
+
+/* Focus ring tuned to teal at 40% */
+*:focus-visible {
+  outline: 2px solid color-mix(in oklab, var(--primary) 60%, transparent);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* Quiet scrollbars in dark mode */
+.dark ::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+.dark ::-webkit-scrollbar-thumb {
+  background: var(--surface-3);
+  border-radius: 6px;
+}
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: var(--surface-4);
 }
