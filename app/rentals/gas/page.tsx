@@ -132,19 +132,19 @@ function TankCard({ inv }: { inv: FuelInventory }) {
       <div className="grid grid-cols-3 gap-3">
         <div>
           <div className="text-[10px] uppercase tracking-wide text-fg-tertiary">Price / gal</div>
-          <div className="text-[18px] font-semibold tracking-tight text-fg">
+          <div className="money-display text-[22px] text-fg">
             {formatMoney(inv.current_price_per_gallon)}
           </div>
         </div>
         <div>
           <div className="text-[10px] uppercase tracking-wide text-fg-tertiary">Cost / gal</div>
-          <div className="text-[18px] font-semibold tracking-tight text-fg-subtle">
+          <div className="money-display text-[22px] text-fg-subtle">
             {formatMoney(inv.cost_per_gallon)}
           </div>
         </div>
         <div>
           <div className="text-[10px] uppercase tracking-wide text-fg-tertiary">Margin</div>
-          <div className="text-[18px] font-semibold tracking-tight text-status-ok">
+          <div className="money-display text-[22px] text-status-ok">
             {formatMoney(margin)}
           </div>
         </div>
@@ -186,7 +186,7 @@ function KpiCard({
         {icon}
         {label}
       </div>
-      <div className="text-[20px] font-semibold tracking-tight text-fg">{value}</div>
+      <div className="money-display text-[24px] text-fg">{value}</div>
       <div className="mt-1 text-[11px] text-fg-tertiary">{sub}</div>
     </div>
   );

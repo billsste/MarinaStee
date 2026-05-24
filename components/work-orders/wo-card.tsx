@@ -23,6 +23,8 @@ import {
   USERS,
   formatMoney,
   getQuoteForWorkOrder,
+  getSlip,
+  getVessel,
 } from "@/lib/mock-data";
 import type { WorkOrder, WorkOrderActivityType } from "@/lib/types";
 
@@ -123,7 +125,16 @@ export function WoCard({
       {boater && (
         <p className="mt-1 truncate text-[11px] text-fg-subtle">
           {boater.display_name}
-          {wo.slip_id && <span className="text-fg-tertiary"> · slip {wo.slip_id}</span>}
+          {(() => {
+            const v = getVessel(wo.vessel_id);
+            const s = getSlip(wo.slip_id);
+            const parts: string[] = [];
+            if (v) parts.push(v.name);
+            if (s) parts.push(`slip ${s.dock} ${s.number}`);
+            return parts.length > 0 ? (
+              <span className="text-fg-tertiary"> · {parts.join(" · ")}</span>
+            ) : null;
+          })()}
         </p>
       )}
 

@@ -59,7 +59,7 @@ export default function FeesPage() {
             )}
             <div className="mt-3 flex items-end justify-between">
               <div>
-                <div className="text-[20px] font-semibold tracking-tight text-fg">
+                <div className="money-display text-[24px] text-fg">
                   {formatMoney(f.amount)}
                 </div>
                 <div className="text-[10px] uppercase tracking-wide text-fg-tertiary">

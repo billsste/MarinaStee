@@ -34,7 +34,7 @@ export function AgentHero() {
 
   if (submitted) {
     return (
-      <section className="mx-auto w-full max-w-[760px] px-6 pt-12 pb-10">
+      <section className="mx-auto w-full max-w-[760px] px-6 pt-6 pb-10">
         <div className="mb-3 flex items-center justify-between">
           <div className="inline-flex items-center gap-1.5 rounded-full border border-hairline bg-surface-1 px-2.5 py-1 text-[11px] font-medium text-fg-subtle">
             <Sparkles className="size-3 text-primary" />
@@ -54,13 +54,13 @@ export function AgentHero() {
   }
 
   return (
-    <section className="mx-auto w-full max-w-[720px] px-6 pt-20 pb-10">
-      <div className="mb-8 flex flex-col items-center gap-3 text-center">
+    <section className="mx-auto w-full max-w-[720px] px-6 pt-8 pb-10">
+      <div className="mb-6 flex flex-col items-center gap-3 text-center">
         <div className="inline-flex items-center gap-1.5 rounded-full border border-hairline bg-surface-1 px-2.5 py-1 text-[11px] font-medium text-fg-subtle">
           <Sparkles className="size-3 text-primary" strokeWidth={2} />
           <span>Agent-native marina ops</span>
         </div>
-        <h1 className="text-[34px] font-semibold leading-tight tracking-tight text-fg">
+        <h1 className="display-tight text-[36px] font-semibold leading-tight text-fg">
           What do you want to do today?
         </h1>
         <p className="max-w-md text-[14px] leading-6 text-fg-subtle">
@@ -102,7 +102,7 @@ export function AgentHero() {
             disabled={!value.trim()}
             aria-label="Send"
             className={cn(
-              "inline-flex size-8 items-center justify-center rounded-[8px] transition-colors",
+              "tap-scale inline-flex size-9 items-center justify-center rounded-full transition-colors",
               value.trim()
                 ? "bg-primary text-on-primary hover:bg-primary-hover"
                 : "bg-surface-3 text-fg-tertiary"

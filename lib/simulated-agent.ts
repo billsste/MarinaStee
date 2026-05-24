@@ -1,4 +1,5 @@
-"use client";
+// Server-safe — no "use client" so this can be imported from /api/agent
+// route handlers. The action EXECUTOR lives in lib/agent-actions.ts (client).
 
 import {
   ADDITIONAL_FEES,
@@ -9,26 +10,16 @@ import {
   POS_LOCATIONS,
   RENTAL_GROUPS,
   RENTAL_SPACES,
+  VESSELS,
   WORK_ORDERS,
   formatMoney,
   getSlip,
   meterAnomaly,
   meterDelta,
 } from "@/lib/mock-data";
-import {
-  addCommunication,
-  addLedgerEntry,
-  addPosOrder,
-  nextInvoiceNumber,
-  nextLedgerId,
-  nextPosOrderId,
-  nextPosOrderNumber,
-} from "@/lib/client-store";
 import type {
   Boater,
-  Communication,
   LedgerEntry,
-  PosOrder,
 } from "@/lib/types";
 
 /*
@@ -57,6 +48,97 @@ export type AgentAction =
       type: "sms" | "email";
       subject?: string;
       body: string;
+    }
+  | {
+      kind: "create_work_order";
+      label: string;
+      boater_id: string;
+      subject: string;
+      description?: string;
+      activity_type?:
+        | "winterization"
+        | "bottom_paint"
+        | "service"
+        | "inspection"
+        | "haul_out"
+        | "other";
+      priority?: "low" | "normal" | "high" | "urgent";
+      vessel_id?: string;
+      slip_id?: string;
+      start_date?: string;
+      end_date?: string;
+      due_date?: string;
+      assignee_user_id?: string;
+    }
+  | {
+      kind: "create_reservation";
+      label: string;
+      boater_id: string;
+      slip_id: string;
+      vessel_id?: string;
+      arrival_date: string;
+      departure_date: string;
+      type: "annual" | "seasonal" | "monthly" | "transient" | "recurring";
+    }
+  | {
+      kind: "record_payment";
+      label: string;
+      boater_id: string;
+      amount: number;
+      method: "card" | "cash" | "check" | "ach";
+      applied_to_invoice_ids?: string[];
+      notes?: string;
+    }
+  | {
+      kind: "create_boater";
+      label: string;
+      first_name: string;
+      last_name: string;
+      email?: string;
+      phone?: string;
+      preferred_channel: "email" | "sms" | "voice";
+      billing_cadence: "annual" | "seasonal" | "monthly" | "transient";
+      code?: string;
+      notes?: string;
+    }
+  | {
+      kind: "create_vessel";
+      label: string;
+      boater_id: string;
+      name: string;
+      year?: number;
+      make?: string;
+      model?: string;
+      vessel_type?: "powerboat" | "sailboat" | "pontoon" | "houseboat" | "pwc" | "other";
+      fuel_type?: "gasoline" | "diesel" | "electric" | "none";
+      loa_inches?: number;
+      beam_inches?: number;
+      draft_inches?: number;
+      hull_vin?: string;
+      registration?: string;
+    }
+  | {
+      kind: "create_contract";
+      label: string;
+      boater_id: string;
+      template_id: string;
+      vessel_id?: string;
+      slip_id?: string;
+      effective_start: string;
+      effective_end: string;
+      annual_rate?: number;
+      billing_cadence: "annual" | "seasonal" | "monthly" | "transient";
+    }
+  | {
+      kind: "add_card";
+      label: string;
+      boater_id: string;
+      brand: "visa" | "mastercard" | "amex" | "discover";
+      last4: string;
+      exp_month: number;
+      exp_year: number;
+      nickname?: string;
+      is_default: boolean;
     };
 
 export type AgentResponse = {
@@ -240,6 +322,242 @@ export function generateAgentResponse(
     }
   }
 
+  // ── INTENT: create work order ───────────────────────────────
+  if (/\b(create|open|schedule|new)\b.*\b(work\s*order|wo|service|haul[-\s]?out|winterization|bottom\s*paint|inspection)\b/.test(lp)
+      || /\b(winterize|haul\s+out|repaint|service)\b/.test(lp)
+  ) {
+    const b = findBoater(p);
+    if (b) {
+      let activity: "winterization" | "bottom_paint" | "service" | "inspection" | "haul_out" | "other" = "service";
+      if (/winteriz/.test(lp)) activity = "winterization";
+      else if (/bottom\s*paint|repaint/.test(lp)) activity = "bottom_paint";
+      else if (/haul[-\s]?out/.test(lp)) activity = "haul_out";
+      else if (/inspect/.test(lp)) activity = "inspection";
+
+      const vessel = VESSELS.find((v) => v.boater_id === b.id) ?? undefined;
+      const subjectMap: Record<string, string> = {
+        winterization: `Winterize ${vessel?.name ?? b.last_name + "'s vessel"}`,
+        bottom_paint: `Bottom paint — ${vessel?.name ?? b.last_name + "'s vessel"}`,
+        haul_out: `Haul-out — ${vessel?.name ?? b.last_name + "'s vessel"}`,
+        inspection: `Inspection — ${vessel?.name ?? b.last_name + "'s vessel"}`,
+        service: `Service work — ${vessel?.name ?? b.last_name + "'s vessel"}`,
+      };
+      return {
+        stream: [
+          `Drafting a ${activity.replace("_", " ")} work order `,
+          `for ${b.display_name}${vessel ? ` (${vessel.name})` : ""}. `,
+          `Approve below and I'll add it to the board.`,
+        ],
+        action: {
+          kind: "create_work_order",
+          label: `New ${activity.replace("_", " ")} work order for ${b.display_name}`,
+          boater_id: b.id,
+          subject: subjectMap[activity] ?? subjectMap.service,
+          activity_type: activity,
+          priority: "normal",
+          vessel_id: vessel?.id,
+        },
+      };
+    }
+  }
+
+  // ── INTENT: create reservation ──────────────────────────────
+  if (/\b(reserve|reservation|book|block)\b/.test(lp) && !/\b(quote|signature)\b/.test(lp)) {
+    const b = findBoater(p);
+    // try slip number
+    const slipMatch = lp.match(/\b([a-z])\s*(\d{1,3})\b/i)
+                   ?? lp.match(/\bslip\s*([\w\d]+)\b/i);
+    let slip = slipMatch
+      ? RENTAL_SPACES.find(
+          (s) => s.number.toLowerCase() === (slipMatch[2] ?? slipMatch[1]).toLowerCase()
+        )
+      : undefined;
+    if (!slip && b) {
+      slip = RENTAL_SPACES.find((s) => s.status === "vacant");
+    }
+    if (b && slip) {
+      const today = new Date().toISOString().slice(0, 10);
+      const tomorrow = new Date(Date.now() + 86_400_000).toISOString().slice(0, 10);
+      return {
+        stream: [
+          `Drafting a transient reservation `,
+          `for ${b.display_name} in slip ${slip.number} `,
+          `(${today} → ${tomorrow}). `,
+          `Approve below to commit.`,
+        ],
+        action: {
+          kind: "create_reservation",
+          label: `Reserve slip ${slip.number} for ${b.display_name}`,
+          boater_id: b.id,
+          slip_id: slip.id,
+          arrival_date: today,
+          departure_date: tomorrow,
+          type: "transient",
+        },
+      };
+    }
+  }
+
+  // ── INTENT: record payment ──────────────────────────────────
+  if (/\b(record|enter|log|apply)\b.*\b(payment|check|cash|ach)\b/.test(lp)
+      || /\$\d+.*\b(from|for)\b/.test(lp)
+  ) {
+    const b = findBoater(p);
+    const amtMatch = lp.match(/\$?\s*([\d,]+(?:\.\d{1,2})?)/);
+    const amount = amtMatch ? Number(amtMatch[1].replace(/,/g, "")) : 0;
+    let method: "card" | "cash" | "check" | "ach" = "check";
+    if (/cash/.test(lp)) method = "cash";
+    else if (/ach/.test(lp)) method = "ach";
+    else if (/card/.test(lp)) method = "card";
+    else method = "check";
+
+    if (b && amount > 0) {
+      return {
+        stream: [
+          `Recording ${formatMoney(amount)} ${method} `,
+          `from ${b.display_name}. `,
+          `Approve below to post it to the ledger.`,
+        ],
+        action: {
+          kind: "record_payment",
+          label: `Record ${formatMoney(amount)} ${method} from ${b.display_name}`,
+          boater_id: b.id,
+          amount,
+          method,
+        },
+      };
+    }
+  }
+
+  // ── INTENT: onboard / create new boater ─────────────────────
+  if (/\b(onboard|add|create|new)\b.*\b(boater|customer|account|client)\b/.test(lp)
+      || /\bnew\s+boater\b/.test(lp)
+  ) {
+    // Try to pull a name like "John Smith" or "Smith family"
+    const nameMatch = p.match(/(?:named|for|onboard|add)\s+([A-Z][a-z]+)(?:\s+([A-Z][a-z]+))?/);
+    const familyMatch = p.match(/([A-Z][a-z]+)\s+family/);
+    let first = "", last = "";
+    if (nameMatch) {
+      first = nameMatch[1] ?? "";
+      last = nameMatch[2] ?? "";
+    } else if (familyMatch) {
+      last = familyMatch[1];
+      first = "—"; // placeholder
+    }
+    if (first && last) {
+      return {
+        stream: [
+          `Drafting a new boater profile `,
+          `for ${first} ${last}. `,
+          `Approve below to add them. You'll be able to attach vessels and slips next.`,
+        ],
+        action: {
+          kind: "create_boater",
+          label: `Onboard ${first} ${last}`,
+          first_name: first,
+          last_name: last,
+          preferred_channel: "email",
+          billing_cadence: "transient",
+        },
+      };
+    }
+    return {
+      stream: [
+        `Open the "+ New boater" sheet on the Boaters page, `,
+        `or give me a name like "onboard a new boater named John Smith".`,
+      ],
+    };
+  }
+
+  // ── INTENT: add vessel ──────────────────────────────────────
+  if (/\b(add|register|new)\b.*\b(vessel|boat|sailboat|powerboat)\b/.test(lp)) {
+    const b = findBoater(p);
+    if (b) {
+      // crude name extraction — "named X" or in quotes
+      const nameMatch = p.match(/named\s+["']?([A-Z][\w\s]+?)["']?(?:[,.\s]|$)/i)
+                     ?? p.match(/["']([^"']+)["']/);
+      const name = nameMatch ? nameMatch[1].trim() : "New vessel";
+      let vesselType: "powerboat" | "sailboat" | "pontoon" | "houseboat" | "pwc" | "other" = "powerboat";
+      if (/sailboat/.test(lp)) vesselType = "sailboat";
+      else if (/pontoon/.test(lp)) vesselType = "pontoon";
+      else if (/houseboat/.test(lp)) vesselType = "houseboat";
+      else if (/jet\s*ski|pwc/.test(lp)) vesselType = "pwc";
+      return {
+        stream: [
+          `Drafting a new vessel "${name}" `,
+          `under ${b.display_name}. `,
+          `Approve to register it.`,
+        ],
+        action: {
+          kind: "create_vessel",
+          label: `Add ${name} to ${b.display_name}`,
+          boater_id: b.id,
+          name,
+          vessel_type: vesselType,
+        },
+      };
+    }
+  }
+
+  // ── INTENT: draft contract ─────────────────────────────────
+  if (/\b(draft|create|new)\b.*\b(contract|lease|agreement)\b/.test(lp)) {
+    const b = findBoater(p);
+    if (b) {
+      let templateId = "tpl_seasonal_slip";
+      if (/annual/.test(lp)) templateId = "tpl_annual_slip";
+      else if (/winteriz/.test(lp)) templateId = "tpl_winterization";
+      const today = new Date().toISOString().slice(0, 10);
+      const oneYear = new Date(Date.now() + 365 * 86_400_000).toISOString().slice(0, 10);
+      return {
+        stream: [
+          `Drafting a ${templateId.replace("tpl_", "").replace("_", " ")} contract `,
+          `for ${b.display_name}. `,
+          `Approve to save as draft (signature comes after).`,
+        ],
+        action: {
+          kind: "create_contract",
+          label: `Draft ${templateId.replace("tpl_", "").replace("_", " ")} for ${b.display_name}`,
+          boater_id: b.id,
+          template_id: templateId,
+          effective_start: today,
+          effective_end: oneYear,
+          billing_cadence: "monthly",
+        },
+      };
+    }
+  }
+
+  // ── INTENT: add card on file ───────────────────────────────
+  if (/\b(add|save|store)\b.*\bcard\b/.test(lp)) {
+    const b = findBoater(p);
+    const last4Match = p.match(/\b(\d{4})\b/);
+    let brand: "visa" | "mastercard" | "amex" | "discover" = "visa";
+    if (/mastercard|mc\b/.test(lp)) brand = "mastercard";
+    else if (/amex|american\s+express/.test(lp)) brand = "amex";
+    else if (/discover/.test(lp)) brand = "discover";
+
+    if (b && last4Match) {
+      const nextYear = new Date().getFullYear() + 2;
+      return {
+        stream: [
+          `Drafting a ${brand} card ending in ${last4Match[1]} `,
+          `for ${b.display_name}. `,
+          `Approve to store it (production: this would tokenize via the processor first).`,
+        ],
+        action: {
+          kind: "add_card",
+          label: `Add ${brand} ····${last4Match[1]} to ${b.display_name}`,
+          boater_id: b.id,
+          brand,
+          last4: last4Match[1],
+          exp_month: 12,
+          exp_year: nextYear,
+          is_default: false,
+        },
+      };
+    }
+  }
+
   // ── INTENT: anomalies / unusual meter / pedestal ─────────────
   if (/anomaly|anomalies|pedestal|unusual\s+draw|spike|high\s+draw/.test(lp)) {
     const anomalous = METER_READINGS.filter(meterAnomaly);
@@ -395,99 +713,6 @@ export function generateAgentResponse(
       `and fuel ("what's our margin?").`,
     ],
   };
-}
-
-// Execute the agent's proposed action against the client store.
-export function executeAgentAction(action: AgentAction): void {
-  if (action.kind === "charge_to_account") {
-    const now = new Date().toISOString();
-    const orderId = nextPosOrderId();
-    const orderNumber = nextPosOrderNumber();
-    const boater = BOATERS.find((b) => b.id === action.boater_id);
-    if (!boater) return;
-    const location = POS_LOCATIONS.find((l) => l.id === action.location_id);
-    if (!location) return;
-    const subtotal = action.line.price;
-    const tax = Math.round(subtotal * location.default_tax_rate * 100) / 100;
-    const total = subtotal + tax;
-    const invoiceId = nextLedgerId();
-    const invoiceNum = nextInvoiceNumber();
-
-    const order: PosOrder = {
-      id: orderId,
-      number: orderNumber,
-      location_id: location.id,
-      customer_kind: "boater",
-      boater_id: boater.id,
-      line_items: [{ sku: action.line.sku, name: action.line.name, qty: 1, unit_price: action.line.price, total: subtotal }],
-      subtotal,
-      tax,
-      total,
-      payment_method: "charge_to_account",
-      status: "paid",
-      created_at: now,
-      closed_at: now,
-      linked_ledger_entry_id: invoiceId,
-    };
-    const invoice: LedgerEntry = {
-      id: invoiceId,
-      boater_id: boater.id,
-      type: "invoice",
-      number: invoiceNum,
-      date: now.slice(0, 10),
-      amount: total,
-      open_balance: total,
-      method: null,
-      status: "open",
-      line_items: [{ description: action.line.name, amount: subtotal }],
-      linked_pos_order_id: orderId,
-    };
-    addLedgerEntry(invoice);
-    addPosOrder(order);
-
-    // Auto-receipt
-    const receipt: Communication = {
-      id: `cm_agent_${Date.now()}`,
-      boater_id: boater.id,
-      type: boater.communication_prefs.preferred_channel,
-      direction: "outbound",
-      subject: `Marina Stee Receipt — ${location.name}`,
-      body_preview: `Charged ${formatMoney(total)} for ${action.line.name} to your account.`,
-      sender_label: "Marina Stee Agent",
-      sender_is_system: true,
-      recipient:
-        boater.communication_prefs.preferred_channel === "email"
-          ? boater.primary_contact.email ?? "—"
-          : boater.primary_contact.phone ?? "—",
-      sent_at: now,
-      status: "delivered",
-      related_entity: { type: "invoice", id: orderId },
-    };
-    addCommunication(receipt);
-    return;
-  }
-
-  if (action.kind === "send_message") {
-    const boater = BOATERS.find((b) => b.id === action.boater_id);
-    if (!boater) return;
-    const comm: Communication = {
-      id: `cm_agent_${Date.now()}`,
-      boater_id: boater.id,
-      type: action.type,
-      direction: "outbound",
-      subject: action.subject,
-      body_preview: action.body,
-      sender_label: "Marina Stee Agent",
-      sender_is_system: true,
-      recipient:
-        action.type === "email"
-          ? boater.primary_contact.email ?? "—"
-          : boater.primary_contact.phone ?? "—",
-      sent_at: new Date().toISOString(),
-      status: "delivered",
-    };
-    addCommunication(comm);
-  }
 }
 
 // Use `getSlip` to silence the unused import — it's there to support future

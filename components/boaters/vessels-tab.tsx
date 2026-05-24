@@ -1,33 +1,66 @@
+"use client";
+
+import * as React from "react";
 import { EmptyState } from "@/components/page-shell";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { formatInches, getSlip } from "@/lib/mock-data";
+import { useReservationsForBoater, useVesselsForBoater } from "@/lib/client-store";
+import { AddVesselSheet } from "./add-vessel-sheet";
 import type { Reservation, Vessel } from "@/lib/types";
 
 export function VesselsTab({
   vessels,
   reservations,
+  boaterId,
 }: {
   vessels: Vessel[];
   reservations: Reservation[];
+  boaterId: string;
 }) {
-  if (vessels.length === 0) {
+  // Subscribe to live state so newly-added vessels appear immediately.
+  // Fall back to server-rendered props on first paint.
+  const liveVessels = useVesselsForBoater(boaterId);
+  const liveReservations = useReservationsForBoater(boaterId);
+  const allVessels = liveVessels.length > 0 ? liveVessels : vessels;
+  const allRes = liveReservations.length > 0 ? liveReservations : reservations;
+  const [addOpen, setAddOpen] = React.useState(false);
+
+  if (allVessels.length === 0) {
     return (
-      <EmptyState
-        title="No vessels on file"
-        body="Add a vessel to enable reservations, work orders, and pedestal billing."
-      />
+      <>
+        <EmptyState
+          title="No vessels on file"
+          body="Add a vessel to enable reservations, work orders, and pedestal billing."
+          cta={
+            <Button variant="primary" size="md" onClick={() => setAddOpen(true)}>
+              + Add vessel
+            </Button>
+          }
+        />
+        <AddVesselSheet open={addOpen} onOpenChange={setAddOpen} defaultBoaterId={boaterId} />
+      </>
     );
   }
 
   return (
     <div className="space-y-4">
-      {vessels.map((v) => (
+      <div className="flex items-center justify-between">
+        <p className="text-[13px] text-fg-subtle">
+          {allVessels.length} vessel{allVessels.length === 1 ? "" : "s"} on file.
+        </p>
+        <Button variant="primary" size="sm" onClick={() => setAddOpen(true)}>
+          + Add vessel
+        </Button>
+      </div>
+
+      {allVessels.map((v) => (
         <div key={v.id} className="rounded-[12px] border border-hairline bg-surface-1 p-5">
           <div className="flex items-start justify-between gap-3">
             <div>
               <h3 className="text-[16px] font-medium text-fg">{v.name}</h3>
               <div className="text-[12px] text-fg-subtle">
-                {v.year} {v.make} {v.model} · {v.color}
+                {[v.year, v.make, v.model, v.color].filter(Boolean).join(" ")}
               </div>
             </div>
             <div className="flex items-center gap-1.5">
@@ -53,7 +86,7 @@ export function VesselsTab({
         <div className="border-b border-hairline px-4 py-2.5">
           <h3 className="text-[13px] font-medium text-fg">Reservation history</h3>
         </div>
-        {reservations.length === 0 ? (
+        {allRes.length === 0 ? (
           <div className="px-4 py-6 text-[13px] text-fg-subtle">No reservations yet.</div>
         ) : (
           <div className="overflow-x-auto">
@@ -70,7 +103,7 @@ export function VesselsTab({
                 </tr>
               </thead>
               <tbody>
-                {reservations.map((r) => {
+                {allRes.map((r) => {
                   const s = getSlip(r.slip_id);
                   return (
                     <tr key={r.id} className="border-b border-hairline last:border-b-0">
@@ -93,6 +126,8 @@ export function VesselsTab({
           </div>
         )}
       </div>
+
+      <AddVesselSheet open={addOpen} onOpenChange={setAddOpen} defaultBoaterId={boaterId} />
     </div>
   );
 }

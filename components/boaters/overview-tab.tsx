@@ -105,7 +105,7 @@ export function OverviewTab({
           <div className="flex items-baseline gap-2">
             <span
               className={
-                "text-[24px] font-semibold tracking-tight " +
+                "money-display-lg text-[32px] " +
                 (openBalance > 0 ? "text-status-warn" : "text-fg")
               }
             >

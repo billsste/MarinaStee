@@ -148,7 +148,7 @@ export function SignExperience({
             <span className="text-[11px] uppercase tracking-wide text-fg-tertiary">
               Total to authorize
             </span>
-            <span className="text-[28px] font-semibold tracking-tight text-fg tabular-nums">
+            <span className="money-display-lg text-[40px] text-fg">
               {formatMoney(initial.total)}
             </span>
           </div>
@@ -204,15 +204,15 @@ export function SignExperience({
             </div>
 
             <div className="mt-5 flex items-center gap-2">
-              <Button
-                variant="primary"
-                size="lg"
+              <button
+                type="button"
                 onClick={() => setStep("pay")}
                 disabled={!signerName.trim() || !hasSignature}
+                className="tap-scale pill inline-flex h-12 items-center justify-center gap-2 bg-primary px-6 text-[15px] font-medium text-on-primary transition-colors hover:bg-primary-hover disabled:bg-surface-3 disabled:text-fg-tertiary"
               >
                 <ShieldCheck className="size-4" />
                 Sign &amp; continue to payment
-              </Button>
+              </button>
             </div>
           </section>
         )}
@@ -258,17 +258,17 @@ export function SignExperience({
               >
                 Back
               </Button>
-              <Button
-                variant="primary"
-                size="lg"
+              <button
+                type="button"
                 disabled={!payMethod}
                 onClick={() => {
                   setSignedAt(new Date().toISOString());
                   setStep("done");
                 }}
+                className="tap-scale pill inline-flex h-12 items-center justify-center gap-2 bg-primary px-6 text-[15px] font-medium text-on-primary transition-colors hover:bg-primary-hover disabled:bg-surface-3 disabled:text-fg-tertiary"
               >
                 Confirm and submit
-              </Button>
+              </button>
             </div>
           </section>
         )}

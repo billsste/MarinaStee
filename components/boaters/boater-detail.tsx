@@ -74,13 +74,13 @@ export function BoaterDetail({
         />
       </TabsContent>
       <TabsContent value="vessels">
-        <VesselsTab vessels={vessels} reservations={reservations} />
+        <VesselsTab vessels={vessels} reservations={reservations} boaterId={boater.id} />
       </TabsContent>
       <TabsContent value="financials">
         <FinancialsTab boaterId={boater.id} cards={cards} contracts={contracts} />
       </TabsContent>
       <TabsContent value="work-orders">
-        <WorkOrdersTab workOrders={workOrders} />
+        <WorkOrdersTab workOrders={workOrders} boaterId={boater.id} />
       </TabsContent>
       <TabsContent value="comms">
         <CommsTab boaterId={boater.id} />

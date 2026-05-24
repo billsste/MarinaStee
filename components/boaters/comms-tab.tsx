@@ -1,9 +1,11 @@
 "use client";
 
+import * as React from "react";
 import { Mail, MessageCircle, Phone, Inbox } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useCommunicationsForBoater } from "@/lib/client-store";
+import { NewMessageSheet } from "@/components/comms/new-message-sheet";
 import type { Communication } from "@/lib/types";
 
 function channelIcon(type: Communication["type"]) {
@@ -21,15 +23,25 @@ function statusTone(s: Communication["status"]): "ok" | "warn" | "danger" | "inf
 
 export function CommsTab({ boaterId }: { boaterId: string }) {
   const comms = useCommunicationsForBoater(boaterId);
+  const [newOpen, setNewOpen] = React.useState(false);
+
   if (comms.length === 0) {
     return (
-      <div className="rounded-[12px] border border-dashed border-hairline-strong bg-surface-1 p-10 text-center">
-        <Inbox className="mx-auto size-6 text-fg-tertiary" />
-        <h3 className="mt-2 text-[15px] font-medium text-fg">No communications yet</h3>
-        <p className="mt-1 text-[13px] text-fg-subtle">
-          Ask the agent to send a welcome message, payment reminder, or arrivals SMS.
-        </p>
-      </div>
+      <>
+        <div className="rounded-[12px] border border-dashed border-hairline-strong bg-surface-1 p-10 text-center">
+          <Inbox className="mx-auto size-6 text-fg-tertiary" />
+          <h3 className="mt-2 text-[15px] font-medium text-fg">No communications yet</h3>
+          <p className="mt-1 text-[13px] text-fg-subtle">
+            Send a welcome message, payment reminder, or arrival reminder — or ask the agent to.
+          </p>
+          <div className="mt-4 inline-flex">
+            <Button variant="primary" size="md" onClick={() => setNewOpen(true)}>
+              + New message
+            </Button>
+          </div>
+        </div>
+        <NewMessageSheet open={newOpen} onOpenChange={setNewOpen} defaultBoaterId={boaterId} />
+      </>
     );
   }
 
@@ -43,7 +55,9 @@ export function CommsTab({ boaterId }: { boaterId: string }) {
         </p>
         <div className="flex items-center gap-2">
           <Button variant="secondary" size="sm">Templates</Button>
-          <Button variant="primary" size="sm">+ New message</Button>
+          <Button variant="primary" size="sm" onClick={() => setNewOpen(true)}>
+            + New message
+          </Button>
         </div>
       </div>
 
@@ -93,6 +107,8 @@ export function CommsTab({ boaterId }: { boaterId: string }) {
           </li>
         ))}
       </ol>
+
+      <NewMessageSheet open={newOpen} onOpenChange={setNewOpen} defaultBoaterId={boaterId} />
     </div>
   );
 }

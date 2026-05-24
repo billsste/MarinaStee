@@ -120,7 +120,7 @@ export function QbSync() {
                 className="rounded-[10px] border border-hairline bg-surface-2 px-3 py-2.5"
               >
                 <div className="text-[10px] uppercase tracking-wide text-fg-tertiary">{bucket}</div>
-                <div className="mt-1 text-[16px] font-semibold tracking-tight text-fg tabular-nums">
+                <div className="money-display mt-1 text-[20px] text-fg">
                   {formatMoney(b?.total ?? 0)}
                 </div>
                 <div className="mt-0.5 text-[11px] text-fg-subtle">

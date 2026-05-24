@@ -609,6 +609,60 @@ const otherCommunications: Communication[] = [
     status: "delivered",
     related_entity: { type: "work_order", id: "wo_peterson_paint" },
   },
+  // ── Inbound messages — populates the unified Inbox with realistic triage candidates
+  {
+    id: "cm_peterson_question",
+    boater_id: "b_peterson",
+    type: "email",
+    direction: "inbound",
+    subject: "Re: bottom-paint quote",
+    body_preview:
+      "Hi — quick question on the quote. Does the price include the keel touch-up or is that separate? Also, when can you schedule? Looking at the last week of May.",
+    sender_label: "Sarah Peterson",
+    sender_is_system: false,
+    recipient: "marina@marinastee.com",
+    sent_at: "2026-05-22T08:42:00Z",
+    status: "delivered",
+    related_entity: { type: "work_order", id: "wo_peterson_paint" },
+  },
+  {
+    id: "cm_emmons_late_pmt",
+    boater_id: "b_emmons",
+    type: "sms",
+    direction: "inbound",
+    body_preview:
+      "Got the reminder — sending a check this afternoon. Should hit you by Wednesday. Thanks!",
+    sender_label: "David Emmons",
+    sender_is_system: false,
+    recipient: "marina",
+    sent_at: "2026-05-23T14:08:00Z",
+    status: "delivered",
+  },
+  {
+    id: "cm_peterson_arrival",
+    boater_id: "b_peterson",
+    type: "sms",
+    direction: "inbound",
+    body_preview: "Arriving Friday afternoon — slip A14 still confirmed?",
+    sender_label: "Sarah Peterson",
+    sender_is_system: false,
+    recipient: "marina",
+    sent_at: "2026-05-23T18:30:00Z",
+    status: "delivered",
+  },
+  {
+    id: "cm_emmons_pumpout",
+    boater_id: "b_emmons",
+    type: "sms",
+    direction: "inbound",
+    body_preview:
+      "Need a pump-out before we head out tomorrow if possible — sometime in the morning works.",
+    sender_label: "David Emmons",
+    sender_is_system: false,
+    recipient: "marina",
+    sent_at: "2026-05-24T07:21:00Z",
+    status: "delivered",
+  },
 ];
 
 // Peterson's sloop (referenced above)

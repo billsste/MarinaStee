@@ -6,11 +6,9 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useStore } from "@/lib/client-store";
-import {
-  executeAgentAction,
-  type AgentAction,
-} from "@/lib/simulated-agent";
-import { startAgentStream } from "@/lib/agent-fetch";
+import type { AgentAction } from "@/lib/simulated-agent";
+import { executeAgentAction } from "@/lib/agent-actions";
+import { streamAgent } from "@/lib/agent-fetch";
 
 type Message =
   | { kind: "user"; id: string; text: string }
@@ -19,9 +17,8 @@ type Message =
       id: string;
       text: string;     // built up as chunks stream in
       streaming: boolean;
-      action?: AgentAction;
-      actionExecuted?: boolean;
-      actionDismissed?: boolean;
+      actions: { action: AgentAction; executed?: boolean; dismissed?: boolean }[];
+      toolSteps: { name: string; result: unknown }[];
     };
 
 export function AgentChat({
@@ -57,30 +54,52 @@ export function AgentChat({
       setMessages((prev) => [
         ...prev,
         { kind: "user", id: userId, text: trimmed },
-        { kind: "agent", id: agentId, text: "", streaming: true },
+        { kind: "agent", id: agentId, text: "", streaming: true, actions: [], toolSteps: [] },
       ]);
 
-      // Tries the real /api/agent stream first (when ANTHROPIC_API_KEY is set
-      // server-side), otherwise produces the deterministic simulated stream.
-      // Either way the action proposal comes from the local schema matcher.
-      const result = await startAgentStream(trimmed, ledger);
-
-      for await (const chunk of result.text) {
+      try {
+        for await (const ev of streamAgent(trimmed, ledger)) {
+          if (ev.kind === "text") {
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.kind === "agent" && m.id === agentId
+                  ? { ...m, text: m.text + ev.text }
+                  : m
+              )
+            );
+          } else if (ev.kind === "action") {
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.kind === "agent" && m.id === agentId
+                  ? { ...m, actions: [...m.actions, { action: ev.action }] }
+                  : m
+              )
+            );
+          } else if (ev.kind === "tool_step") {
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.kind === "agent" && m.id === agentId
+                  ? { ...m, toolSteps: [...m.toolSteps, { name: ev.name, result: ev.result }] }
+                  : m
+              )
+            );
+          } else if (ev.kind === "error") {
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.kind === "agent" && m.id === agentId
+                  ? { ...m, text: m.text + `\n[agent error: ${ev.message}]` }
+                  : m
+              )
+            );
+          }
+        }
+      } finally {
         setMessages((prev) =>
           prev.map((m) =>
-            m.kind === "agent" && m.id === agentId ? { ...m, text: m.text + chunk } : m
+            m.kind === "agent" && m.id === agentId ? { ...m, streaming: false } : m
           )
         );
       }
-
-      const action = await result.actionPromise;
-      setMessages((prev) =>
-        prev.map((m) =>
-          m.kind === "agent" && m.id === agentId
-            ? { ...m, streaming: false, action }
-            : m
-        )
-      );
     },
     [ledger]
   );
@@ -92,18 +111,36 @@ export function AgentChat({
     }
   }, [initialPrompt, submit]);
 
-  function approveAction(messageId: string) {
+  function approveAction(messageId: string, index: number) {
     const m = messages.find((x) => x.kind === "agent" && x.id === messageId);
-    if (!m || m.kind !== "agent" || !m.action) return;
-    executeAgentAction(m.action);
+    if (!m || m.kind !== "agent" || !m.actions[index]) return;
+    executeAgentAction(m.actions[index].action);
     setMessages((prev) =>
-      prev.map((x) => (x.kind === "agent" && x.id === messageId ? { ...x, actionExecuted: true } : x))
+      prev.map((x) =>
+        x.kind === "agent" && x.id === messageId
+          ? {
+              ...x,
+              actions: x.actions.map((a, i) =>
+                i === index ? { ...a, executed: true } : a
+              ),
+            }
+          : x
+      )
     );
   }
 
-  function dismissAction(messageId: string) {
+  function dismissAction(messageId: string, index: number) {
     setMessages((prev) =>
-      prev.map((x) => (x.kind === "agent" && x.id === messageId ? { ...x, actionDismissed: true } : x))
+      prev.map((x) =>
+        x.kind === "agent" && x.id === messageId
+          ? {
+              ...x,
+              actions: x.actions.map((a, i) =>
+                i === index ? { ...a, dismissed: true } : a
+              ),
+            }
+          : x
+      )
     );
   }
 
@@ -120,7 +157,7 @@ export function AgentChat({
           <div className="flex h-full min-h-[120px] flex-col items-center justify-center gap-2 text-center">
             <Sparkles className="size-5 text-primary" />
             <p className="text-[12px] text-fg-subtle">
-              Try: "who has the largest open balance" · "vacant 30-footers with power" · "charge a hoist fee to David"
+              Try: "largest open balance" · "winterize David's Bayliner" · "record a $400 check from Emmons" · "book A12 for Peterson Friday night"
             </p>
           </div>
         ) : (
@@ -132,8 +169,8 @@ export function AgentChat({
                 <AgentBubble
                   key={m.id}
                   message={m}
-                  onApprove={() => approveAction(m.id)}
-                  onDismiss={() => dismissAction(m.id)}
+                  onApprove={(i) => approveAction(m.id, i)}
+                  onDismiss={(i) => dismissAction(m.id, i)}
                 />
               )
             )}
@@ -198,32 +235,65 @@ function AgentBubble({
   onDismiss,
 }: {
   message: Extract<Message, { kind: "agent" }>;
-  onApprove: () => void;
-  onDismiss: () => void;
+  onApprove: (index: number) => void;
+  onDismiss: (index: number) => void;
 }) {
   return (
     <li className="flex max-w-[92%] flex-col gap-2">
+      {/* Tool steps — show the agent's thinking trail */}
+      {message.toolSteps.length > 0 && (
+        <ul className="ml-8 flex flex-col gap-0.5 text-[11px] text-fg-tertiary">
+          {message.toolSteps.map((s, i) => (
+            <li key={i} className="inline-flex items-center gap-1.5">
+              <span className="font-mono">↳</span>
+              <span className="font-medium text-fg-subtle">{prettyToolName(s.name)}</span>
+              <span className="text-fg-tertiary">— {summarizeResult(s.result)}</span>
+            </li>
+          ))}
+        </ul>
+      )}
       <div className="flex items-start gap-2">
         <div className="mt-1 flex size-6 shrink-0 items-center justify-center rounded-full border border-hairline bg-surface-2 text-primary">
           <Sparkles className="size-3" />
         </div>
         <div className="rounded-[12px] rounded-bl-[4px] border border-hairline bg-surface-2 px-3 py-2 text-[14px] leading-6 text-fg">
-          {message.text}
+          {message.text || (message.streaming ? "Thinking…" : "")}
           {message.streaming && (
             <span className="ml-0.5 inline-block size-1.5 animate-pulse rounded-full bg-primary align-baseline" />
           )}
         </div>
       </div>
-      {message.action && !message.actionDismissed && (
-        <ActionCard
-          action={message.action}
-          executed={!!message.actionExecuted}
-          onApprove={onApprove}
-          onDismiss={onDismiss}
-        />
+      {message.actions.map((a, i) =>
+        a.dismissed ? null : (
+          <ActionCard
+            key={i}
+            action={a.action}
+            executed={!!a.executed}
+            onApprove={() => onApprove(i)}
+            onDismiss={() => onDismiss(i)}
+          />
+        )
       )}
     </li>
   );
+}
+
+function prettyToolName(n: string) {
+  return n
+    .replace(/^query_/, "queried ")
+    .replace(/_/g, " ");
+}
+
+function summarizeResult(r: unknown): string {
+  if (!r || typeof r !== "object") return String(r);
+  const obj = r as Record<string, unknown>;
+  if (typeof obj.count === "number") {
+    const totalOpen = obj.total_open as number | undefined;
+    return totalOpen !== undefined
+      ? `${obj.count} result${obj.count === 1 ? "" : "s"} · $${totalOpen.toLocaleString()}`
+      : `${obj.count} result${obj.count === 1 ? "" : "s"}`;
+  }
+  return "done";
 }
 
 function ActionCard({
@@ -246,6 +316,56 @@ function ActionCard({
       <div className="text-[13px] font-medium text-fg">{action.label}</div>
       {action.kind === "send_message" && (
         <p className="mt-1 max-w-md text-[12px] italic text-fg-subtle">"{action.body}"</p>
+      )}
+      {action.kind === "create_work_order" && (
+        <p className="mt-1 max-w-md text-[12px] text-fg-subtle">
+          {action.subject}
+          {action.activity_type && ` · ${action.activity_type.replace("_", " ")}`}
+          {action.priority && ` · ${action.priority}`}
+          {action.due_date && ` · due ${action.due_date}`}
+        </p>
+      )}
+      {action.kind === "create_reservation" && (
+        <p className="mt-1 max-w-md text-[12px] text-fg-subtle">
+          {action.arrival_date} → {action.departure_date} · {action.type}
+        </p>
+      )}
+      {action.kind === "record_payment" && (
+        <p className="mt-1 max-w-md text-[12px] text-fg-subtle">
+          ${action.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })} · {action.method}
+          {action.notes && ` · ${action.notes}`}
+        </p>
+      )}
+      {action.kind === "create_boater" && (
+        <p className="mt-1 max-w-md text-[12px] text-fg-subtle">
+          {action.email && `${action.email} · `}
+          {action.phone && `${action.phone} · `}
+          {action.preferred_channel} · {action.billing_cadence}
+        </p>
+      )}
+      {action.kind === "create_vessel" && (
+        <p className="mt-1 max-w-md text-[12px] text-fg-subtle">
+          {[
+            action.year,
+            action.make,
+            action.model,
+            action.vessel_type,
+          ]
+            .filter(Boolean)
+            .join(" · ")}
+        </p>
+      )}
+      {action.kind === "create_contract" && (
+        <p className="mt-1 max-w-md text-[12px] text-fg-subtle">
+          {action.template_id.replace("tpl_", "").replace("_", " ")} · {action.effective_start} → {action.effective_end}
+          {action.annual_rate && ` · $${action.annual_rate.toLocaleString()}/yr`}
+        </p>
+      )}
+      {action.kind === "add_card" && (
+        <p className="mt-1 max-w-md text-[12px] text-fg-subtle">
+          {action.brand} ····{action.last4} · exp {String(action.exp_month).padStart(2, "0")}/{String(action.exp_year).slice(-2)}
+          {action.is_default && " · default"}
+        </p>
       )}
       <div className="mt-3 flex items-center gap-2">
         {executed ? (

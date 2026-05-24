@@ -2,16 +2,28 @@
 
 import { useSyncExternalStore } from "react";
 import {
+  BOATERS,
+  CARDS_ON_FILE,
   COMMUNICATIONS,
+  CONTRACTS,
   LEDGER,
   POS_LOCATIONS,
   POS_ORDERS,
+  RESERVATIONS,
+  VESSELS,
+  WORK_ORDERS,
 } from "@/lib/mock-data";
 import type {
+  Boater,
+  CardOnFile,
   Communication,
+  Contract,
   LedgerEntry,
   PosOrder,
   QbSyncStatus,
+  Reservation,
+  Vessel,
+  WorkOrder,
 } from "@/lib/types";
 
 // GL account derivation — POS location → GL bucket, falls back to A/R for ledger.
@@ -52,6 +64,13 @@ type State = {
   ledger: LedgerEntry[];
   posOrders: PosOrder[];
   communications: Communication[];
+  workOrders: WorkOrder[];
+  reservations: Reservation[];
+  boaters: Boater[];
+  vessels: Vessel[];
+  contracts: Contract[];
+  // Cards are keyed by boater_id so per-boater hooks stay O(1).
+  cardsByBoaterId: Record<string, CardOnFile[]>;
 };
 
 let state: State = {
@@ -61,6 +80,12 @@ let state: State = {
   })),
   posOrders: POS_ORDERS.map((o) => tagSynced(o, "POS")),
   communications: [...COMMUNICATIONS],
+  workOrders: [...WORK_ORDERS],
+  reservations: [...RESERVATIONS],
+  boaters: [...BOATERS],
+  vessels: [...VESSELS],
+  contracts: [...CONTRACTS],
+  cardsByBoaterId: { ...CARDS_ON_FILE },
 };
 
 const subscribers = new Set<() => void>();
@@ -185,6 +210,44 @@ export function addCommunication(comm: Communication) {
   notify();
 }
 
+export function addWorkOrder(wo: WorkOrder) {
+  state = { ...state, workOrders: [wo, ...state.workOrders] };
+  notify();
+}
+
+export function addReservation(r: Reservation) {
+  state = { ...state, reservations: [r, ...state.reservations] };
+  notify();
+}
+
+export function addBoater(b: Boater) {
+  state = { ...state, boaters: [b, ...state.boaters] };
+  notify();
+}
+
+export function addVessel(v: Vessel) {
+  state = { ...state, vessels: [v, ...state.vessels] };
+  notify();
+}
+
+export function addContract(c: Contract) {
+  state = { ...state, contracts: [c, ...state.contracts] };
+  notify();
+}
+
+export function addCardForBoater(boaterId: string, card: CardOnFile) {
+  const existing = state.cardsByBoaterId[boaterId] ?? [];
+  // If the new card is_default, unset any existing default
+  const next = card.is_default
+    ? existing.map((c) => ({ ...c, is_default: false }))
+    : existing;
+  state = {
+    ...state,
+    cardsByBoaterId: { ...state.cardsByBoaterId, [boaterId]: [card, ...next] },
+  };
+  notify();
+}
+
 // ----- hooks -----
 
 export function useStore(): State {
@@ -203,6 +266,43 @@ export function usePosOrders(): PosOrder[] {
 export function useCommunicationsForBoater(boaterId: string): Communication[] {
   const s = useStore();
   return s.communications.filter((c) => c.boater_id === boaterId);
+}
+
+export function useWorkOrders(): WorkOrder[] {
+  return useStore().workOrders;
+}
+
+export function useWorkOrdersForBoater(boaterId: string): WorkOrder[] {
+  const s = useStore();
+  return s.workOrders.filter((w) => w.boater_id === boaterId);
+}
+
+export function useReservations(): Reservation[] {
+  return useStore().reservations;
+}
+
+export function useReservationsForBoater(boaterId: string): Reservation[] {
+  const s = useStore();
+  return s.reservations.filter((r) => r.boater_id === boaterId);
+}
+
+export function useBoaters(): Boater[] {
+  return useStore().boaters;
+}
+
+export function useVesselsForBoater(boaterId: string): Vessel[] {
+  const s = useStore();
+  return s.vessels.filter((v) => v.boater_id === boaterId || v.co_owner_ids.includes(boaterId));
+}
+
+export function useContractsForBoater(boaterId: string): Contract[] {
+  const s = useStore();
+  return s.contracts.filter((c) => c.boater_id === boaterId);
+}
+
+export function useCardsForBoater(boaterId: string): CardOnFile[] {
+  const s = useStore();
+  return s.cardsByBoaterId[boaterId] ?? [];
 }
 
 // ----- id generators -----
@@ -227,4 +327,37 @@ export function nextPosOrderId() {
 
 export function nextPosOrderNumber() {
   return nextNum("P-");
+}
+
+export function nextWorkOrderId() {
+  return `wo_runtime_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+}
+export function nextWorkOrderNumber() {
+  return nextNum("WO-");
+}
+
+export function nextReservationId() {
+  return `r_runtime_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+}
+export function nextReservationNumber() {
+  return nextNum("R");
+}
+
+export function nextBoaterId() {
+  return `b_runtime_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+}
+
+export function nextVesselId() {
+  return `v_runtime_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+}
+
+export function nextContractId() {
+  return `c_runtime_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+}
+export function nextContractNumber() {
+  return nextNum("C-");
+}
+
+export function nextCardId() {
+  return `card_runtime_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
 }

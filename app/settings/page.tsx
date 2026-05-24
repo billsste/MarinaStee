@@ -7,6 +7,8 @@ import {
   Server,
   CheckCircle2,
   AlertCircle,
+  CloudUpload,
+  RefreshCw,
 } from "lucide-react";
 import { PageShell } from "@/components/page-shell";
 import { Badge } from "@/components/ui/badge";
@@ -83,6 +85,71 @@ export default function SettingsPage() {
             status="needs_attention"
             detail="Re-authorize — token expires in 3 days"
           />
+        </SettingsCard>
+
+        <SettingsCard
+          icon={<CloudUpload className="size-4" />}
+          title="QuickBooks Online — deep config"
+          subtitle="GL account mapping + sync rules"
+          action={
+            <Button variant="secondary" size="sm">
+              <RefreshCw className="size-3.5" />
+              Re-authorize
+            </Button>
+          }
+        >
+          <div className="space-y-4">
+            <div>
+              <div className="mb-2 flex items-center justify-between">
+                <div className="text-[11px] font-medium uppercase tracking-wide text-fg-tertiary">
+                  GL account mapping
+                </div>
+                <span className="text-[11px] text-fg-tertiary">5 mapped</span>
+              </div>
+              <ul className="divide-y divide-hairline rounded-[8px] border border-hairline bg-surface-2">
+                <GlRow label="Fuel Sales" qbAccount="4001 · Fuel Revenue" />
+                <GlRow label="Slip Fee Revenue" qbAccount="4002 · Slip Rentals" />
+                <GlRow label="Retail Sales" qbAccount="4003 · Ship Store" />
+                <GlRow label="Restaurant" qbAccount="4004 · Restaurant Revenue" />
+                <GlRow label="A/R" qbAccount="1200 · Accounts Receivable" />
+                <GlRow label="Services" qbAccount="4005 · Services Revenue" />
+              </ul>
+            </div>
+
+            <div>
+              <div className="mb-2 flex items-center justify-between">
+                <div className="text-[11px] font-medium uppercase tracking-wide text-fg-tertiary">
+                  SKU → QuickBooks item mapping
+                </div>
+                <Button variant="ghost" size="sm">+ Map item</Button>
+              </div>
+              <ul className="divide-y divide-hairline rounded-[8px] border border-hairline bg-surface-2">
+                <SkuRow sku="FUEL-GAS" name="Gasoline" qbItem="ITEM-FUEL-87" />
+                <SkuRow sku="FUEL-DSL" name="Diesel" qbItem="ITEM-FUEL-DSL" />
+                <SkuRow sku="ROPE-50" name="Dock line 50ft" qbItem="ITEM-RETAIL-ROPE" />
+                <SkuRow sku="HOIST-FEE" name="Hoist Fee" qbItem="ITEM-SVC-HOIST" />
+                <SkuRow sku="SLIP-MONTHLY" name="Monthly slip — Standard" qbItem="ITEM-SLIP-MO" />
+              </ul>
+            </div>
+
+            <div>
+              <div className="mb-2 text-[11px] font-medium uppercase tracking-wide text-fg-tertiary">
+                Sync rules
+              </div>
+              <div className="space-y-1.5 rounded-[8px] border border-hairline bg-surface-2 px-3 py-2.5">
+                <FieldRow label="Cadence" value="Real-time + nightly reconciliation" />
+                <FieldRow label="On error" value="Retry 3× with backoff · alert manager after 24h" />
+                <FieldRow label="Customers" value="Bidirectional · Boaters ↔ QB Customers" />
+                <FieldRow label="Classes" value="POS location → QB Class (Fuel Dock / Ship Store / Restaurant / Harbormaster)" />
+                <FieldRow label="Last full sync" value="2026-05-23 18:30:00" />
+              </div>
+            </div>
+
+            <p className="text-[11px] leading-5 text-fg-tertiary">
+              Active runtime sync status lives in <span className="font-medium text-fg-muted">Ledger / POS → QuickBooks Sync</span>.
+              Mapping changes here apply to entries created after save.
+            </p>
+          </div>
         </SettingsCard>
 
         <SettingsCard
@@ -167,6 +234,42 @@ function FieldRow({ label, value, mono }: { label: string; value: string; mono?:
       <span className="text-fg-tertiary">{label}</span>
       <span className={"text-fg " + (mono ? "font-mono text-[12px]" : "")}>{value}</span>
     </div>
+  );
+}
+
+function GlRow({ label, qbAccount }: { label: string; qbAccount: string }) {
+  return (
+    <li className="flex items-center justify-between gap-3 px-3 py-2 text-[13px]">
+      <span className="text-fg">{label}</span>
+      <div className="flex items-center gap-2">
+        <span className="text-fg-tertiary">→</span>
+        <span className="font-mono text-[12px] text-fg-subtle">{qbAccount}</span>
+        <Badge tone="ok" size="sm">mapped</Badge>
+      </div>
+    </li>
+  );
+}
+
+function SkuRow({
+  sku,
+  name,
+  qbItem,
+}: {
+  sku: string;
+  name: string;
+  qbItem: string;
+}) {
+  return (
+    <li className="flex items-center justify-between gap-3 px-3 py-2 text-[13px]">
+      <div className="min-w-0">
+        <div className="text-fg">{name}</div>
+        <div className="font-mono text-[10px] text-fg-tertiary">{sku}</div>
+      </div>
+      <div className="flex items-center gap-2">
+        <span className="text-fg-tertiary">→</span>
+        <span className="font-mono text-[12px] text-fg-subtle">{qbItem}</span>
+      </div>
+    </li>
   );
 }
 

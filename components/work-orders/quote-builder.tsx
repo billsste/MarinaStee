@@ -78,10 +78,13 @@ export function QuoteBuilder({
         </div>
         <div className="flex items-center gap-2">
           {!isSigned && quote.status === "draft" && (
-            <Button variant="primary" size="sm">
+            <button
+              type="button"
+              className="tap-scale pill inline-flex h-9 items-center justify-center gap-1.5 bg-primary px-4 text-[13px] font-medium text-on-primary transition-colors hover:bg-primary-hover"
+            >
               <Send className="size-3.5" />
               Send for signature
-            </Button>
+            </button>
           )}
           {isSigned && !isInvoiced && (
             <Button variant="primary" size="sm">
@@ -237,7 +240,7 @@ export function QuoteBuilder({
         <div className="flex items-end justify-end sm:col-start-2 sm:row-start-1">
           <div className="text-right">
             <div className="text-[10px] uppercase tracking-wide text-fg-tertiary">Total</div>
-            <div className="text-[24px] font-semibold tracking-tight text-fg tabular-nums">
+            <div className="money-display-lg text-[32px] text-fg">
               {formatMoney(quote.total)}
             </div>
           </div>

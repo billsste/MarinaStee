@@ -12,7 +12,7 @@ export function PageShell({
   return (
     <div className="mx-auto w-full max-w-[1080px] px-6 pt-8 pb-32">
       <header className="mb-6">
-        <h1 className="text-[22px] font-semibold tracking-tight text-fg">
+        <h1 className="display-tight text-[26px] font-semibold text-fg">
           {title}
         </h1>
         {description && (

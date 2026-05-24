@@ -5,8 +5,15 @@ import { CreditCard, FileText, RotateCcw } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { formatMoney, getTemplate } from "@/lib/mock-data";
-import { useLedgerForBoater } from "@/lib/client-store";
+import {
+  useCardsForBoater,
+  useContractsForBoater,
+  useLedgerForBoater,
+} from "@/lib/client-store";
 import { useLedgerDrawer } from "@/components/ledger/ledger-entry-drawer";
+import { EnterPaymentSheet } from "@/components/financials/enter-payment-sheet";
+import { AddCardSheet } from "@/components/financials/add-card-sheet";
+import { NewContractSheet } from "@/components/financials/new-contract-sheet";
 import type { CardOnFile, Contract, LedgerEntry } from "@/lib/types";
 
 type FilterKey = "all" | "invoices" | "payments" | "refunds";
@@ -22,7 +29,16 @@ export function FinancialsTab({
 }) {
   // Live ledger from client store — reflects POS sales completed this session.
   const ledger = useLedgerForBoater(boaterId);
+  const liveCards = useCardsForBoater(boaterId);
+  const liveContracts = useContractsForBoater(boaterId);
+  // Fall back to server-rendered props on first paint, then take over from store.
+  const allCards = liveCards.length > 0 ? liveCards : cards;
+  const allContracts = liveContracts.length > 0 ? liveContracts : contracts;
+
   const [filter, setFilter] = React.useState<FilterKey>("all");
+  const [paymentOpen, setPaymentOpen] = React.useState(false);
+  const [cardOpen, setCardOpen] = React.useState(false);
+  const [contractOpen, setContractOpen] = React.useState(false);
 
   const filtered = ledger
     .filter((l) => {
@@ -60,16 +76,16 @@ export function FinancialsTab({
             <CreditCard className="size-3.5 text-fg-subtle" />
             Cards on file
           </h3>
-          <Button variant="ghost" size="sm">+ Add card</Button>
+          <Button variant="ghost" size="sm" onClick={() => setCardOpen(true)}>+ Add card</Button>
         </div>
         <div className="p-3">
-          {cards.length === 0 ? (
+          {allCards.length === 0 ? (
             <p className="px-1 text-[13px] text-fg-subtle">
               No cards on file. Add one to enable auto-pay and one-click charges.
             </p>
           ) : (
             <ul className="flex flex-wrap gap-2">
-              {cards.map((c) => (
+              {allCards.map((c) => (
                 <li
                   key={c.id}
                   className="flex items-center gap-3 rounded-[8px] border border-hairline bg-surface-2 px-3 py-2"
@@ -95,14 +111,14 @@ export function FinancialsTab({
             <FileText className="size-3.5 text-fg-subtle" />
             Contracts
           </h3>
-          <Button variant="ghost" size="sm">+ New contract</Button>
+          <Button variant="ghost" size="sm" onClick={() => setContractOpen(true)}>+ New contract</Button>
         </div>
         <div className="p-3">
-          {contracts.length === 0 ? (
+          {allContracts.length === 0 ? (
             <p className="px-1 text-[13px] text-fg-subtle">No contracts on file.</p>
           ) : (
             <ul className="space-y-2">
-              {contracts.map((c) => {
+              {allContracts.map((c) => {
                 const tpl = getTemplate(c.template_id);
                 return (
                   <li
@@ -147,7 +163,9 @@ export function FinancialsTab({
             <FilterPill label="Invoices" active={filter === "invoices"} onClick={() => setFilter("invoices")} />
             <FilterPill label="Payments" active={filter === "payments"} onClick={() => setFilter("payments")} />
             <FilterPill label="Refunds" active={filter === "refunds"} onClick={() => setFilter("refunds")} />
-            <Button variant="primary" size="sm">+ Enter payment</Button>
+            <Button variant="primary" size="sm" onClick={() => setPaymentOpen(true)}>
+              + Enter payment
+            </Button>
           </div>
         </div>
 
@@ -177,6 +195,22 @@ export function FinancialsTab({
           All postings flow to a single A/R ledger for this boater.
         </div>
       </div>
+
+      <EnterPaymentSheet
+        open={paymentOpen}
+        onOpenChange={setPaymentOpen}
+        defaultBoaterId={boaterId}
+      />
+      <AddCardSheet
+        open={cardOpen}
+        onOpenChange={setCardOpen}
+        defaultBoaterId={boaterId}
+      />
+      <NewContractSheet
+        open={contractOpen}
+        onOpenChange={setContractOpen}
+        defaultBoaterId={boaterId}
+      />
     </div>
   );
 }
@@ -211,10 +245,10 @@ function LedgerRow({ entry }: { entry: LedgerEntry }) {
       </Td>
       <Td className="font-mono text-[12px] font-medium text-primary">{entry.number ?? "—"}</Td>
       <Td className="text-fg-subtle">{entry.date}</Td>
-      <Td className={"text-right " + (isRefund ? "text-status-danger" : "text-fg")}>
+      <Td className={"tabular text-right " + (isRefund ? "text-status-danger" : "text-fg")}>
         {formatMoney(entry.amount)}
       </Td>
-      <Td className="text-right text-fg-subtle">
+      <Td className="tabular text-right text-fg-subtle">
         {entry.open_balance ? formatMoney(entry.open_balance) : "—"}
       </Td>
       <Td className="capitalize text-fg-subtle">
@@ -302,7 +336,7 @@ function SummaryCard({
   return (
     <div className="rounded-[12px] border border-hairline bg-surface-1 p-4">
       <div className="text-[11px] uppercase tracking-wide text-fg-tertiary">{label}</div>
-      <div className={"mt-1 text-[20px] font-semibold tracking-tight " + valueTone}>{value}</div>
+      <div className={"money-display mt-1 text-[26px] " + valueTone}>{value}</div>
     </div>
   );
 }

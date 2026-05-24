@@ -47,10 +47,10 @@ export function ActivityFeed() {
       boater_id: l.boater_id,
       title:
         l.type === "refund"
-          ? `Refund ${formatMoney(l.amount)}`
+          ? `Refund · ${formatMoney(l.amount)}`
           : l.type === "payment"
-            ? `Payment ${formatMoney(l.amount)}`
-            : `Invoice ${l.number ?? ""} ${formatMoney(l.amount)}`,
+            ? `Payment · ${formatMoney(l.amount)}`
+            : `Invoice ${l.number ?? ""} · ${formatMoney(l.amount)}`,
       subtitle:
         l.status +
         (l.linked_work_order_id ? ` · from work order` : "") +

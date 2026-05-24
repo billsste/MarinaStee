@@ -27,7 +27,7 @@ export function ArAging() {
         </div>
         <div className="text-right">
           <div className="text-[10px] uppercase tracking-wide text-fg-tertiary">Total open</div>
-          <div className="text-[18px] font-semibold tracking-tight text-status-warn">
+          <div className="money-display text-[24px] text-status-warn">
             {formatMoney(total)}
           </div>
         </div>
@@ -54,7 +54,7 @@ export function ArAging() {
                     </Link>
                   </td>
                   <td className="px-3 py-2 capitalize text-fg-subtle">{r.boater.billing_cadence}</td>
-                  <td className="px-3 py-2 text-right font-medium text-status-warn">
+                  <td className="tabular px-3 py-2 text-right font-medium text-status-warn">
                     {formatMoney(r.balance)}
                   </td>
                   <td className="px-3 py-2">

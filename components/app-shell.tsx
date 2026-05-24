@@ -11,12 +11,11 @@ import { LedgerDrawerProvider } from "@/components/ledger/ledger-entry-drawer";
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const isDashboard = pathname === "/";
-  const isPublic = pathname.startsWith("/sign");
 
-  // Public boater-facing routes (signing portal) render without admin chrome.
-  if (isPublic) {
-    return <>{children}</>;
-  }
+  // Public/role-specific routes (boater signing portal, dockhand mobile view)
+  // render without admin chrome.
+  const isPublic = pathname.startsWith("/sign") || pathname.startsWith("/dock");
+  if (isPublic) return <>{children}</>;
 
   return (
     <TooltipProvider delayDuration={200} skipDelayDuration={300}>

@@ -278,7 +278,7 @@ export function PosTerminal() {
                     className="flex flex-col items-start rounded-[8px] border border-hairline bg-surface-2 p-2 text-left transition-colors hover:border-primary/40 hover:bg-primary-soft/40"
                   >
                     <div className="text-[12px] font-medium leading-tight text-fg">{c.name}</div>
-                    <div className="mt-1 text-[13px] font-semibold tracking-tight text-fg">
+                    <div className="money-display mt-1 text-[15px] text-fg">
                       {formatMoney(c.price)}
                     </div>
                     <div className="mt-0.5 text-[9px] font-mono uppercase text-fg-tertiary">
@@ -366,18 +366,18 @@ export function PosTerminal() {
         </div>
 
         {items.length > 0 && (
-          <div className="border-t border-hairline px-4 py-3 text-[13px]">
+          <div className="space-y-2 border-t border-hairline px-5 py-4 text-[13px]">
             <div className="flex justify-between text-fg-subtle">
               <span>Subtotal</span>
-              <span className="font-mono text-fg">{formatMoney(subtotal)}</span>
+              <span className="tabular text-fg">{formatMoney(subtotal)}</span>
             </div>
             <div className="flex justify-between text-fg-subtle">
               <span>Tax ({(location.default_tax_rate * 100).toFixed(2)}%)</span>
-              <span className="font-mono text-fg">{formatMoney(tax)}</span>
+              <span className="tabular text-fg">{formatMoney(tax)}</span>
             </div>
-            <div className="mt-2 flex items-baseline justify-between border-t border-hairline pt-2">
+            <div className="mt-3 flex flex-col gap-0.5 border-t border-hairline pt-3">
               <span className="text-[11px] uppercase tracking-wide text-fg-tertiary">Total</span>
-              <span className="text-[22px] font-semibold tracking-tight text-fg">
+              <span className="money-display-lg text-[36px] text-fg">
                 {formatMoney(total)}
               </span>
             </div>
@@ -395,29 +395,31 @@ export function PosTerminal() {
           <CustomerPicker selection={customer} onSelect={setCustomer} />
 
           {completedAt ? (
-            <div className="rounded-[10px] border border-status-ok/30 bg-status-ok/[0.06] p-3">
-              <div className="mb-1 flex items-center gap-2">
+            <div className="rounded-[12px] border border-status-ok/30 bg-status-ok/[0.06] p-5">
+              <div className="mb-3 flex items-center gap-2">
                 <CheckCheck className="size-4 text-status-ok" />
                 <h4 className="text-[13px] font-medium text-fg">Sale complete</h4>
               </div>
-              <div className="space-y-0.5 text-[12px] text-fg-subtle">
-                <div>{formatMoney(total)} · {paymentMethod?.replace("_", " ")}</div>
-                <div>Posted {new Date(completedAt).toLocaleTimeString()}</div>
+              <div className="money-display-lg text-[32px] text-fg">{formatMoney(total)}</div>
+              <div className="mt-1 space-y-0.5 text-[12px] text-fg-subtle">
+                <div className="capitalize">{paymentMethod?.replace("_", " ")} · {new Date(completedAt).toLocaleTimeString()}</div>
                 {paymentMethod === "charge_to_account" && customer.kind === "boater" && (
                   <div className="text-status-ok">
                     Ledger entry created on {customer.boater.display_name}&apos;s account.
                   </div>
                 )}
-                <div className="text-status-info">
-                  Queued for QuickBooks sync.
-                </div>
+                <div className="text-status-info">Queued for QuickBooks sync.</div>
               </div>
-              <Button variant="primary" size="sm" className="mt-3" onClick={resetOrder}>
+              <button
+                type="button"
+                onClick={resetOrder}
+                className="tap-scale pill mt-4 inline-flex h-11 items-center justify-center gap-2 bg-primary px-5 text-[14px] font-medium text-on-primary hover:bg-primary-hover"
+              >
                 New order
-              </Button>
+              </button>
             </div>
           ) : (
-            <div className="space-y-2">
+            <div className="space-y-3">
               <div className="text-[11px] font-medium uppercase tracking-wide text-fg-tertiary">
                 Payment
               </div>
@@ -456,9 +458,9 @@ export function PosTerminal() {
                   hint="Coming soon"
                 />
               </div>
-              <p className="text-[10px] text-fg-tertiary">
-                Charge-to-account posts a {formatMoney(total)} invoice to the boater&apos;s ledger;
-                it rolls into next month&apos;s statement.
+              <p className="text-[11px] leading-5 text-fg-tertiary">
+                Charge-to-account posts a <span className="tabular text-fg-muted">{formatMoney(total)}</span>{" "}
+                invoice to the boater&apos;s ledger; it rolls into next month&apos;s statement.
               </p>
             </div>
           )}
@@ -627,13 +629,15 @@ function PayButton({
       disabled={disabled}
       title={hint}
       className={cn(
-        "flex h-16 flex-col items-center justify-center gap-1 rounded-[8px] border text-[11px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40",
+        "tap-scale flex h-[88px] flex-col items-center justify-center gap-1.5 rounded-[14px] border text-[12px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40",
         highlight && !disabled
-          ? "border-primary/40 bg-primary-soft text-primary hover:bg-primary/15"
+          ? "border-primary bg-primary text-on-primary hover:bg-primary-hover"
           : "border-hairline bg-surface-1 text-fg-muted hover:bg-surface-2 hover:text-fg"
       )}
     >
-      {icon}
+      <span className={cn("flex size-7 items-center justify-center rounded-full", highlight && !disabled ? "bg-white/15" : "bg-surface-2")}>
+        {icon}
+      </span>
       {label}
     </button>
   );

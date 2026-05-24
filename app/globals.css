@@ -17,10 +17,11 @@
   --hairline-strong: #d4d7dc;
   --hairline-tertiary: #c1c4ca;
 
-  --fg-primary: #0c0d0e;
-  --fg-muted: #3f4248;
-  --fg-subtle: #6b6f78;
-  --fg-tertiary: #9aa0a8;
+  /* Warm-tinted ink (Stripe + Superhuman convention — never pure black) */
+  --fg-primary: #1a1a1c;
+  --fg-muted: #44464d;
+  --fg-subtle: #696c73;
+  --fg-tertiary: #97999f;
 
   --primary: #0d9488;
   --primary-hover: #14b8a6;
@@ -45,9 +46,10 @@
   --hairline-strong: #2a2d33;
   --hairline-tertiary: #3a3d44;
 
-  --fg-primary: #f7f8f8;
-  --fg-muted: #c3cad4;
-  --fg-subtle: #8a8f98;
+  /* Warm-tinted ink (dark mode — never pure white) */
+  --fg-primary: #f4f4f5;
+  --fg-muted: #c5c7cc;
+  --fg-subtle: #8d9097;
   --fg-tertiary: #62666d;
 
   --primary: #14b8a6;
@@ -133,4 +135,48 @@ body {
 }
 .dark ::-webkit-scrollbar-thumb:hover {
   background: var(--surface-4);
+}
+
+/* ────────────────────────────────────────────────────────────
+ * Design direction v2 — Stripe + Apple HIG primitives
+ * ──────────────────────────────────────────────────────────── */
+
+/* Tabular numerals — every $ and count column. Stripe convention. */
+.tabular {
+  font-feature-settings: "tnum", "cv11";
+  font-variant-numeric: tabular-nums;
+}
+
+/* Big-money typography — Stripe's "weight 300 with tight tracking" treatment.
+ * Used for hero totals, large dollar values. Don't apply to inline body. */
+.money-display {
+  font-feature-settings: "tnum", "cv11";
+  font-variant-numeric: tabular-nums;
+  font-weight: 300;
+  letter-spacing: -0.02em;
+}
+.money-display-lg {
+  font-feature-settings: "tnum", "cv11";
+  font-variant-numeric: tabular-nums;
+  font-weight: 300;
+  letter-spacing: -0.025em;
+  line-height: 1.05;
+}
+
+/* Tightened tracking for display sizes (Apple HIG convention). */
+.display-tight {
+  letter-spacing: -0.02em;
+}
+
+/* Tap feedback — Apple HIG signature. Use on touch-priority buttons. */
+.tap-scale {
+  transition: transform 120ms ease-out;
+}
+.tap-scale:active {
+  transform: scale(0.96);
+}
+
+/* Pill / capsule — full radius for primary CTAs. */
+.pill {
+  border-radius: 9999px;
 }

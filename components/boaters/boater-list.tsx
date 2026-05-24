@@ -1,19 +1,39 @@
 "use client";
 
 import * as React from "react";
+import { Plus } from "lucide-react";
 import { BoaterSearch } from "./boater-search";
 import { BoaterRow } from "./boater-row";
+import { NewBoaterSheet } from "./new-boater-sheet";
 import { Badge } from "@/components/ui/badge";
-import type { Boater, Reservation } from "@/lib/types";
+import { Button } from "@/components/ui/button";
+import { getCurrentReservation, getOpenBalance } from "@/lib/mock-data";
+import { useBoaters, useStore } from "@/lib/client-store";
 
-type BoaterRowData = {
-  boater: Boater;
-  currentReservation?: Reservation;
-  openBalance: number;
-};
-
-export function BoaterList({ rows }: { rows: BoaterRowData[] }) {
+export function BoaterList() {
+  const boaters = useBoaters();
+  const { reservations, ledger } = useStore();
   const [query, setQuery] = React.useState("");
+  const [newOpen, setNewOpen] = React.useState(false);
+
+  // Compute rows live from the store so runtime-created boaters appear immediately.
+  // Open-balance + reservation lookups still use the static helpers — they fall back
+  // gracefully (0 balance / no current res) for boaters that don't exist in those
+  // static maps yet, which is fine for the demo.
+  const rows = React.useMemo(() => {
+    return boaters.map((boater) => {
+      // Prefer live reservation from store if present
+      const liveRes = reservations.find(
+        (r) => r.boater_id === boater.id && r.status === "occupied"
+      );
+      const currentReservation = liveRes ?? getCurrentReservation(boater.id);
+      const liveBalance = ledger
+        .filter((l) => l.boater_id === boater.id && l.type === "invoice")
+        .reduce((s, l) => s + l.open_balance, 0);
+      const openBalance = liveBalance > 0 ? liveBalance : getOpenBalance(boater.id);
+      return { boater, currentReservation, openBalance };
+    });
+  }, [boaters, reservations, ledger]);
 
   const filtered = React.useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -35,14 +55,20 @@ export function BoaterList({ rows }: { rows: BoaterRowData[] }) {
     <div className="space-y-4">
       <BoaterSearch value={query} onChange={setQuery} />
 
-      <div className="flex flex-wrap items-center gap-2 text-[11px] text-fg-tertiary">
-        <span>Quick filters:</span>
-        <FilterChip label="All" active />
-        <FilterChip label="Annual" />
-        <FilterChip label="Seasonal" />
-        <FilterChip label="Transient" />
-        <FilterChip label="Past due" />
-        <FilterChip label="Contract expiring" />
+      <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center gap-2 text-[11px] text-fg-tertiary">
+          <span>Quick filters:</span>
+          <FilterChip label="All" active />
+          <FilterChip label="Annual" />
+          <FilterChip label="Seasonal" />
+          <FilterChip label="Transient" />
+          <FilterChip label="Past due" />
+          <FilterChip label="Contract expiring" />
+        </div>
+        <Button variant="primary" size="sm" onClick={() => setNewOpen(true)}>
+          <Plus className="size-3.5" />
+          New boater
+        </Button>
       </div>
 
       <div className="overflow-hidden rounded-[12px] border border-hairline bg-surface-1">
@@ -58,8 +84,8 @@ export function BoaterList({ rows }: { rows: BoaterRowData[] }) {
           <div className="px-4 py-10 text-center text-[13px] text-fg-subtle">
             No boaters match{" "}
             <span className="font-medium text-fg">&ldquo;{query}&rdquo;</span>.
-            Try a different name, or type an{" "}
-            <span className="font-medium text-primary">add</span> command to create one.
+            Try a different name, or click{" "}
+            <span className="font-medium text-primary">+ New boater</span> to add one.
           </div>
         ) : (
           filtered.map((r) => (
@@ -84,6 +110,8 @@ export function BoaterList({ rows }: { rows: BoaterRowData[] }) {
           can also bulk-message, filter, or open a contract from this list — just ask.
         </span>
       </div>
+
+      <NewBoaterSheet open={newOpen} onOpenChange={setNewOpen} />
     </div>
   );
 }

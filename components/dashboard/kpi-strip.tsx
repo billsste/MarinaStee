@@ -104,7 +104,7 @@ function Kpi({
         </span>
         <span className={`size-1.5 rounded-full ${TONE_DOT[tone]}`} aria-hidden />
       </div>
-      <div className="text-[22px] font-semibold tracking-tight text-fg">{value}</div>
+      <div className="money-display text-[26px] text-fg">{value}</div>
       <div className="mt-1 text-[12px] text-fg-subtle">{sub}</div>
     </>
   );

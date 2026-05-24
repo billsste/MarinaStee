@@ -33,7 +33,7 @@ export function BoaterIdentityBar({
           </Avatar>
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
-              <h1 className="text-[20px] font-semibold tracking-tight text-fg">
+              <h1 className="display-tight text-[24px] font-semibold text-fg">
                 {boater.display_name}
               </h1>
               {boater.code && (
@@ -53,7 +53,7 @@ export function BoaterIdentityBar({
                 <Badge tone="neutral">Slip {currentReservation.slip_id}</Badge>
               )}
               <Badge tone={balanceTone}>
-                Balance {formatMoney(openBalance)}
+                Balance <span className="tabular ml-0.5">{formatMoney(openBalance)}</span>
               </Badge>
               {boater.trust_score !== undefined && (
                 <Badge tone={boater.trust_score >= 90 ? "ok" : "neutral"}>

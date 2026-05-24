@@ -86,7 +86,7 @@ export default function MetersPage() {
                     <Td className={"text-right font-medium " + (anomaly ? "text-status-danger" : "text-fg")}>
                       +{delta} {m.unit}
                     </Td>
-                    <Td className="text-right text-fg">{formatMoney(meterCharge(m))}</Td>
+                    <Td className="tabular text-right text-fg">{formatMoney(meterCharge(m))}</Td>
                     <Td>
                       {anomaly ? (
                         <Badge tone="danger" size="sm">
@@ -140,7 +140,7 @@ function KpiCard({
   return (
     <div className="rounded-[12px] border border-hairline bg-surface-1 p-4">
       <div className="text-[11px] uppercase tracking-wide text-fg-tertiary">{label}</div>
-      <div className={"mt-1 text-[20px] font-semibold tracking-tight " + valueTone}>{value}</div>
+      <div className={"money-display mt-1 text-[24px] " + valueTone}>{value}</div>
       <div className="mt-1 text-[11px] text-fg-tertiary">{sub}</div>
     </div>
   );

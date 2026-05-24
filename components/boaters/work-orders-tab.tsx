@@ -1,7 +1,12 @@
+"use client";
+
+import * as React from "react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { getUser, getQuoteForWorkOrder, formatMoney } from "@/lib/mock-data";
+import { useWorkOrdersForBoater } from "@/lib/client-store";
+import { NewWorkOrderSheet } from "@/components/work-orders/new-work-order-sheet";
 import type { WorkOrder, WorkOrderStatus } from "@/lib/types";
 
 const COLUMNS: { key: WorkOrderStatus; label: string }[] = [
@@ -11,7 +16,18 @@ const COLUMNS: { key: WorkOrderStatus; label: string }[] = [
   { key: "completed", label: "Done" },
 ];
 
-export function WorkOrdersTab({ workOrders }: { workOrders: WorkOrder[] }) {
+export function WorkOrdersTab({
+  workOrders,
+  boaterId,
+}: {
+  workOrders: WorkOrder[];
+  boaterId: string;
+}) {
+  // Live work orders from store; fall back to server-rendered prop on first paint.
+  const live = useWorkOrdersForBoater(boaterId);
+  const items = live.length > 0 ? live : workOrders;
+  const [newOpen, setNewOpen] = React.useState(false);
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -22,34 +38,42 @@ export function WorkOrdersTab({ workOrders }: { workOrders: WorkOrder[] }) {
           <Button variant="ghost" size="sm" asChild>
             <Link href="/work-orders">All work orders →</Link>
           </Button>
-          <Button variant="primary" size="sm">+ New work order</Button>
+          <Button variant="primary" size="sm" onClick={() => setNewOpen(true)}>
+            + New work order
+          </Button>
         </div>
       </div>
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {COLUMNS.map((col) => {
-          const items = workOrders.filter((w) => w.status === col.key);
+          const cards = items.filter((w) => w.status === col.key);
           return (
             <div key={col.key} className="rounded-[12px] border border-hairline bg-surface-1">
               <div className="flex items-center justify-between border-b border-hairline px-3 py-2">
                 <h3 className="text-[12px] font-medium uppercase tracking-wide text-fg-subtle">
                   {col.label}
                 </h3>
-                <Badge tone="neutral" size="sm">{items.length}</Badge>
+                <Badge tone="neutral" size="sm">{cards.length}</Badge>
               </div>
               <div className="space-y-2 p-2">
-                {items.length === 0 ? (
+                {cards.length === 0 ? (
                   <div className="rounded-[8px] border border-dashed border-hairline px-3 py-6 text-center text-[12px] text-fg-tertiary">
                     None
                   </div>
                 ) : (
-                  items.map((w) => <WorkOrderCard key={w.id} w={w} />)
+                  cards.map((w) => <WorkOrderCard key={w.id} w={w} />)
                 )}
               </div>
             </div>
           );
         })}
       </div>
+
+      <NewWorkOrderSheet
+        open={newOpen}
+        onOpenChange={setNewOpen}
+        defaultBoaterId={boaterId}
+      />
     </div>
   );
 }

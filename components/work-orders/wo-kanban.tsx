@@ -6,8 +6,10 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { RentalsAsk } from "@/components/rentals/rentals-ask";
 import { WoCard } from "./wo-card";
+import { NewWorkOrderSheet } from "./new-work-order-sheet";
 import { cn } from "@/lib/utils";
 import { getQuoteForWorkOrder } from "@/lib/mock-data";
+import { useWorkOrders } from "@/lib/client-store";
 import type {
   WorkOrder,
   WorkOrderStatus,
@@ -42,11 +44,19 @@ function columnFor(wo: WorkOrder): ColumnKey {
   return "open";
 }
 
-export function WoKanban({ initial }: { initial: WorkOrder[] }) {
-  const [items, setItems] = React.useState<WorkOrder[]>(initial);
+export function WoKanban({ initial }: { initial?: WorkOrder[] }) {
+  // Read from client store so new work orders (created via sheet OR agent)
+  // appear instantly. Local drag-status edits are tracked separately in `localOverrides`.
+  const storeItems = useWorkOrders();
+  const [localOverrides, setLocalOverrides] = React.useState<Record<string, WorkOrderStatus>>({});
+  const items: WorkOrder[] = (storeItems.length > 0 ? storeItems : initial ?? []).map((w) =>
+    localOverrides[w.id] ? { ...w, status: localOverrides[w.id] } : w
+  );
+
   const [filterType, setFilterType] = React.useState<WorkOrderActivityType | "all">("all");
   const [query, setQuery] = React.useState("");
   const [flaggedOnly, setFlaggedOnly] = React.useState(false);
+  const [newOpen, setNewOpen] = React.useState(false);
 
   const [draggingId, setDraggingId] = React.useState<string | null>(null);
   const [dragOverCol, setDragOverCol] = React.useState<ColumnKey | null>(null);
@@ -87,9 +97,7 @@ export function WoKanban({ initial }: { initial: WorkOrder[] }) {
       setDragOverCol(null);
       return;
     }
-    setItems((prev) =>
-      prev.map((w) => (w.id === draggingId ? { ...w, status: newStatus } : w))
-    );
+    setLocalOverrides((prev) => ({ ...prev, [draggingId]: newStatus }));
     setDraggingId(null);
     setDragOverCol(null);
   }
@@ -149,11 +157,13 @@ export function WoKanban({ initial }: { initial: WorkOrder[] }) {
           <Flag className="size-3.5" />
           Flagged
         </button>
-        <Button variant="primary" size="md">
+        <Button variant="primary" size="md" onClick={() => setNewOpen(true)}>
           <Plus className="size-3.5" />
           New Work Order
         </Button>
       </div>
+
+      <NewWorkOrderSheet open={newOpen} onOpenChange={setNewOpen} />
 
       {/* Kanban */}
       <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(5, minmax(220px, 1fr))" }}>

@@ -71,7 +71,7 @@ export function PosOrders() {
                   <Td className="text-fg-subtle">
                     {o.line_items.length} item{o.line_items.length === 1 ? "" : "s"}
                   </Td>
-                  <Td className="text-right font-medium text-fg">{formatMoney(o.total)}</Td>
+                  <Td className="tabular text-right font-medium text-fg">{formatMoney(o.total)}</Td>
                   <Td>
                     <Badge tone={o.payment_method === "charge_to_account" ? "primary" : "neutral"} size="sm">
                       {o.payment_method.replace("_", " ")}

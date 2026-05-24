@@ -39,6 +39,16 @@ npm start
 | `/ledger` | POS terminal + Orders + A/R aging + **QuickBooks Sync** tab |
 | `/settings` | Marina identity / staff / payment processors / MCP connections |
 
+### Dockhand mobile (PWA)
+
+| Route | Purpose |
+|---|---|
+| `/dock` | Mobile-first dockhand surface — check in/out, log meter, quick fuel sale |
+
+**Install on iPhone/iPad:** open `/dock` in Safari → Share → **Add to Home Screen**. Launches in standalone mode (no browser chrome), uses the Marina Stee app icon, and propagates every action back to admin in real time via the shared client store.
+
+PWA basics live in `app/manifest.ts`, `app/icon.tsx`, `app/apple-icon.tsx`, and `public/sw.js`. Service worker only activates in production builds. See the `reference-marina-stee-pwa-and-ios` memory note for the iOS-native path (Capacitor wrap) when it's time.
+
 ### Boater portal (no admin chrome)
 
 | Route | Purpose |

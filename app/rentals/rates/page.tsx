@@ -51,7 +51,7 @@ export default function RatesPage() {
                       </div>
                     </div>
                     <div className="text-right">
-                      <div className="text-[16px] font-semibold tracking-tight text-fg">
+                      <div className="money-display text-[20px] text-fg">
                         {formatMoney(r.amount)}
                       </div>
                       <div className="text-[11px] text-fg-tertiary">/ {r.cadence}</div>
