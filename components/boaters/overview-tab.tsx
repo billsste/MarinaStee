@@ -20,7 +20,9 @@ import {
 } from "@/lib/mock-data";
 import {
   useCommunicationsForBoater,
+  useContractsForBoater,
   useLedgerForBoater,
+  useReservationsForBoater,
 } from "@/lib/client-store";
 import { StaffNotesCard } from "@/components/notes/staff-notes-card";
 import type {
@@ -51,6 +53,28 @@ export function OverviewTab({
   // Live data — reflects POS sales / signed quotes / new comms in this session.
   const ledger = useLedgerForBoater(boater.id);
   const comms = useCommunicationsForBoater(boater.id);
+  const boaterContracts = useContractsForBoater(boater.id);
+  const boaterReservations = useReservationsForBoater(boater.id);
+
+  // For annual/seasonal holders, pin contract + tenure context above the slip
+  const isAnnual = boater.billing_cadence === "annual" || boater.billing_cadence === "monthly";
+  const isSeasonal = boater.billing_cadence === "seasonal";
+  const showContractPanel = isAnnual || isSeasonal;
+  const activeContract = boaterContracts.find((c) => c.status === "active");
+  const successorContract = activeContract
+    ? boaterContracts.find(
+        (c) =>
+          c.id !== activeContract.id &&
+          c.slip_id === activeContract.slip_id &&
+          new Date(c.effective_start).getTime() > new Date(activeContract.effective_start).getTime()
+      )
+    : undefined;
+  // Tenure: count unique years across this boater's completed/active reservations
+  const tenureYears = new Set(
+    boaterReservations
+      .filter((r) => r.status === "completed" || r.status === "occupied")
+      .map((r) => r.arrival_date.slice(0, 4))
+  ).size;
   const openBalance = ledger
     .filter((l) => l.type === "invoice")
     .reduce((s, e) => s + e.open_balance, 0);
@@ -98,6 +122,60 @@ export function OverviewTab({
             </div>
           )}
         </Panel>
+
+        {showContractPanel && activeContract && (
+          <Panel
+            title={isSeasonal ? "Seasonal contract" : "Annual contract"}
+            askLink={
+              successorContract
+                ? undefined
+                : `Draft a renewal for ${boater.first_name}`
+            }
+          >
+            <div className="flex flex-wrap items-baseline gap-2">
+              <span className="font-mono text-[15px] font-medium text-fg">
+                {activeContract.number}
+              </span>
+              <Badge tone="ok" size="sm">{activeContract.status}</Badge>
+              {successorContract && (
+                <Badge tone="primary" size="sm">
+                  {successorContract.status === "draft"
+                    ? "Renewal drafted"
+                    : successorContract.status === "sent"
+                    ? "Renewal sent"
+                    : "Renewed"}
+                </Badge>
+              )}
+            </div>
+            <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-[12px]">
+              <div>
+                <dt className="text-fg-tertiary">Term</dt>
+                <dd className="text-fg">{activeContract.effective_start} → {activeContract.effective_end}</dd>
+              </div>
+              <div>
+                <dt className="text-fg-tertiary">Annual rate</dt>
+                <dd className="tabular text-fg">
+                  {activeContract.annual_rate
+                    ? formatMoney(activeContract.annual_rate)
+                    : "—"}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-fg-tertiary">Tenure</dt>
+                <dd className="text-fg">
+                  {tenureYears > 0 ? `${tenureYears} season${tenureYears === 1 ? "" : "s"}` : "First season"}
+                  {boater.tags.includes("original_holder") && (
+                    <span className="ml-1.5 text-[10px] text-status-info">★ original</span>
+                  )}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-fg-tertiary">Billing</dt>
+                <dd className="capitalize text-fg">{activeContract.billing_cadence}</dd>
+              </div>
+            </dl>
+          </Panel>
+        )}
 
         <Panel
           title="Open balance"
