@@ -11,8 +11,10 @@ import {
   Clock,
   Flag,
   CheckCheck,
+  CheckSquare,
   DollarSign,
   Calendar,
+  Trash2,
   User as UserIcon,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -34,6 +36,8 @@ const ACTIVITY_ICON: Record<WorkOrderActivityType, LucideIcon> = {
   service: Wrench,
   inspection: Search,
   haul_out: Ship,
+  pump_out: Trash2,
+  task: CheckSquare,
   other: ClipboardList,
 };
 
@@ -43,6 +47,8 @@ const ACTIVITY_LABEL: Record<WorkOrderActivityType, string> = {
   service: "Service",
   inspection: "Inspection",
   haul_out: "Haul-out",
+  pump_out: "Pump-out",
+  task: "Task",
   other: "Other",
 };
 

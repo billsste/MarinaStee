@@ -489,8 +489,35 @@ const otherWorkOrders: WorkOrder[] = [
     subject: "Pump-out service",
     status: "open",
     priority: "low",
-    activity_type: "service",
+    activity_type: "pump_out",
     due_date: "2026-05-26",
+  },
+  // Staff task — flows into Work Orders, no separate "Tasks" surface
+  {
+    id: "wo_task_emmons_renewal",
+    number: "WO-1048",
+    boater_id: "b_emmons",
+    subject: "Call David re slip renewal for 2027",
+    description: "Annual contract expires next March. Email already sent. Call to confirm rate increase before contract draft.",
+    status: "open",
+    priority: "normal",
+    assignee_user_id: "u_steven",
+    activity_type: "task",
+    due_date: "2026-06-15",
+  },
+  // Pump-out request from boater portal (note the bracketed prefix that the
+  // portal request flow stamps in — same pattern as service requests)
+  {
+    id: "wo_emmons_pumpout",
+    number: "WO-1049",
+    boater_id: "b_emmons",
+    slip_id: "A29",
+    subject: "Pump-out — tomorrow morning",
+    description: "[Requested by boater via portal]\n\nNeed a pump-out before we head out. Morning works.",
+    status: "open",
+    priority: "normal",
+    activity_type: "pump_out",
+    due_date: "2026-05-25",
   },
 ];
 

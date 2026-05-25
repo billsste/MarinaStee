@@ -148,8 +148,8 @@ const ACTION_TOOLS: Anthropic.Messages.Tool[] = [
         },
         activity_type: {
           type: "string",
-          enum: ["winterization", "bottom_paint", "service", "inspection", "haul_out", "other"],
-          description: "Category of work. Default 'service' when unclear.",
+          enum: ["winterization", "bottom_paint", "service", "inspection", "haul_out", "pump_out", "task", "other"],
+          description: "Category of work. 'task' is for staff to-dos like 'call X re renewal'. 'pump_out' is sanitation. Default 'service' when unclear.",
         },
         priority: {
           type: "string",

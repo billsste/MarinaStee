@@ -61,6 +61,8 @@ export type AgentAction =
         | "service"
         | "inspection"
         | "haul_out"
+        | "pump_out"
+        | "task"
         | "other";
       priority?: "low" | "normal" | "high" | "urgent";
       vessel_id?: string;
@@ -323,16 +325,20 @@ export function generateAgentResponse(
   }
 
   // ── INTENT: create work order ───────────────────────────────
-  if (/\b(create|open|schedule|new)\b.*\b(work\s*order|wo|service|haul[-\s]?out|winterization|bottom\s*paint|inspection)\b/.test(lp)
-      || /\b(winterize|haul\s+out|repaint|service)\b/.test(lp)
+  if (/\b(create|open|schedule|new)\b.*\b(work\s*order|wo|service|haul[-\s]?out|winterization|bottom\s*paint|inspection|pump[-\s]?out|task|todo|to-?do)\b/.test(lp)
+      || /\b(winterize|haul\s+out|repaint|service|pump[-\s]?out)\b/.test(lp)
   ) {
     const b = findBoater(p);
     if (b) {
-      let activity: "winterization" | "bottom_paint" | "service" | "inspection" | "haul_out" | "other" = "service";
+      let activity:
+        | "winterization" | "bottom_paint" | "service" | "inspection"
+        | "haul_out" | "pump_out" | "task" | "other" = "service";
       if (/winteriz/.test(lp)) activity = "winterization";
       else if (/bottom\s*paint|repaint/.test(lp)) activity = "bottom_paint";
       else if (/haul[-\s]?out/.test(lp)) activity = "haul_out";
       else if (/inspect/.test(lp)) activity = "inspection";
+      else if (/pump[-\s]?out/.test(lp)) activity = "pump_out";
+      else if (/\b(task|todo|to-?do|call\s+\w+|follow[-\s]?up)\b/.test(lp)) activity = "task";
 
       const vessel = VESSELS.find((v) => v.boater_id === b.id) ?? undefined;
       const subjectMap: Record<string, string> = {
@@ -341,6 +347,8 @@ export function generateAgentResponse(
         haul_out: `Haul-out — ${vessel?.name ?? b.last_name + "'s vessel"}`,
         inspection: `Inspection — ${vessel?.name ?? b.last_name + "'s vessel"}`,
         service: `Service work — ${vessel?.name ?? b.last_name + "'s vessel"}`,
+        pump_out: `Pump-out — ${vessel?.name ?? b.last_name + "'s vessel"}`,
+        task: `Follow up with ${b.first_name}`,
       };
       return {
         stream: [

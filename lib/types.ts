@@ -256,6 +256,8 @@ export type WorkOrderActivityType =
   | "service"
   | "inspection"
   | "haul_out"
+  | "pump_out"
+  | "task"          // staff todo — "call John re renewal", "order new dock lines"
   | "other";
 
 export interface WorkOrder {

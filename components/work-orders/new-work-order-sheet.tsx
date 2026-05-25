@@ -23,7 +23,7 @@ export function NewWorkOrderSheet({
   const [subject, setSubject] = React.useState("");
   const [boaterId, setBoaterId] = React.useState(defaultBoaterId ?? "");
   const [activityType, setActivityType] = React.useState<
-    "winterization" | "bottom_paint" | "service" | "inspection" | "haul_out" | "other"
+    "winterization" | "bottom_paint" | "service" | "inspection" | "haul_out" | "pump_out" | "task" | "other"
   >("service");
   const [priority, setPriority] = React.useState<"low" | "normal" | "high" | "urgent">(
     "normal"
@@ -124,6 +124,8 @@ export function NewWorkOrderSheet({
               onChange={(v) => setActivityType(v as typeof activityType)}
             >
               <option value="service">Service</option>
+              <option value="task">Task (staff to-do)</option>
+              <option value="pump_out">Pump-out</option>
               <option value="winterization">Winterization</option>
               <option value="bottom_paint">Bottom paint</option>
               <option value="inspection">Inspection</option>

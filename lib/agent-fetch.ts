@@ -201,6 +201,8 @@ function resolveToolToAction(ev: Extract<WireEvent, { type: "tool" }>): AgentAct
       | "service"
       | "inspection"
       | "haul_out"
+      | "pump_out"
+      | "task"
       | "other"
       | undefined) ?? "service";
     const priority = (ev.input.priority as "low" | "normal" | "high" | "urgent" | undefined) ?? "normal";
