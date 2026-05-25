@@ -38,11 +38,75 @@ export const USERS: User[] = [
   { id: "u_public", name: "Public, User", role: "system" },
 ];
 
+// Slips referenced by reservations / contracts. We populate the named docks
+// densely enough that the annual roster generator below has somewhere to
+// place every holder. NOT every space in RENTAL_SPACES needs an entry here —
+// SLIPS is the lookup namespace for reservation.slip_id (legacy convention,
+// `id` is the user-facing label like "A29"), RENTAL_SPACES is the physical
+// inventory.
+function makeSlip(
+  dock: string,
+  prefix: string,
+  num: number,
+  loa: number,
+  beam: number,
+  withWater = true,
+  category = "BOGGS Cove",
+): Slip {
+  const padded = String(num).padStart(2, "0");
+  return {
+    id: `${prefix}${padded}`,
+    dock,
+    invoice_category: category,
+    number: padded,
+    max_loa_inches: loa * 12,
+    max_beam_inches: beam * 12,
+    has_power: true,
+    has_water: withWater,
+  };
+}
+
 export const SLIPS: Slip[] = [
-  { id: "A29", dock: "Damsite A Dock", invoice_category: "BOGGS Cove", number: "29", max_loa_inches: 30 * 12, max_beam_inches: 10 * 12, has_power: true, has_water: true },
-  { id: "B12", dock: "Damsite B Dock", invoice_category: "BOGGS Cove", number: "12", max_loa_inches: 35 * 12, max_beam_inches: 12 * 12, has_power: true, has_water: true },
-  { id: "T07", dock: "Transient Dock", invoice_category: "BOGGS Cove", number: "T-07", max_loa_inches: 45 * 12, max_beam_inches: 14 * 12, has_power: true, has_water: true },
-  { id: "C04", dock: "Damsite C Dock", invoice_category: "BOGGS Cove", number: "4", max_loa_inches: 28 * 12, max_beam_inches: 10 * 12, has_power: true, has_water: false },
+  // Damsite A Dock — 30 slips, 24–34 ft
+  ...Array.from({ length: 30 }, (_, i) => {
+    const num = i + 1;
+    const loa = num % 4 === 0 ? 34 : num % 3 === 0 ? 32 : num % 2 === 0 ? 30 : 28;
+    return makeSlip("Damsite A Dock", "A", num, loa, 12);
+  }),
+  // Damsite B Dock — 18 slips, 32–40 ft
+  ...Array.from({ length: 18 }, (_, i) => {
+    const num = i + 1;
+    const loa = num % 3 === 0 ? 40 : num % 2 === 0 ? 36 : 32;
+    return makeSlip("Damsite B Dock", "B", num, loa, 14);
+  }),
+  // Damsite C Dock — 14 slips, 26–32 ft (one without water for variety)
+  ...Array.from({ length: 14 }, (_, i) => {
+    const num = i + 1;
+    const loa = num % 4 === 0 ? 32 : num % 2 === 0 ? 28 : 26;
+    return makeSlip("Damsite C Dock", "C", num, loa, 10, num !== 4);
+  }),
+  // Damsite D Dock — 10 slips, large 38–44 ft
+  ...Array.from({ length: 10 }, (_, i) => {
+    const num = i + 1;
+    const loa = num % 3 === 0 ? 44 : num % 2 === 0 ? 42 : 38;
+    return makeSlip("Damsite D Dock", "D", num, loa, 16);
+  }),
+  // Damsite E Dock — 8 small slips, 22–26 ft
+  ...Array.from({ length: 8 }, (_, i) => {
+    const num = i + 1;
+    return makeSlip("Damsite E Dock", "E", num, 24, 9);
+  }),
+  // Transient — 4 dedicated dock-walker slips
+  ...Array.from({ length: 4 }, (_, i) => ({
+    id: `T0${i + 1}`,
+    dock: "Transient Dock",
+    invoice_category: "BOGGS Cove",
+    number: `T-0${i + 1}`,
+    max_loa_inches: 45 * 12,
+    max_beam_inches: 14 * 12,
+    has_power: true,
+    has_water: true,
+  })),
 ];
 
 export const CONTRACT_TEMPLATES: ContractTemplate[] = [
@@ -722,7 +786,7 @@ const petersonSloop: Vessel = {
   active: true,
 };
 
-export const BOATERS: Boater[] = [
+const NAMED_BOATERS: Boater[] = [
   {
     id: "b_emmons",
     display_name: "Emmons, David",
@@ -858,7 +922,7 @@ export const BOATERS: Boater[] = [
   },
 ];
 
-export const VESSELS: Vessel[] = [emmonsVessel, petersonSloop];
+const NAMED_VESSELS: Vessel[] = [emmonsVessel, petersonSloop];
 
 // Cross-boater reservations: a transient arriving today, one departing today, plus upcoming
 const transientReservations: Reservation[] = [
@@ -868,7 +932,7 @@ const transientReservations: Reservation[] = [
     seq: "1/1",
     boater_id: "b_davis",
     vessel_id: "v_emmons_bayliner",  // mock: reuse a vessel
-    slip_id: "T07",
+    slip_id: "T03",
     arrival_date: "2026-05-23",
     departure_date: "2026-05-26",
     status: "occupied",
@@ -904,7 +968,7 @@ const transientReservations: Reservation[] = [
     seq: "1/1",
     boater_id: "b_davis",
     vessel_id: "v_emmons_bayliner",
-    slip_id: "T07",
+    slip_id: "T03",
     arrival_date: "2026-05-27",
     departure_date: "2026-05-30",
     status: "scheduled",
@@ -924,7 +988,7 @@ const transientReservations: Reservation[] = [
   },
 ];
 
-export const RESERVATIONS: Reservation[] = [...emmonsReservations, ...transientReservations];
+const NAMED_RESERVATIONS: Reservation[] = [...emmonsReservations, ...transientReservations];
 
 export const LEDGER: LedgerEntry[] = [...emmonsLedger, ...otherLedgerEntries];
 
@@ -934,7 +998,223 @@ export const QUOTES: Quote[] = QUOTES_DATA;
 
 export const COMMUNICATIONS: Communication[] = [...emmonsComms, ...otherCommunications];
 
-export const CONTRACTS: Contract[] = [emmonsContract];
+// ============================================================
+// Annual roster — the 90% case
+//
+// Real marina = ~450 yearly slip holders. We hand-roll a representative
+// sample (~28) covering the property: every dock has named tenants, with
+// varied tenure (2-12 years), expiry windows (some renewing this fall,
+// some next year, one lapsed), rates (proportional to slip size), and
+// vessel types. The same data shape as Emmons — Boater + Vessel +
+// Contract + current-season Reservation.
+//
+// Drives: /rentals/spaces roster, /rentals/contracts renewal pipeline,
+// /ledger billing run, /reports annual KPIs.
+// ============================================================
+
+type AnnualHolderSpec = {
+  bId: string;             // boater id, e.g. "b_jones"
+  first: string;
+  last: string;
+  email?: string;
+  phone?: string;
+  slipId: string;          // matches a Slip.id (e.g. "A04")
+  vesselName: string;
+  vesselYear: number;
+  vesselMake: string;
+  vesselModel: string;
+  vesselType: "powerboat" | "sailboat" | "pontoon" | "houseboat" | "pwc" | "other";
+  fuelType: "gasoline" | "diesel" | "electric" | "none";
+  loaFt: number;           // length overall in feet
+  beamFt: number;
+  rate: number;            // annual slip rate $
+  yearsHeld: number;       // how many seasons they've been here
+  expiryYear: number;      // contract effective_end year (2026 = expires this fall, 2027 = next)
+  status?: "active" | "expired";  // default active
+  cadence?: "annual" | "seasonal" | "monthly"; // default annual
+  city?: string;
+  state?: string;
+  tags?: string[];
+  notes?: string;
+};
+
+const ANNUAL_HOLDERS_SPEC: AnnualHolderSpec[] = [
+  // ── Damsite A Dock (Emmons already at A29) ─────────────────────────────
+  { bId: "b_jones", first: "Robert", last: "Jones", email: "rjones@example.com", phone: "(505) 555-2114", slipId: "A04", vesselName: "Sea Hawk", vesselYear: 2014, vesselMake: "Sea Ray", vesselModel: "240 Sundancer", vesselType: "powerboat", fuelType: "gasoline", loaFt: 24, beamFt: 8.5, rate: 3200, yearsHeld: 7, expiryYear: 2026, city: "Santa Fe", state: "NM" },
+  { bId: "b_morales", first: "Adrian", last: "Morales", email: "adrian.m@example.com", phone: "(505) 555-3019", slipId: "A06", vesselName: "Querencia", vesselYear: 2019, vesselMake: "Bayliner", vesselModel: "VR5", vesselType: "powerboat", fuelType: "gasoline", loaFt: 22, beamFt: 8.5, rate: 3000, yearsHeld: 4, expiryYear: 2027, city: "Albuquerque", state: "NM" },
+  { bId: "b_oneill", first: "Kate", last: "O'Neill", email: "kate.oneill@example.com", phone: "(505) 555-7720", slipId: "A11", vesselName: "Brigid", vesselYear: 2016, vesselMake: "Boston Whaler", vesselModel: "230 Outrage", vesselType: "powerboat", fuelType: "gasoline", loaFt: 23, beamFt: 8.5, rate: 3200, yearsHeld: 5, expiryYear: 2026, city: "Santa Fe", state: "NM", tags: ["board_member"] },
+  { bId: "b_singh", first: "Anjali", last: "Singh", email: "anjali.s@example.com", phone: "(505) 555-4488", slipId: "A14", vesselName: "Reverie", vesselYear: 2020, vesselMake: "Chaparral", vesselModel: "270 OSX", vesselType: "powerboat", fuelType: "gasoline", loaFt: 27, beamFt: 9, rate: 3700, yearsHeld: 3, expiryYear: 2027, city: "Los Alamos", state: "NM" },
+  { bId: "b_hess", first: "Marcus", last: "Hess", email: "marcus@hess.io", phone: "(303) 555-9821", slipId: "A17", vesselName: "Halftime", vesselYear: 2012, vesselMake: "Cobalt", vesselModel: "262", vesselType: "powerboat", fuelType: "gasoline", loaFt: 26, beamFt: 8.5, rate: 3500, yearsHeld: 9, expiryYear: 2026, city: "Denver", state: "CO", notes: "Out-of-state, mails check annually." },
+  { bId: "b_lopez", first: "Carla", last: "Lopez", email: "clopez@example.com", phone: "(505) 555-1212", slipId: "A19", vesselName: "Dorado", vesselYear: 2017, vesselMake: "Bayliner", vesselModel: "215 Deck Boat", vesselType: "powerboat", fuelType: "gasoline", loaFt: 21, beamFt: 8.5, rate: 3000, yearsHeld: 6, expiryYear: 2027 },
+  { bId: "b_park", first: "Daniel", last: "Park", email: "dpark@example.com", phone: "(720) 555-0099", slipId: "A22", vesselName: "Joon", vesselYear: 2018, vesselMake: "Yamaha", vesselModel: "242X", vesselType: "powerboat", fuelType: "gasoline", loaFt: 24, beamFt: 8.5, rate: 3200, yearsHeld: 5, expiryYear: 2026 },
+  { bId: "b_walker", first: "Maggie", last: "Walker", email: "maggie@walker.net", phone: "(505) 555-2241", slipId: "A24", vesselName: "Margarita", vesselYear: 2011, vesselMake: "Crownline", vesselModel: "255 SS", vesselType: "powerboat", fuelType: "gasoline", loaFt: 25, beamFt: 8.5, rate: 3500, yearsHeld: 12, expiryYear: 2026, tags: ["original_holder"] },
+  // ── Damsite B Dock (larger boats) ──────────────────────────────────────
+  { bId: "b_franklin", first: "Tom", last: "Franklin", email: "tfranklin@example.com", phone: "(505) 555-6610", slipId: "B02", vesselName: "Storyteller", vesselYear: 2015, vesselMake: "Regal", vesselModel: "33 XO", vesselType: "powerboat", fuelType: "gasoline", loaFt: 33, beamFt: 10.5, rate: 4400, yearsHeld: 8, expiryYear: 2026 },
+  { bId: "b_brown", first: "Robert", last: "Brown", email: "rb@example.com", phone: "(505) 555-3344", slipId: "B05", vesselName: "Sea Lark", vesselYear: 2013, vesselMake: "Sea Ray", vesselModel: "330 Sundancer", vesselType: "powerboat", fuelType: "gasoline", loaFt: 33, beamFt: 11, rate: 4500, yearsHeld: 10, expiryYear: 2027 },
+  { bId: "b_kim", first: "Yujin", last: "Kim", email: "yujin.kim@example.com", phone: "(505) 555-7733", slipId: "B08", vesselName: "Aria", vesselYear: 2019, vesselMake: "Beneteau", vesselModel: "Oceanis 35", vesselType: "sailboat", fuelType: "diesel", loaFt: 34, beamFt: 11.5, rate: 4500, yearsHeld: 4, expiryYear: 2026 },
+  { bId: "b_velasquez", first: "Mariana", last: "Velasquez", email: "mariv@example.com", phone: "(505) 555-1188", slipId: "B11", vesselName: "Sirena", vesselYear: 2017, vesselMake: "Sea Ray", vesselModel: "350 SLX", vesselType: "powerboat", fuelType: "gasoline", loaFt: 35, beamFt: 11, rate: 4700, yearsHeld: 5, expiryYear: 2026 },
+  { bId: "b_carter", first: "James", last: "Carter", email: "jc@example.com", phone: "(505) 555-2245", slipId: "B14", vesselName: "Persistence", vesselYear: 2016, vesselMake: "Catalina", vesselModel: "375", vesselType: "sailboat", fuelType: "diesel", loaFt: 37, beamFt: 12, rate: 4900, yearsHeld: 6, expiryYear: 2027, tags: ["yacht_club"] },
+  { bId: "b_okafor", first: "Chinedu", last: "Okafor", email: "co@example.com", phone: "(505) 555-9921", slipId: "B17", vesselName: "Ada", vesselYear: 2021, vesselMake: "Cobalt", vesselModel: "R8 Surf", vesselType: "powerboat", fuelType: "gasoline", loaFt: 28, beamFt: 9, rate: 4400, yearsHeld: 2, expiryYear: 2027 },
+  // ── Damsite C Dock (smaller, value tier) ───────────────────────────────
+  { bId: "b_perez", first: "Sofia", last: "Perez", email: "sperez@example.com", phone: "(505) 555-3030", slipId: "C02", vesselName: "Sol Naciente", vesselYear: 2010, vesselMake: "Tracker", vesselModel: "Pro 175", vesselType: "powerboat", fuelType: "gasoline", loaFt: 17, beamFt: 7, rate: 2400, yearsHeld: 6, expiryYear: 2026 },
+  { bId: "b_collins", first: "Patrick", last: "Collins", email: "pcollins@example.com", phone: "(303) 555-4040", slipId: "C05", vesselName: "Half Past", vesselYear: 2014, vesselMake: "Sun Tracker", vesselModel: "Party Barge 22", vesselType: "pontoon", fuelType: "gasoline", loaFt: 22, beamFt: 8.5, rate: 2700, yearsHeld: 4, expiryYear: 2027, city: "Pagosa Springs", state: "CO" },
+  { bId: "b_dixon", first: "Hannah", last: "Dixon", email: "hd@example.com", phone: "(505) 555-5151", slipId: "C08", vesselName: "Wren", vesselYear: 2018, vesselMake: "Sea Ray", vesselModel: "190 SPX", vesselType: "powerboat", fuelType: "gasoline", loaFt: 19, beamFt: 8, rate: 2600, yearsHeld: 4, expiryYear: 2026 },
+  { bId: "b_ito", first: "Hiroshi", last: "Ito", email: "h.ito@example.com", phone: "(505) 555-6263", slipId: "C11", vesselName: "Sora", vesselYear: 2019, vesselMake: "Catalina", vesselModel: "275 Sport", vesselType: "sailboat", fuelType: "diesel", loaFt: 27, beamFt: 9, rate: 3200, yearsHeld: 3, expiryYear: 2027 },
+  // ── Damsite D Dock (big slips, large boats) ────────────────────────────
+  { bId: "b_alexander", first: "Vincent", last: "Alexander", email: "valexander@example.com", phone: "(505) 555-7070", slipId: "D02", vesselName: "Endurance", vesselYear: 2014, vesselMake: "Hunter", vesselModel: "41 DS", vesselType: "sailboat", fuelType: "diesel", loaFt: 41, beamFt: 13, rate: 5800, yearsHeld: 9, expiryYear: 2026, tags: ["board_member"] },
+  { bId: "b_nguyen", first: "Anh", last: "Nguyen", email: "anguyen@example.com", phone: "(505) 555-8181", slipId: "D04", vesselName: "Lotus", vesselYear: 2017, vesselMake: "Sea Ray", vesselModel: "Sundancer 400", vesselType: "powerboat", fuelType: "gasoline", loaFt: 40, beamFt: 13, rate: 5600, yearsHeld: 5, expiryYear: 2026 },
+  { bId: "b_meadows", first: "Lisa", last: "Meadows", email: "lmeadows@example.com", phone: "(505) 555-9292", slipId: "D06", vesselName: "Wandering Star", vesselYear: 2012, vesselMake: "Catalina", vesselModel: "445", vesselType: "sailboat", fuelType: "diesel", loaFt: 44, beamFt: 14, rate: 6200, yearsHeld: 11, expiryYear: 2027, tags: ["original_holder"] },
+  { bId: "b_zhang", first: "Wei", last: "Zhang", email: "wzhang@example.com", phone: "(720) 555-1010", slipId: "D09", vesselName: "Quanlong", vesselYear: 2020, vesselMake: "Tiara", vesselModel: "39 Coupe", vesselType: "powerboat", fuelType: "diesel", loaFt: 39, beamFt: 13, rate: 5800, yearsHeld: 3, expiryYear: 2027, city: "Boulder", state: "CO" },
+  // ── Damsite E Dock (small, entry tier) ─────────────────────────────────
+  { bId: "b_holguin", first: "Maria", last: "Holguin", email: "mh@example.com", phone: "(505) 555-2020", slipId: "E01", vesselName: "Pequeñita", vesselYear: 2013, vesselMake: "Lund", vesselModel: "1875 Pro V", vesselType: "powerboat", fuelType: "gasoline", loaFt: 18, beamFt: 7.5, rate: 2200, yearsHeld: 5, expiryYear: 2026 },
+  { bId: "b_thompson", first: "Greg", last: "Thompson", email: "gtho@example.com", phone: "(505) 555-3131", slipId: "E03", vesselName: "Bluegill II", vesselYear: 2016, vesselMake: "Yamaha", vesselModel: "WaveRunner FX", vesselType: "pwc", fuelType: "gasoline", loaFt: 11, beamFt: 4, rate: 1400, yearsHeld: 6, expiryYear: 2027 },
+  { bId: "b_ramirez", first: "Eduardo", last: "Ramirez", email: "er@example.com", phone: "(505) 555-4242", slipId: "E05", vesselName: "La Flaca", vesselYear: 2011, vesselMake: "Tracker", vesselModel: "Bass Tracker 175", vesselType: "powerboat", fuelType: "gasoline", loaFt: 17, beamFt: 7, rate: 2000, yearsHeld: 8, expiryYear: 2026 },
+  // ── Lapsed (drives the renewal-pipeline "Lapsed" segment) ──────────────
+  { bId: "b_winters", first: "Caroline", last: "Winters", email: "cwinters@example.com", phone: "(505) 555-9999", slipId: "A27", vesselName: "Snowdrop", vesselYear: 2009, vesselMake: "Sea Ray", vesselModel: "210 Select", vesselType: "powerboat", fuelType: "gasoline", loaFt: 21, beamFt: 8, rate: 3000, yearsHeld: 4, expiryYear: 2025, status: "expired", notes: "Did not renew for 2026. Slip A27 now in waitlist queue." },
+  // ── Seasonal (drives mixed-cadence demo) ───────────────────────────────
+  { bId: "b_navarro", first: "Iris", last: "Navarro", email: "in@example.com", phone: "(505) 555-7878", slipId: "C07", vesselName: "Verano", vesselYear: 2015, vesselMake: "Bayliner", vesselModel: "VR4", vesselType: "powerboat", fuelType: "gasoline", loaFt: 20, beamFt: 8, rate: 1800, yearsHeld: 3, expiryYear: 2026, cadence: "seasonal", notes: "May–October only — winterizes annually." },
+  { bId: "b_donovan", first: "Brendan", last: "Donovan", email: "bdonovan@example.com", phone: "(720) 555-1414", slipId: "C13", vesselName: "Kestrel", vesselYear: 2018, vesselMake: "Catalina", vesselModel: "275 Sport", vesselType: "sailboat", fuelType: "diesel", loaFt: 27, beamFt: 9, rate: 1900, yearsHeld: 2, expiryYear: 2026, cadence: "seasonal", city: "Aurora", state: "CO" },
+];
+
+function buildAnnualHolder(s: AnnualHolderSpec): {
+  boater: Boater;
+  vessel: Vessel;
+  contract: Contract;
+  reservation: Reservation;
+  prevReservations: Reservation[];
+} {
+  const cadence = s.cadence ?? "annual";
+  const displayName = `${s.last}, ${s.first}`;
+  const status = s.status ?? "active";
+  const effectiveStart =
+    cadence === "seasonal"
+      ? `${s.expiryYear}-05-15`
+      : `${s.expiryYear - 1}-${status === "expired" ? "04-01" : "04-01"}`;
+  const effectiveEnd =
+    cadence === "seasonal" ? `${s.expiryYear}-10-15` : `${s.expiryYear}-03-31`;
+
+  const boater: Boater = {
+    id: s.bId,
+    display_name: displayName,
+    first_name: s.first,
+    last_name: s.last,
+    code: `${s.slipId}`,
+    active: status === "active",
+    billing_cadence: cadence,
+    tags: s.tags ?? [],
+    communication_prefs: { preferred_channel: "email", language: "en" },
+    primary_contact: {
+      id: `ct_${s.bId}_primary`,
+      name: displayName,
+      role: "self",
+      email: s.email,
+      phone: s.phone,
+      preferred_channel: "email",
+      can_be_billed: true,
+    },
+    additional_contacts: [],
+    address: {
+      line1: "—",
+      city: s.city ?? "Santa Fe",
+      state: s.state ?? "NM",
+      zip: "87501",
+      country: "US",
+    },
+    notes: s.notes,
+  };
+
+  const vessel: Vessel = {
+    id: `v_${s.bId.replace("b_", "")}`,
+    boater_id: s.bId,
+    co_owner_ids: [],
+    name: s.vesselName,
+    year: s.vesselYear,
+    make: s.vesselMake,
+    model: s.vesselModel,
+    vessel_type: s.vesselType,
+    fuel_type: s.fuelType,
+    loa_inches: Math.round(s.loaFt * 12),
+    beam_inches: Math.round(s.beamFt * 12),
+    active: true,
+  };
+
+  const contractNumber = `C-${1100 + Math.abs(hash(s.bId) % 900)}`;
+  const contract: Contract = {
+    id: `c_${s.bId.replace("b_", "")}_${s.expiryYear}`,
+    number: contractNumber,
+    boater_id: s.bId,
+    template_id: cadence === "seasonal" ? "tpl_seasonal_slip" : "tpl_annual_slip",
+    template_version: cadence === "seasonal" ? 2 : 3,
+    vessel_id: vessel.id,
+    slip_id: s.slipId,
+    status:
+      status === "expired"
+        ? "expired"
+        : "active",
+    effective_start: effectiveStart,
+    effective_end: effectiveEnd,
+    signed_at: status === "active" ? `${s.expiryYear - 1}-03-15` : `${s.expiryYear - 1}-03-15`,
+    annual_rate: s.rate,
+    billing_cadence: cadence === "seasonal" ? "seasonal" : "monthly",
+  };
+
+  // Current-season reservation (or last-season for lapsed)
+  const resYear = status === "expired" ? s.expiryYear : s.expiryYear;
+  const reservation: Reservation = {
+    id: `r_${s.bId}_${resYear}`,
+    number: `R${600 + Math.abs(hash(s.bId) % 400)}`,
+    seq: "1/1",
+    boater_id: s.bId,
+    vessel_id: vessel.id,
+    slip_id: s.slipId,
+    contract_id: contract.id,
+    arrival_date: cadence === "seasonal" ? `${resYear}-05-15` : `${resYear - 1}-04-01`,
+    departure_date:
+      cadence === "seasonal" ? `${resYear}-10-15` : `${resYear}-03-31`,
+    status: status === "expired" ? "completed" : "occupied",
+    type: cadence === "seasonal" ? "seasonal" : "annual",
+  };
+
+  // Multi-year history (lightweight — just shows tenure on detail pages)
+  const prevReservations: Reservation[] = [];
+  for (let y = 1; y < Math.min(s.yearsHeld, 4); y += 1) {
+    const yr = s.expiryYear - y;
+    prevReservations.push({
+      id: `r_${s.bId}_${yr - 1}`,
+      number: `R${300 + Math.abs(hash(s.bId + String(y)) % 400)}`,
+      seq: "1/1",
+      boater_id: s.bId,
+      vessel_id: vessel.id,
+      slip_id: s.slipId,
+      contract_id: contract.id,
+      arrival_date: `${yr - 1}-04-01`,
+      departure_date: `${yr}-03-31`,
+      status: "completed",
+      type: cadence === "seasonal" ? "seasonal" : "annual",
+    });
+  }
+
+  return { boater, vessel, contract, reservation, prevReservations };
+}
+
+// Simple deterministic hash for stable ids/numbers across reloads
+function hash(s: string): number {
+  let h = 0;
+  for (let i = 0; i < s.length; i += 1) h = (h * 31 + s.charCodeAt(i)) | 0;
+  return h;
+}
+
+const ANNUAL_HOLDERS = ANNUAL_HOLDERS_SPEC.map(buildAnnualHolder);
+const ANNUAL_BOATERS = ANNUAL_HOLDERS.map((h) => h.boater);
+const ANNUAL_VESSELS = ANNUAL_HOLDERS.map((h) => h.vessel);
+const ANNUAL_CONTRACTS = ANNUAL_HOLDERS.map((h) => h.contract);
+const ANNUAL_RESERVATIONS = ANNUAL_HOLDERS.flatMap((h) => [h.reservation, ...h.prevReservations]);
+
+export const BOATERS: Boater[] = [...NAMED_BOATERS, ...ANNUAL_BOATERS];
+export const VESSELS: Vessel[] = [...NAMED_VESSELS, ...ANNUAL_VESSELS];
+export const RESERVATIONS: Reservation[] = [...NAMED_RESERVATIONS, ...ANNUAL_RESERVATIONS];
+
+export const CONTRACTS: Contract[] = [emmonsContract, ...ANNUAL_CONTRACTS];
 
 export const CARDS_ON_FILE: Record<string, CardOnFile[]> = {
   b_emmons: emmonsCards,
