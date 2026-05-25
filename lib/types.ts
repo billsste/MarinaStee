@@ -63,6 +63,20 @@ export interface Vessel {
   active: boolean;
 }
 
+/*
+ * Internal staff note attached to a boater. Distinct from Communication
+ * (which is two-way and boater-visible) — these are STAFF ONLY and never
+ * surface in the portal or get sent out.
+ */
+export interface StaffNote {
+  id: string;
+  boater_id: string;
+  body: string;
+  author_user_id: string;
+  created_at: string;
+  pinned: boolean;
+}
+
 export type WaitlistStatus = "pending" | "offered" | "converted" | "declined" | "withdrawn";
 
 export interface WaitlistEntry {

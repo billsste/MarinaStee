@@ -24,6 +24,7 @@ import type {
   QuoteLineItem,
   InsuranceCertificate,
   WaitlistEntry,
+  StaffNote,
 } from "@/lib/types";
 
 export const USERS: User[] = [
@@ -949,6 +950,42 @@ export const INSURANCE_CERTIFICATES: InsuranceCertificate[] = [
     pdf_url: "/mock/coi-emmons-old.pdf",
     uploaded_at: "2024-01-29T09:00:00Z",
     uploaded_by: "marina",
+  },
+];
+
+// Internal staff notes — STAFF ONLY, never surfaced to the boater.
+export const STAFF_NOTES: StaffNote[] = [
+  {
+    id: "sn_emmons_pin",
+    boater_id: "b_emmons",
+    body: "Long-standing customer (8 years). Always pays on time after a reminder text. Prefers a heads-up text vs email.",
+    author_user_id: "u_steven",
+    created_at: "2026-02-14T10:00:00Z",
+    pinned: true,
+  },
+  {
+    id: "sn_emmons_pumpout",
+    boater_id: "b_emmons",
+    body: "Spoke at dock about the pump-out anomaly. He's fine waiting until a service window — not a billing issue.",
+    author_user_id: "u_tiffany",
+    created_at: "2026-05-15T14:22:00Z",
+    pinned: false,
+  },
+  {
+    id: "sn_peterson_pin",
+    boater_id: "b_peterson",
+    body: "Insurance lapses at end of season — must reissue COI before winter haul-out.",
+    author_user_id: "u_tiffany",
+    created_at: "2026-04-22T09:30:00Z",
+    pinned: true,
+  },
+  {
+    id: "sn_peterson_referral",
+    boater_id: "b_peterson",
+    body: "Referred by the Chen family. Worth a thank-you email when their contract renews.",
+    author_user_id: "u_steven",
+    created_at: "2026-03-08T16:00:00Z",
+    pinned: false,
   },
 ];
 

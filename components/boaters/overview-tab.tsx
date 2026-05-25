@@ -22,6 +22,7 @@ import {
   useCommunicationsForBoater,
   useLedgerForBoater,
 } from "@/lib/client-store";
+import { StaffNotesCard } from "@/components/notes/staff-notes-card";
 import type {
   Boater,
   Communication,
@@ -123,6 +124,8 @@ export function OverviewTab({
               : "All invoices paid through last cycle."}
           </p>
         </Panel>
+
+        <StaffNotesCard boaterId={boater.id} />
 
         {nextReservation && slip && (
           <Panel title="Current slip" askLink={`When does the ${slip.id} reservation end?`}>

@@ -11,6 +11,7 @@ import {
   POS_LOCATIONS,
   POS_ORDERS,
   RESERVATIONS,
+  STAFF_NOTES,
   VESSELS,
   WAITLIST,
   WORK_ORDERS,
@@ -25,6 +26,7 @@ import type {
   PosOrder,
   QbSyncStatus,
   Reservation,
+  StaffNote,
   Vessel,
   WaitlistEntry,
   WaitlistStatus,
@@ -78,6 +80,7 @@ type State = {
   cardsByBoaterId: Record<string, CardOnFile[]>;
   insurance: InsuranceCertificate[];
   waitlist: WaitlistEntry[];
+  staffNotes: StaffNote[];
 };
 
 let state: State = {
@@ -95,6 +98,7 @@ let state: State = {
   cardsByBoaterId: { ...CARDS_ON_FILE },
   insurance: [...INSURANCE_CERTIFICATES],
   waitlist: [...WAITLIST],
+  staffNotes: [...STAFF_NOTES],
 };
 
 const subscribers = new Set<() => void>();
@@ -279,6 +283,26 @@ export function addContract(c: Contract) {
   notify();
 }
 
+export function addStaffNote(n: StaffNote) {
+  state = { ...state, staffNotes: [n, ...state.staffNotes] };
+  notify();
+}
+
+export function toggleStaffNotePin(id: string) {
+  state = {
+    ...state,
+    staffNotes: state.staffNotes.map((n) =>
+      n.id === id ? { ...n, pinned: !n.pinned } : n
+    ),
+  };
+  notify();
+}
+
+export function deleteStaffNote(id: string) {
+  state = { ...state, staffNotes: state.staffNotes.filter((n) => n.id !== id) };
+  notify();
+}
+
 export function addWaitlistEntry(e: WaitlistEntry) {
   state = { ...state, waitlist: [e, ...state.waitlist] };
   notify();
@@ -386,6 +410,11 @@ export function useWaitlist(): WaitlistEntry[] {
   return useStore().waitlist;
 }
 
+export function useStaffNotesForBoater(boaterId: string): StaffNote[] {
+  const s = useStore();
+  return s.staffNotes.filter((n) => n.boater_id === boaterId);
+}
+
 export function useInsuranceForBoater(boaterId: string): InsuranceCertificate[] {
   const s = useStore();
   return s.insurance.filter((c) => c.boater_id === boaterId);
@@ -459,4 +488,8 @@ export function nextCoiId() {
 
 export function nextWaitlistId() {
   return `wl_runtime_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+}
+
+export function nextStaffNoteId() {
+  return `sn_runtime_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
 }
