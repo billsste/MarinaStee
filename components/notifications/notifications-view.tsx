@@ -11,13 +11,14 @@ import {
   Flame,
   Gauge,
   MessageSquare,
+  Shield,
   Sparkles,
   Wrench,
-  X,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useStore, useWorkOrders } from "@/lib/client-store";
+// `useStore()` already exposes `insurance` — pulled inline below.
 import {
   buildAlerts,
   SOURCE_LABEL,
@@ -64,15 +65,16 @@ const SOURCE_ICON: Record<AlertSource, React.ComponentType<{ className?: string 
   fuel_low: Flame,
   urgent_work_order: Wrench,
   unanswered_inbound: MessageSquare,
+  insurance_expiry: Shield,
 };
 
 export function NotificationsView() {
-  const { ledger, communications } = useStore();
+  const { ledger, communications, insurance } = useStore();
   const workOrders = useWorkOrders();
 
   const alerts = React.useMemo(
-    () => buildAlerts({ ledger, workOrders, communications }),
-    [ledger, workOrders, communications]
+    () => buildAlerts({ ledger, workOrders, communications, insurance }),
+    [ledger, workOrders, communications, insurance]
   );
 
   const [acked, setAcked] = React.useState<Record<string, true>>({});

@@ -63,6 +63,21 @@ export interface Vessel {
   active: boolean;
 }
 
+export interface InsuranceCertificate {
+  id: string;
+  vessel_id: string;
+  boater_id: string;       // denormalized for fast lookups
+  carrier: string;         // "BoatU.S. Insurance"
+  policy_number: string;
+  liability_limit: number; // dollars
+  hull_value?: number;     // optional, for hull coverage
+  effective_start: string; // ISO date
+  effective_end: string;   // ISO date — the field we alert on
+  pdf_url?: string;
+  uploaded_at: string;
+  uploaded_by: "marina" | "boater"; // who submitted it
+}
+
 export interface Slip {
   id: string;              // e.g. "A29"
   dock: string;            // e.g. "Damsite A Dock"

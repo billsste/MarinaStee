@@ -6,6 +6,7 @@ import {
   CARDS_ON_FILE,
   COMMUNICATIONS,
   CONTRACTS,
+  INSURANCE_CERTIFICATES,
   LEDGER,
   POS_LOCATIONS,
   POS_ORDERS,
@@ -18,6 +19,7 @@ import type {
   CardOnFile,
   Communication,
   Contract,
+  InsuranceCertificate,
   LedgerEntry,
   PosOrder,
   QbSyncStatus,
@@ -71,6 +73,7 @@ type State = {
   contracts: Contract[];
   // Cards are keyed by boater_id so per-boater hooks stay O(1).
   cardsByBoaterId: Record<string, CardOnFile[]>;
+  insurance: InsuranceCertificate[];
 };
 
 let state: State = {
@@ -86,6 +89,7 @@ let state: State = {
   vessels: [...VESSELS],
   contracts: [...CONTRACTS],
   cardsByBoaterId: { ...CARDS_ON_FILE },
+  insurance: [...INSURANCE_CERTIFICATES],
 };
 
 const subscribers = new Set<() => void>();
@@ -270,6 +274,11 @@ export function addContract(c: Contract) {
   notify();
 }
 
+export function addInsuranceCertificate(coi: InsuranceCertificate) {
+  state = { ...state, insurance: [coi, ...state.insurance] };
+  notify();
+}
+
 export function addCardForBoater(boaterId: string, card: CardOnFile) {
   const existing = state.cardsByBoaterId[boaterId] ?? [];
   // If the new card is_default, unset any existing default
@@ -340,6 +349,16 @@ export function useCardsForBoater(boaterId: string): CardOnFile[] {
   return s.cardsByBoaterId[boaterId] ?? [];
 }
 
+export function useInsuranceForBoater(boaterId: string): InsuranceCertificate[] {
+  const s = useStore();
+  return s.insurance.filter((c) => c.boater_id === boaterId);
+}
+
+export function useInsuranceForVessel(vesselId: string): InsuranceCertificate[] {
+  const s = useStore();
+  return s.insurance.filter((c) => c.vessel_id === vesselId);
+}
+
 // ----- id generators -----
 
 let _seq = 9000;
@@ -395,4 +414,8 @@ export function nextContractNumber() {
 
 export function nextCardId() {
   return `card_runtime_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+}
+
+export function nextCoiId() {
+  return `coi_runtime_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
 }

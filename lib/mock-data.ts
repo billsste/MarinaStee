@@ -22,6 +22,7 @@ import type {
   PosOrder,
   Quote,
   QuoteLineItem,
+  InsuranceCertificate,
 } from "@/lib/types";
 
 export const USERS: User[] = [
@@ -901,6 +902,54 @@ export const CONTRACTS: Contract[] = [emmonsContract];
 export const CARDS_ON_FILE: Record<string, CardOnFile[]> = {
   b_emmons: emmonsCards,
 };
+
+// Insurance certificates. One active (Emmons), one expiring soon (Peterson),
+// one lapsed (an older Emmons vessel — drives a danger alert).
+export const INSURANCE_CERTIFICATES: InsuranceCertificate[] = [
+  {
+    id: "coi_emmons_2026",
+    vessel_id: "v_emmons_bayliner",
+    boater_id: "b_emmons",
+    carrier: "BoatU.S. Insurance",
+    policy_number: "BU-447821",
+    liability_limit: 500_000,
+    hull_value: 28_000,
+    effective_start: "2026-01-15",
+    effective_end: "2027-01-15",
+    pdf_url: "/mock/coi-emmons-2026.pdf",
+    uploaded_at: "2026-01-10T15:22:00Z",
+    uploaded_by: "boater",
+  },
+  {
+    id: "coi_peterson_2025",
+    vessel_id: "v_peterson_sloop",
+    boater_id: "b_peterson",
+    carrier: "Geico Marine",
+    policy_number: "GM-991103",
+    liability_limit: 1_000_000,
+    hull_value: 145_000,
+    effective_start: "2025-06-12",
+    // ~3 weeks out from "today" (2026-05-24) — should fire a warn alert
+    effective_end: "2026-06-12",
+    pdf_url: "/mock/coi-peterson-2025.pdf",
+    uploaded_at: "2025-06-09T11:14:00Z",
+    uploaded_by: "boater",
+  },
+  {
+    id: "coi_emmons_lapsed",
+    vessel_id: "v_emmons_bayliner",
+    boater_id: "b_emmons",
+    carrier: "Progressive Marine",
+    policy_number: "PG-558112",
+    liability_limit: 300_000,
+    effective_start: "2024-02-01",
+    // Lapsed — should fire a danger alert
+    effective_end: "2025-02-01",
+    pdf_url: "/mock/coi-emmons-old.pdf",
+    uploaded_at: "2024-01-29T09:00:00Z",
+    uploaded_by: "marina",
+  },
+];
 
 // ----- helpers -----
 

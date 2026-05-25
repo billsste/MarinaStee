@@ -51,11 +51,11 @@ function isActive(pathname: string, href: string) {
 
 export function Sidebar() {
   const pathname = usePathname();
-  const { ledger, communications } = useStore();
+  const { ledger, communications, insurance } = useStore();
   const workOrders = useWorkOrders();
   const alertCount = React.useMemo(
-    () => buildAlerts({ ledger, workOrders, communications }).length,
-    [ledger, workOrders, communications]
+    () => buildAlerts({ ledger, workOrders, communications, insurance }).length,
+    [ledger, workOrders, communications, insurance]
   );
 
   return (

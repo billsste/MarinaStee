@@ -18,12 +18,14 @@ import {
   FUEL_INVENTORY,
   METER_READINGS,
   RENTAL_SPACES,
+  VESSELS,
   fuelPct,
   meterAnomaly,
   meterDelta,
 } from "@/lib/mock-data";
 import type {
   Communication,
+  InsuranceCertificate,
   LedgerEntry,
   WorkOrder,
 } from "@/lib/types";
@@ -36,7 +38,8 @@ export type AlertSource =
   | "contract_expiry"
   | "fuel_low"
   | "urgent_work_order"
-  | "unanswered_inbound";
+  | "unanswered_inbound"
+  | "insurance_expiry";
 
 export type Alert = {
   id: string;
@@ -180,6 +183,50 @@ function urgentWorkOrders(workOrders: WorkOrder[]): Alert[] {
     });
 }
 
+const INSURANCE_EXPIRY_WINDOW_DAYS = 60;
+
+function insuranceExpiry(insurance: InsuranceCertificate[], now: Date): Alert[] {
+  const cutoff = now.getTime() + INSURANCE_EXPIRY_WINDOW_DAYS * 86_400_000;
+  // Per vessel, only the LATEST cert matters — if a fresh policy supersedes
+  // an old one, the old one shouldn't continue to alert.
+  const byVessel = new Map<string, InsuranceCertificate>();
+  for (const c of insurance) {
+    const existing = byVessel.get(c.vessel_id);
+    if (!existing || existing.effective_end < c.effective_end) {
+      byVessel.set(c.vessel_id, c);
+    }
+  }
+  const alerts: Alert[] = [];
+  for (const c of byVessel.values()) {
+    const end = new Date(c.effective_end).getTime();
+    if (end > cutoff) continue;
+    const daysRemaining = Math.round((end - now.getTime()) / 86_400_000);
+    const vessel = VESSELS.find((v) => v.id === c.vessel_id);
+    const boater = BOATERS.find((b) => b.id === c.boater_id);
+    const severity: AlertSeverity =
+      daysRemaining < 0 ? "danger" : daysRemaining < 14 ? "warn" : "info";
+    alerts.push({
+      id: `coi_${c.id}`,
+      source: "insurance_expiry",
+      severity,
+      title:
+        daysRemaining < 0
+          ? `Insurance lapsed — ${vessel?.name ?? "vessel"} (${boater?.display_name ?? ""})`
+          : `Insurance expires in ${daysRemaining}d — ${vessel?.name ?? "vessel"}`,
+      detail: `${c.carrier} policy ${c.policy_number} · liability ${
+        c.liability_limit ? `$${c.liability_limit.toLocaleString()}` : "—"
+      } · through ${c.effective_end}.`,
+      occurred_at: c.effective_end,
+      boater_id: c.boater_id,
+      href: boater ? `/boaters/${boater.id}` : undefined,
+      suggested_prompt: boater
+        ? `Ask ${boater.first_name} to upload a renewed COI for ${vessel?.name ?? "their vessel"}`
+        : undefined,
+    });
+  }
+  return alerts;
+}
+
 function unansweredInbound(communications: Communication[]): Alert[] {
   // Inbound messages without a subsequent outbound from the marina to the
   // same boater = unanswered. Per-message timestamp comparison.
@@ -230,11 +277,13 @@ export function buildAlerts({
   ledger,
   workOrders,
   communications,
+  insurance = [],
   now = new Date(),
 }: {
   ledger: LedgerEntry[];
   workOrders: WorkOrder[];
   communications: Communication[];
+  insurance?: InsuranceCertificate[];
   now?: Date;
 }): Alert[] {
   const all = [
@@ -244,6 +293,7 @@ export function buildAlerts({
     ...fuelLow(now),
     ...urgentWorkOrders(workOrders),
     ...unansweredInbound(communications),
+    ...insuranceExpiry(insurance, now),
   ];
   // Sort: severity (danger > warn > info), then newest first
   const rank: Record<AlertSeverity, number> = { danger: 0, warn: 1, info: 2 };
@@ -260,6 +310,7 @@ export const SOURCE_LABEL: Record<AlertSource, string> = {
   fuel_low: "Fuel low",
   urgent_work_order: "Urgent / flagged WO",
   unanswered_inbound: "Awaiting reply",
+  insurance_expiry: "Insurance / COI",
 };
 
 function cap(s: string) {

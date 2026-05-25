@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { formatInches, getSlip } from "@/lib/mock-data";
 import { useReservationsForBoater, useVesselsForBoater } from "@/lib/client-store";
 import { AddVesselSheet } from "./add-vessel-sheet";
+import { InsuranceCard } from "@/components/insurance/insurance-card";
 import type { Reservation, Vessel } from "@/lib/types";
 
 export function VesselsTab({
@@ -81,6 +82,8 @@ export function VesselsTab({
           </div>
         </div>
       ))}
+
+      <InsuranceCard boaterId={boaterId} uploadedBy="marina" />
 
       <div className="rounded-[12px] border border-hairline bg-surface-1">
         <div className="border-b border-hairline px-4 py-2.5">

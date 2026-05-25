@@ -32,6 +32,7 @@ import {
 import { PortalPaySheet } from "./portal-pay-sheet";
 import { PortalRequestServiceSheet } from "./portal-request-service-sheet";
 import { PortalMessageMarinaSheet } from "./portal-message-marina-sheet";
+import { InsuranceCard } from "@/components/insurance/insurance-card";
 import { cn } from "@/lib/utils";
 
 /*
@@ -348,6 +349,11 @@ export function PortalView({ boaterId }: { boaterId: string }) {
               })}
             </ul>
           )}
+        </Section>
+
+        {/* Insurance */}
+        <Section title="Insurance" icon={<FileText className="size-3.5" />}>
+          <InsuranceCard boaterId={boaterId} uploadedBy="boater" />
         </Section>
 
         {/* Card on file note */}
