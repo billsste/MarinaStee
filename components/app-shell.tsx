@@ -55,6 +55,7 @@ function Breadcrumb({ pathname }: { pathname: string }) {
     if (pathname.startsWith("/work-orders")) return "Work Orders";
     if (pathname.startsWith("/reservations")) return "Reservations";
     if (pathname.startsWith("/ledger")) return "Ledger / POS";
+    if (pathname.startsWith("/reports")) return "Reports";
     if (pathname.startsWith("/notifications")) return "Notifications";
     if (pathname.startsWith("/inbox")) return "Inbox";
     if (pathname.startsWith("/settings")) return "Settings";

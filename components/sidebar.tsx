@@ -14,6 +14,7 @@ import {
   Smartphone,
   Inbox,
   Bell,
+  BarChart3,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -40,6 +41,7 @@ const NAV: NavItem[] = [
   { label: "Reservations", href: "/reservations", icon: CalendarRange },
   { label: "Work Orders", href: "/work-orders", icon: Wrench },
   { label: "Ledger / POS", href: "/ledger", icon: Receipt },
+  { label: "Reports", href: "/reports", icon: BarChart3 },
   { label: "Dock view (mobile)", href: "/dock", icon: Smartphone },
   { label: "Settings", href: "/settings", icon: Settings },
 ];
