@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { Anchor, Crown, DollarSign, Percent, Ship, TrendingUp } from "lucide-react";
+import { Anchor, CalendarClock, Crown, DollarSign, FileSignature, Percent, Ship, TrendingUp } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import {
   BOATERS,
@@ -11,7 +11,7 @@ import {
   formatMoney,
   totalOccupancy,
 } from "@/lib/mock-data";
-import { useStore } from "@/lib/client-store";
+import { useContracts, useStore } from "@/lib/client-store";
 import { cn } from "@/lib/utils";
 import type { LedgerEntry } from "@/lib/types";
 
@@ -46,12 +46,55 @@ const CATEGORY_COLORS: Record<string, string> = {
 
 export function ReportsView() {
   const { ledger, posOrders } = useStore();
+  const contracts = useContracts();
+
+  // ── Annual portfolio metrics (the LEAD section) ──────────────────────
+  const now = new Date();
+  const ninetyDays = now.getTime() + 90 * 86_400_000;
+  const oneEightyDays = now.getTime() + 180 * 86_400_000;
+  const lastYearStartDate = new Date(now.getFullYear() - 1, 0, 1).getTime();
+  const lastYearEndDate = new Date(now.getFullYear() - 1, 11, 31).getTime();
+
+  const activeAnnualContracts = contracts.filter(
+    (c) => c.status === "active" && (c.billing_cadence === "monthly" || c.billing_cadence === "annual")
+  );
+  const annualARR = activeAnnualContracts.reduce((s, c) => s + (c.annual_rate ?? 0), 0);
+
+  const expiring90 = activeAnnualContracts.filter((c) => {
+    const end = new Date(c.effective_end).getTime();
+    return end > now.getTime() && end <= ninetyDays;
+  });
+  const expiring180 = activeAnnualContracts.filter((c) => {
+    const end = new Date(c.effective_end).getTime();
+    return end > now.getTime() && end <= oneEightyDays;
+  });
+
+  // Renewal rate proxy: of contracts that ended in the last year, how many
+  // have a successor active contract for the same slip?
+  const endedLastYear = contracts.filter((c) => {
+    const end = new Date(c.effective_end).getTime();
+    return end >= lastYearStartDate && end <= lastYearEndDate;
+  });
+  const renewedCount = endedLastYear.filter((c) => {
+    // A renewal exists if there's another contract for the same slip with a
+    // later effective_start.
+    return contracts.some(
+      (other) =>
+        other.id !== c.id &&
+        other.slip_id === c.slip_id &&
+        new Date(other.effective_start).getTime() >
+          new Date(c.effective_start).getTime()
+    );
+  }).length;
+  const renewalRate = endedLastYear.length > 0
+    ? (renewedCount / endedLastYear.length) * 100
+    : null;
+  const lapsedContracts = contracts.filter((c) => c.status === "expired");
 
   // Revenue universe: invoices + POS sales (charge-to-account invoices are
   // double-counted via ledger; we ignore that for the demo).
   const invoices = ledger.filter((l) => l.type === "invoice");
 
-  const now = new Date();
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
   const yearStart = new Date(now.getFullYear(), 0, 1);
   const lastYearStart = new Date(now.getFullYear() - 1, 0, 1);
@@ -129,40 +172,86 @@ export function ReportsView() {
 
   return (
     <div className="space-y-6">
-      {/* KPIs */}
-      <section className="grid grid-cols-1 gap-3 md:grid-cols-4">
-        <Kpi
-          icon={<DollarSign className="size-4" />}
-          label="Month-to-date revenue"
-          value={formatMoney(mtd)}
-          sub={`${invoicesBetween(invoices, monthStart, now).length} invoices`}
-          tone="neutral"
-        />
-        <Kpi
-          icon={<TrendingUp className="size-4" />}
-          label="YTD vs last year"
-          value={
-            lastYearTotal === 0
-              ? "—"
-              : `${yoyDelta >= 0 ? "+" : ""}${yoyDelta.toFixed(1)}%`
-          }
-          sub={`${formatMoney(ytd)} this year`}
-          tone={yoyDelta >= 0 ? "ok" : "warn"}
-        />
-        <Kpi
-          icon={<Percent className="size-4" />}
-          label="Occupancy"
-          value={`${occ.pct.toFixed(0)}%`}
-          sub={`${occ.occupied} of ${occ.total} spaces`}
-          tone={occ.pct > 80 ? "ok" : occ.pct > 50 ? "info" : "warn"}
-        />
-        <Kpi
-          icon={<Ship className="size-4" />}
-          label="Avg slip invoice"
-          value={formatMoney(avgSlipInvoice)}
-          sub={`${slipInvoices.length} slip invoices`}
-          tone="neutral"
-        />
+      {/* ── ANNUAL PORTFOLIO — the lead section ───────────────────── */}
+      <section>
+        <h2 className="mb-3 text-[13px] font-medium uppercase tracking-wide text-fg-tertiary">
+          Annual portfolio
+        </h2>
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
+          <Kpi
+            icon={<DollarSign className="size-4" />}
+            label="Annual ARR"
+            value={formatMoney(annualARR)}
+            sub={`${activeAnnualContracts.length} active contracts`}
+            tone="ok"
+          />
+          <Kpi
+            icon={<CalendarClock className="size-4" />}
+            label="Expiring in 90 days"
+            value={`${expiring90.length}`}
+            sub={`${expiring180.length} within 180 days`}
+            tone={expiring90.length > 0 ? "warn" : "neutral"}
+          />
+          <Kpi
+            icon={<FileSignature className="size-4" />}
+            label="Renewal rate (last yr)"
+            value={renewalRate === null ? "—" : `${renewalRate.toFixed(0)}%`}
+            sub={
+              renewalRate === null
+                ? "No contracts ended yet"
+                : `${renewedCount} of ${endedLastYear.length} renewed`
+            }
+            tone={renewalRate === null ? "neutral" : renewalRate >= 85 ? "ok" : renewalRate >= 70 ? "info" : "warn"}
+          />
+          <Kpi
+            icon={<Ship className="size-4" />}
+            label="Lapsed"
+            value={`${lapsedContracts.length}`}
+            sub="Need re-engagement or waitlist match"
+            tone={lapsedContracts.length > 0 ? "warn" : "ok"}
+          />
+        </div>
+      </section>
+
+      {/* ── DAILY OPS — secondary KPIs ────────────────────────────── */}
+      <section>
+        <h2 className="mb-3 text-[13px] font-medium uppercase tracking-wide text-fg-tertiary">
+          Daily operations
+        </h2>
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
+          <Kpi
+            icon={<DollarSign className="size-4" />}
+            label="Month-to-date revenue"
+            value={formatMoney(mtd)}
+            sub={`${invoicesBetween(invoices, monthStart, now).length} invoices`}
+            tone="neutral"
+          />
+          <Kpi
+            icon={<TrendingUp className="size-4" />}
+            label="YTD vs last year"
+            value={
+              lastYearTotal === 0
+                ? "—"
+                : `${yoyDelta >= 0 ? "+" : ""}${yoyDelta.toFixed(1)}%`
+            }
+            sub={`${formatMoney(ytd)} this year`}
+            tone={yoyDelta >= 0 ? "ok" : "warn"}
+          />
+          <Kpi
+            icon={<Percent className="size-4" />}
+            label="Occupancy"
+            value={`${occ.pct.toFixed(0)}%`}
+            sub={`${occ.occupied} of ${occ.total} spaces`}
+            tone={occ.pct > 80 ? "ok" : occ.pct > 50 ? "info" : "warn"}
+          />
+          <Kpi
+            icon={<Ship className="size-4" />}
+            label="Avg slip invoice"
+            value={formatMoney(avgSlipInvoice)}
+            sub={`${slipInvoices.length} slip invoices`}
+            tone="neutral"
+          />
+        </div>
       </section>
 
       {/* Revenue by category */}
