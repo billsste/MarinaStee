@@ -7,12 +7,14 @@ import {
   CheckCheck,
   Inbox as InboxIcon,
   Mail,
+  Megaphone,
   MessageCircle,
   Phone,
   Search,
   Send,
   Sparkles,
 } from "lucide-react";
+import { BroadcastSheet } from "@/components/comms/broadcast-sheet";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useBoaters, useStore } from "@/lib/client-store";
@@ -46,6 +48,7 @@ export function InboxView() {
   const [status, setStatus] = React.useState<StatusFilter>("all");
   const [query, setQuery] = React.useState("");
   const [selectedBoaterId, setSelectedBoaterId] = React.useState<string | null>(null);
+  const [broadcastOpen, setBroadcastOpen] = React.useState(false);
 
   // Group all messages by boater, sorted by most recent
   const threads = React.useMemo(() => {
@@ -205,6 +208,16 @@ export function InboxView() {
 
       {/* ── RIGHT: agent triage rail ──────────────────────────────────── */}
       <aside className="flex flex-col gap-3">
+        <Button
+          variant="primary"
+          size="md"
+          className="w-full justify-center"
+          onClick={() => setBroadcastOpen(true)}
+        >
+          <Megaphone className="size-3.5" />
+          New broadcast
+        </Button>
+
         <div className="rounded-[12px] border border-hairline bg-surface-1 p-4">
           <div className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-fg-tertiary">
             <Sparkles className="size-3 text-primary" />
@@ -249,6 +262,8 @@ export function InboxView() {
           </ul>
         </div>
       </aside>
+
+      <BroadcastSheet open={broadcastOpen} onOpenChange={setBroadcastOpen} />
     </div>
   );
 }
