@@ -427,6 +427,10 @@ export function useVesselsForBoater(boaterId: string): Vessel[] {
   return s.vessels.filter((v) => v.boater_id === boaterId || v.co_owner_ids.includes(boaterId));
 }
 
+export function useContracts(): Contract[] {
+  return useStore().contracts;
+}
+
 export function useContractsForBoater(boaterId: string): Contract[] {
   const s = useStore();
   return s.contracts.filter((c) => c.boater_id === boaterId);
