@@ -12,6 +12,7 @@ import {
   POS_ORDERS,
   RESERVATIONS,
   VESSELS,
+  WAITLIST,
   WORK_ORDERS,
 } from "@/lib/mock-data";
 import type {
@@ -25,6 +26,8 @@ import type {
   QbSyncStatus,
   Reservation,
   Vessel,
+  WaitlistEntry,
+  WaitlistStatus,
   WorkOrder,
 } from "@/lib/types";
 
@@ -74,6 +77,7 @@ type State = {
   // Cards are keyed by boater_id so per-boater hooks stay O(1).
   cardsByBoaterId: Record<string, CardOnFile[]>;
   insurance: InsuranceCertificate[];
+  waitlist: WaitlistEntry[];
 };
 
 let state: State = {
@@ -90,6 +94,7 @@ let state: State = {
   contracts: [...CONTRACTS],
   cardsByBoaterId: { ...CARDS_ON_FILE },
   insurance: [...INSURANCE_CERTIFICATES],
+  waitlist: [...WAITLIST],
 };
 
 const subscribers = new Set<() => void>();
@@ -274,6 +279,34 @@ export function addContract(c: Contract) {
   notify();
 }
 
+export function addWaitlistEntry(e: WaitlistEntry) {
+  state = { ...state, waitlist: [e, ...state.waitlist] };
+  notify();
+}
+
+export function updateWaitlistStatus(
+  id: string,
+  status: WaitlistStatus,
+  extra?: { offered_slip_id?: string; converted_reservation_id?: string }
+) {
+  state = {
+    ...state,
+    waitlist: state.waitlist.map((w) =>
+      w.id === id
+        ? {
+            ...w,
+            status,
+            offered_slip_id: extra?.offered_slip_id ?? w.offered_slip_id,
+            offered_at: status === "offered" ? new Date().toISOString() : w.offered_at,
+            converted_reservation_id:
+              extra?.converted_reservation_id ?? w.converted_reservation_id,
+          }
+        : w
+    ),
+  };
+  notify();
+}
+
 export function addInsuranceCertificate(coi: InsuranceCertificate) {
   state = { ...state, insurance: [coi, ...state.insurance] };
   notify();
@@ -349,6 +382,10 @@ export function useCardsForBoater(boaterId: string): CardOnFile[] {
   return s.cardsByBoaterId[boaterId] ?? [];
 }
 
+export function useWaitlist(): WaitlistEntry[] {
+  return useStore().waitlist;
+}
+
 export function useInsuranceForBoater(boaterId: string): InsuranceCertificate[] {
   const s = useStore();
   return s.insurance.filter((c) => c.boater_id === boaterId);
@@ -418,4 +455,8 @@ export function nextCardId() {
 
 export function nextCoiId() {
   return `coi_runtime_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+}
+
+export function nextWaitlistId() {
+  return `wl_runtime_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
 }

@@ -63,6 +63,31 @@ export interface Vessel {
   active: boolean;
 }
 
+export type WaitlistStatus = "pending" | "offered" | "converted" | "declined" | "withdrawn";
+
+export interface WaitlistEntry {
+  id: string;
+  // Either an existing boater OR a prospect (guest_*) — never both.
+  boater_id?: string;
+  guest_name?: string;
+  guest_email?: string;
+  guest_phone?: string;
+  // What they want
+  preferred_arrival?: string; // ISO date
+  preferred_departure?: string;
+  loa_inches?: number;
+  beam_inches?: number;
+  preferred_dock?: string;
+  reservation_type: "transient" | "monthly" | "seasonal" | "annual";
+  notes?: string;
+  status: WaitlistStatus;
+  created_at: string;
+  // When status === offered/converted, where it went
+  offered_slip_id?: string;
+  offered_at?: string;
+  converted_reservation_id?: string;
+}
+
 export interface InsuranceCertificate {
   id: string;
   vessel_id: string;

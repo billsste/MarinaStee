@@ -1,11 +1,12 @@
 "use client";
 
 import * as React from "react";
-import { CalendarDays, ListTodo, Sun } from "lucide-react";
+import { CalendarDays, Clock, ListTodo, Sun } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CalendarView } from "./calendar-view";
 import { TodayView } from "./today-view";
 import { ReservationsTable } from "./reservations-table";
+import { WaitlistView } from "./waitlist-view";
 
 /*
  * Top-level Reservations tabs: Calendar (default) / Today / List.
@@ -28,6 +29,10 @@ export function ReservationsTabs() {
           <ListTodo className="size-3.5" />
           List
         </TabsTrigger>
+        <TabsTrigger value="waitlist">
+          <Clock className="size-3.5" />
+          Waitlist
+        </TabsTrigger>
       </TabsList>
 
       <TabsContent value="calendar">
@@ -38,6 +43,9 @@ export function ReservationsTabs() {
       </TabsContent>
       <TabsContent value="list">
         <ReservationsTable />
+      </TabsContent>
+      <TabsContent value="waitlist">
+        <WaitlistView />
       </TabsContent>
     </Tabs>
   );
