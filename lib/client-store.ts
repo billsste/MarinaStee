@@ -287,6 +287,20 @@ export function addContract(c: Contract) {
   notify();
 }
 
+export function bulkAddContracts(contracts: Contract[]) {
+  if (contracts.length === 0) return;
+  state = { ...state, contracts: [...contracts, ...state.contracts] };
+  notify();
+}
+
+export function updateContract(id: string, patch: Partial<Contract>) {
+  state = {
+    ...state,
+    contracts: state.contracts.map((c) => (c.id === id ? { ...c, ...patch } : c)),
+  };
+  notify();
+}
+
 export function addMarinaEvent(e: MarinaEvent) {
   state = { ...state, events: [e, ...state.events] };
   notify();
