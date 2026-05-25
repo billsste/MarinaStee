@@ -8,6 +8,7 @@ export default function NotificationsPage() {
     <PageShell
       title="Notifications"
       description="Everything that needs your attention — overdue invoices, meter anomalies, expiring contracts, low fuel, urgent jobs, unanswered messages. Ask the agent to triage."
+      width="wide"
     >
       <NotificationsView />
     </PageShell>

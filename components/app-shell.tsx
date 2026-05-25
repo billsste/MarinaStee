@@ -3,20 +3,20 @@
 import * as React from "react";
 import { usePathname } from "next/navigation";
 import { Sidebar } from "@/components/sidebar";
-import { AgentBar } from "@/components/agent-bar";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { LedgerDrawerProvider } from "@/components/ledger/ledger-entry-drawer";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const isDashboard = pathname === "/";
 
-  // Public/role-specific routes (boater signing portal, dockhand mobile view)
-  // render without admin chrome.
+  // Truly public routes — the boater signing portal + boater self-service.
+  // /dock used to live here, but losing the sidebar trapped admins on the
+  // mobile view. The dock page is still styled mobile-first (max-w-[480px]
+  // mx-auto) so it works fine inside the shell on desktop AND in standalone
+  // PWA mode on a phone (browser chrome hides itself when installed).
   const isPublic =
     pathname.startsWith("/sign") ||
-    pathname.startsWith("/dock") ||
     pathname.startsWith("/portal");
   if (isPublic) return <>{children}</>;
 
@@ -37,8 +37,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
             <main className="relative flex-1 overflow-y-auto">
               {children}
-              {/* Persistent agent bar — omitted on dashboard, where the hero owns the surface */}
-              {!isDashboard && <AgentBar />}
             </main>
           </div>
         </div>

@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import {
   Mail,
   Phone,
@@ -8,8 +7,6 @@ import {
   Anchor,
   Receipt,
   Wrench,
-  CalendarRange,
-  ArrowRight,
   MessageSquare,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -95,43 +92,51 @@ export function OverviewTab({
     })),
   ].sort((a, b) => (a.ts < b.ts ? 1 : -1));
 
+  // Open balance + current slip live in the IdentityBar at the top of the page,
+  // so they're omitted from Overview to avoid duplication. Overview focuses on
+  // identity context (contact, contract, slip detail) on the left + activity
+  // and operational lists on the right.
   return (
-    <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
-      {/* Left column — contact + open balance + next reservation */}
-      <div className="space-y-4 xl:col-span-1">
-        <Panel title="Contact" askLink={`Email or text ${boater.first_name}`}>
-          <ContactRow icon={<Mail className="size-3.5" />} label="Email" value={boater.primary_contact.email} />
-          <ContactRow icon={<Phone className="size-3.5" />} label="Phone" value={boater.primary_contact.phone} />
-          <ContactRow
-            icon={<MapPin className="size-3.5" />}
-            label="Address"
-            value={`${boater.address.line1}, ${boater.address.city}, ${boater.address.state} ${boater.address.zip}`}
-          />
+    <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
+      {/* Identity rail — narrower left column on desktop */}
+      <div className="space-y-4 lg:col-span-5">
+        <Panel title="Contact">
+          <div className="space-y-1">
+            <ContactRow icon={<Mail className="size-3.5" />} label="Email" value={boater.primary_contact.email} />
+            <ContactRow icon={<Phone className="size-3.5" />} label="Phone" value={boater.primary_contact.phone} />
+            <ContactRow
+              icon={<MapPin className="size-3.5" />}
+              label="Address"
+              value={`${boater.address.line1}, ${boater.address.city}, ${boater.address.state} ${boater.address.zip}`}
+            />
+          </div>
           {boater.additional_contacts.length > 0 && (
-            <div className="mt-2 border-t border-hairline pt-2">
-              <div className="mb-1 text-[11px] uppercase tracking-wide text-fg-tertiary">
+            <div className="mt-3 border-t border-hairline pt-2.5">
+              <div className="mb-1.5 text-[10px] uppercase tracking-wide text-fg-tertiary">
                 Additional contacts
               </div>
-              {boater.additional_contacts.map((c) => (
-                <div key={c.id} className="text-[12px] text-fg-muted">
-                  <span className="text-fg">{c.name}</span>{" "}
-                  <span className="text-fg-tertiary">· {c.role}</span>{" "}
-                  <span className="text-fg-tertiary">· {c.phone ?? c.email}</span>
-                </div>
-              ))}
+              <ul className="space-y-0.5">
+                {boater.additional_contacts.map((c) => (
+                  <li key={c.id} className="text-[12px] text-fg-muted">
+                    <span className="text-fg">{c.name}</span>
+                    <span className="text-fg-tertiary"> · {c.role}</span>
+                    <span className="text-fg-tertiary"> · {c.phone ?? c.email}</span>
+                  </li>
+                ))}
+              </ul>
             </div>
           )}
+          <div className="mt-3 border-t border-hairline pt-2.5 text-[11px] text-fg-tertiary">
+            Prefers <span className="font-medium capitalize text-fg-subtle">{boater.communication_prefs.preferred_channel}</span>
+            {boater.communication_prefs.do_not_contact_after && (
+              <> · Quiet after {boater.communication_prefs.do_not_contact_after}</>
+            )}
+            <> · Language <span className="uppercase text-fg-subtle">{boater.communication_prefs.language}</span></>
+          </div>
         </Panel>
 
         {showContractPanel && activeContract && (
-          <Panel
-            title={isSeasonal ? "Seasonal contract" : "Annual contract"}
-            askLink={
-              successorContract
-                ? undefined
-                : `Draft a renewal for ${boater.first_name}`
-            }
-          >
+          <Panel title={isSeasonal ? "Seasonal contract" : "Annual contract"}>
             <div className="flex flex-wrap items-baseline gap-2">
               <span className="font-mono text-[15px] font-medium text-fg">
                 {activeContract.number}
@@ -155,9 +160,7 @@ export function OverviewTab({
               <div>
                 <dt className="text-fg-tertiary">Annual rate</dt>
                 <dd className="tabular text-fg">
-                  {activeContract.annual_rate
-                    ? formatMoney(activeContract.annual_rate)
-                    : "—"}
+                  {activeContract.annual_rate ? formatMoney(activeContract.annual_rate) : "—"}
                 </dd>
               </div>
               <div>
@@ -177,36 +180,8 @@ export function OverviewTab({
           </Panel>
         )}
 
-        <Panel
-          title="Open balance"
-          askLink={openBalance > 0 ? "Draft a payment reminder" : undefined}
-        >
-          <div className="flex items-baseline gap-2">
-            <span
-              className={
-                "money-display-lg text-[32px] " +
-                (openBalance > 0 ? "text-status-warn" : "text-fg")
-              }
-            >
-              {formatMoney(openBalance)}
-            </span>
-            {openBalance > 0 ? (
-              <Badge tone="warn">Past due risk</Badge>
-            ) : (
-              <Badge tone="ok">Current</Badge>
-            )}
-          </div>
-          <p className="mt-1 text-[12px] text-fg-subtle">
-            {openBalance > 0
-              ? "Manager or agent can send a reminder or take payment now."
-              : "All invoices paid through last cycle."}
-          </p>
-        </Panel>
-
-        <StaffNotesCard boaterId={boater.id} />
-
         {nextReservation && slip && (
-          <Panel title="Current slip" askLink={`When does the ${slip.id} reservation end?`}>
+          <Panel title="Current slip">
             <div className="flex items-start gap-3">
               <div className="flex size-9 shrink-0 items-center justify-center rounded-[8px] bg-surface-3 text-primary">
                 <Anchor className="size-4" />
@@ -228,47 +203,27 @@ export function OverviewTab({
         )}
       </div>
 
-      {/* Center column — vessels + open work orders */}
-      <div className="space-y-4 xl:col-span-1">
-        <Panel title={`Vessels (${vessels.length})`} askLink={`Schedule winterization for the fleet`}>
-          {vessels.length === 0 ? (
-            <EmptyInline text="No vessels on file." />
+      {/* Action rail — wider right column */}
+      <div className="space-y-4 lg:col-span-7">
+        <Panel title="Recent activity">
+          {activity.length === 0 ? (
+            <EmptyInline text="No recent activity." />
           ) : (
-            <div className="space-y-3">
-              {vessels.map((v) => (
-                <div key={v.id} className="rounded-[8px] border border-hairline bg-surface-2 p-3">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <div className="truncate text-[14px] font-medium text-fg">{v.name}</div>
-                      <div className="text-[12px] text-fg-subtle">
-                        {v.make} {v.model} · {v.color}
-                      </div>
-                    </div>
-                    {v.active && <Badge tone="ok" size="sm">Active</Badge>}
-                  </div>
-                  <div className="mt-2 grid grid-cols-3 gap-2 text-[11px] text-fg-tertiary">
-                    <Stat label="LOA" value={formatInches(v.loa_inches)} />
-                    <Stat label="Beam" value={formatInches(v.beam_inches)} />
-                    <Stat label="Draft" value={formatInches(v.draft_inches)} />
-                    <Stat label="Year" value={v.year ? String(v.year) : "—"} />
-                    <Stat label="Fuel" value={v.fuel_type ?? "—"} />
-                    <Stat label="Reg" value={v.registration ?? "—"} />
-                  </div>
-                </div>
+            <ol className="relative border-l border-hairline pl-4">
+              {activity.slice(0, 8).map((a) => (
+                <TimelineItem
+                  key={`${a.kind}-${a.kind === "communication" ? a.data.id : a.kind === "ledger" ? a.data.id : a.data.id}`}
+                  a={a}
+                />
               ))}
-            </div>
+            </ol>
           )}
         </Panel>
 
-        <Panel
-          title={`Open work orders (${openWO.length})`}
-          askLink={openWO.length > 0 ? "Reassign these to another dockhand" : undefined}
-        >
-          {openWO.length === 0 ? (
-            <EmptyInline text="No open work orders." />
-          ) : (
+        {openWO.length > 0 && (
+          <Panel title={`Open work orders (${openWO.length})`}>
             <ul className="divide-y divide-hairline">
-              {openWO.map((w) => (
+              {openWO.slice(0, 5).map((w) => (
                 <li key={w.id} className="flex items-start gap-3 py-2 first:pt-0 last:pb-0">
                   <div className="flex size-7 shrink-0 items-center justify-center rounded-[6px] bg-surface-3 text-fg-subtle">
                     <Wrench className="size-3.5" />
@@ -276,18 +231,12 @@ export function OverviewTab({
                   <div className="min-w-0 flex-1">
                     <div className="truncate text-[13px] text-fg">{w.subject}</div>
                     <div className="text-[11px] text-fg-tertiary">
-                      {w.status.replace("_", " ")} · priority {w.priority}
-                      {w.start_date ? ` · starts ${w.start_date}` : ""}
+                      {w.status.replace("_", " ")}
+                      {w.start_date ? ` · starts ${w.start_date}` : w.due_date ? ` · due ${w.due_date}` : ""}
                     </div>
                   </div>
                   <Badge
-                    tone={
-                      w.priority === "urgent"
-                        ? "danger"
-                        : w.priority === "high"
-                          ? "warn"
-                          : "neutral"
-                    }
+                    tone={w.priority === "urgent" ? "danger" : w.priority === "high" ? "warn" : "neutral"}
                     size="sm"
                   >
                     {w.priority}
@@ -295,26 +244,33 @@ export function OverviewTab({
                 </li>
               ))}
             </ul>
-          )}
-        </Panel>
-      </div>
+          </Panel>
+        )}
 
-      {/* Right column — unified activity timeline */}
-      <div className="xl:col-span-1">
-        <Panel
-          title="Recent activity"
-          askLink={`What happened with ${boater.first_name} this month?`}
-        >
-          {activity.length === 0 ? (
-            <EmptyInline text="No recent activity." />
+        <Panel title={`Vessels (${vessels.length})`}>
+          {vessels.length === 0 ? (
+            <EmptyInline text="No vessels on file." />
           ) : (
-            <ol className="relative border-l border-hairline pl-4">
-              {activity.slice(0, 10).map((a) => (
-                <TimelineItem key={`${a.kind}-${a.kind === "communication" ? a.data.id : a.kind === "ledger" ? a.data.id : a.data.id}`} a={a} />
+            <ul className="divide-y divide-hairline">
+              {vessels.map((v) => (
+                <li key={v.id} className="flex items-start justify-between gap-3 py-2 first:pt-0 last:pb-0">
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-[13px] font-medium text-fg">{v.name}</div>
+                    <div className="text-[12px] text-fg-subtle">
+                      {[v.year, v.make, v.model].filter(Boolean).join(" ")}
+                    </div>
+                    <div className="mt-0.5 text-[11px] text-fg-tertiary">
+                      {formatInches(v.loa_inches)} LOA · {v.fuel_type ?? "—"}
+                    </div>
+                  </div>
+                  {v.active && <Badge tone="ok" size="sm">Active</Badge>}
+                </li>
               ))}
-            </ol>
+            </ul>
           )}
         </Panel>
+
+        <StaffNotesCard boaterId={boater.id} />
       </div>
     </div>
   );
@@ -323,24 +279,14 @@ export function OverviewTab({
 function Panel({
   title,
   children,
-  askLink,
 }: {
   title: string;
   children: React.ReactNode;
-  askLink?: string;
 }) {
   return (
     <div className="rounded-[12px] border border-hairline bg-surface-1">
-      <div className="flex items-center justify-between border-b border-hairline px-4 py-2.5">
+      <div className="border-b border-hairline px-4 py-2.5">
         <h3 className="text-[13px] font-medium text-fg">{title}</h3>
-        {askLink && (
-          <Link
-            href={`#ask-${encodeURIComponent(askLink)}`}
-            className="inline-flex items-center gap-1 text-[11px] text-primary hover:underline"
-          >
-            Ask <ArrowRight className="size-3" />
-          </Link>
-        )}
       </div>
       <div className="p-4">{children}</div>
     </div>
@@ -363,15 +309,6 @@ function ContactRow({
         <div className="text-[11px] text-fg-tertiary">{label}</div>
         <div className="truncate text-fg">{value ?? "—"}</div>
       </div>
-    </div>
-  );
-}
-
-function Stat({ label, value }: { label: string; value: string }) {
-  return (
-    <div>
-      <div className="text-[10px] uppercase tracking-wide text-fg-tertiary">{label}</div>
-      <div className="text-[12px] text-fg">{value}</div>
     </div>
   );
 }

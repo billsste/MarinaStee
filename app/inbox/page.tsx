@@ -8,6 +8,7 @@ export default function InboxPage() {
     <PageShell
       title="Inbox"
       description="Every message in and out, across every boater. Triage with the agent — answer, escalate, or close."
+      width="wide"
     >
       <InboxView />
     </PageShell>

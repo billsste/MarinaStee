@@ -117,7 +117,7 @@ export function InboxView() {
   const totalThreads = threads.length;
 
   return (
-    <div className="grid gap-3" style={{ gridTemplateColumns: "minmax(320px, 1fr) minmax(0, 1.6fr) minmax(280px, 320px)" }}>
+    <div className="grid items-start gap-4" style={{ gridTemplateColumns: "320px minmax(0, 1fr) 280px" }}>
       {/* ── LEFT: thread list ─────────────────────────────────────────── */}
       <div className="flex min-w-0 flex-col gap-2">
         {/* Filters */}

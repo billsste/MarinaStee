@@ -3,7 +3,7 @@ import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 import { BoaterIdentityBar } from "@/components/boaters/boater-identity-bar";
 import { BoaterDetail } from "@/components/boaters/boater-detail";
-import { AskRail } from "@/components/boaters/ask-rail";
+import { BoaterAsk } from "@/components/boaters/boater-ask";
 import {
   getBoater,
   getCardsForBoater,
@@ -41,7 +41,7 @@ export default async function BoaterDetailPage({ params }: Props) {
   const currentReservation = getCurrentReservation(boater.id);
 
   return (
-    <div className="mx-auto w-full max-w-[1280px] px-5 pt-6 pb-32">
+    <div className="mx-auto w-full max-w-[1200px] px-5 pt-6 pb-12">
       <Link
         href="/boaters"
         className="mb-3 inline-flex items-center gap-1 text-[12px] text-fg-subtle hover:text-fg"
@@ -54,21 +54,22 @@ export default async function BoaterDetailPage({ params }: Props) {
         currentReservation={currentReservation}
       />
 
-      <div className="mt-4 flex gap-5">
-        <div className="min-w-0 flex-1">
-          <BoaterDetail
-            boater={boater}
-            vessels={vessels}
-            reservations={reservations}
-            ledger={ledger}
-            workOrders={workOrders}
-            comms={comms}
-            contracts={contracts}
-            cards={cards}
-            openBalance={openBalance}
-          />
-        </div>
-        <AskRail boater={boater} />
+      <div className="mt-4">
+        <BoaterAsk boater={boater} />
+      </div>
+
+      <div className="mt-4">
+        <BoaterDetail
+          boater={boater}
+          vessels={vessels}
+          reservations={reservations}
+          ledger={ledger}
+          workOrders={workOrders}
+          comms={comms}
+          contracts={contracts}
+          cards={cards}
+          openBalance={openBalance}
+        />
       </div>
     </div>
   );
