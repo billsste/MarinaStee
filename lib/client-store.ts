@@ -117,6 +117,41 @@ export function addLedgerEntry(entry: LedgerEntry) {
   notify();
 }
 
+// Apply a payment to one or more invoice ids: subtract from each invoice's
+// open_balance in oldest-first order until the amount is exhausted. Closes
+// any invoice fully covered. Returns the actual amount applied (may be < amount
+// if no open balance exists).
+export function applyPaymentToInvoices(
+  boaterId: string,
+  amount: number,
+  invoiceIds?: string[]
+): number {
+  let remaining = amount;
+  const targets = state.ledger
+    .filter((l) => l.boater_id === boaterId && l.type === "invoice" && l.open_balance > 0)
+    .filter((l) => !invoiceIds || invoiceIds.includes(l.id))
+    .sort((a, b) => (a.date < b.date ? -1 : 1));
+
+  if (targets.length === 0) return 0;
+
+  const updated = state.ledger.map((l) => {
+    if (remaining <= 0) return l;
+    const target = targets.find((t) => t.id === l.id);
+    if (!target) return l;
+    const applied = Math.min(remaining, l.open_balance);
+    remaining -= applied;
+    const newOpenBalance = +(l.open_balance - applied).toFixed(2);
+    return {
+      ...l,
+      open_balance: newOpenBalance,
+      status: newOpenBalance === 0 ? ("paid" as const) : l.status,
+    };
+  });
+  state = { ...state, ledger: updated };
+  notify();
+  return amount - remaining;
+}
+
 export function addPosOrder(order: PosOrder) {
   const o: PosOrder = {
     ...order,

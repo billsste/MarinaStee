@@ -14,7 +14,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   // Public/role-specific routes (boater signing portal, dockhand mobile view)
   // render without admin chrome.
-  const isPublic = pathname.startsWith("/sign") || pathname.startsWith("/dock");
+  const isPublic =
+    pathname.startsWith("/sign") ||
+    pathname.startsWith("/dock") ||
+    pathname.startsWith("/portal");
   if (isPublic) return <>{children}</>;
 
   return (
@@ -52,6 +55,8 @@ function Breadcrumb({ pathname }: { pathname: string }) {
     if (pathname.startsWith("/work-orders")) return "Work Orders";
     if (pathname.startsWith("/reservations")) return "Reservations";
     if (pathname.startsWith("/ledger")) return "Ledger / POS";
+    if (pathname.startsWith("/notifications")) return "Notifications";
+    if (pathname.startsWith("/inbox")) return "Inbox";
     if (pathname.startsWith("/settings")) return "Settings";
     return pathname.slice(1);
   })();

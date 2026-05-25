@@ -15,6 +15,7 @@ import {
   addReservation,
   addVessel,
   addWorkOrder,
+  applyPaymentToInvoices,
   nextBoaterId,
   nextCardId,
   nextContractId,
@@ -174,11 +175,7 @@ export function executeAgentAction(action: AgentAction): void {
       refund_notes: action.notes,
     };
     addLedgerEntry(payment);
-
-    // Mark applied invoices as paid if amount covers them
-    if (action.applied_to_invoice_ids && action.applied_to_invoice_ids.length > 0) {
-      // Note: store doesn't currently expose update; this would close invoices in a fuller impl
-    }
+    applyPaymentToInvoices(boater.id, action.amount, action.applied_to_invoice_ids);
     return;
   }
 
