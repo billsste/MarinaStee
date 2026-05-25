@@ -292,6 +292,22 @@ export function updateReservationStatus(id: string, status: Reservation["status"
   notify();
 }
 
+export function upsertReservation(r: Reservation) {
+  const exists = state.reservations.some((x) => x.id === r.id);
+  state = {
+    ...state,
+    reservations: exists
+      ? state.reservations.map((x) => (x.id === r.id ? r : x))
+      : [r, ...state.reservations],
+  };
+  notify();
+}
+
+export function deleteReservation(id: string) {
+  state = { ...state, reservations: state.reservations.filter((r) => r.id !== id) };
+  notify();
+}
+
 export function addBoater(b: Boater) {
   state = { ...state, boaters: [b, ...state.boaters] };
   notify();
@@ -458,6 +474,22 @@ export function updateWaitlistStatus(
 
 export function addInsuranceCertificate(coi: InsuranceCertificate) {
   state = { ...state, insurance: [coi, ...state.insurance] };
+  notify();
+}
+
+export function upsertInsuranceCertificate(coi: InsuranceCertificate) {
+  const exists = state.insurance.some((x) => x.id === coi.id);
+  state = {
+    ...state,
+    insurance: exists
+      ? state.insurance.map((x) => (x.id === coi.id ? coi : x))
+      : [coi, ...state.insurance],
+  };
+  notify();
+}
+
+export function deleteInsuranceCertificate(id: string) {
+  state = { ...state, insurance: state.insurance.filter((c) => c.id !== id) };
   notify();
 }
 

@@ -4,8 +4,17 @@ import * as React from "react";
 import { FileText, Shield, ShieldAlert, ShieldCheck } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { useInsuranceForBoater } from "@/lib/client-store";
+import {
+  deleteInsuranceCertificate,
+  upsertInsuranceCertificate,
+  useInsuranceForBoater,
+} from "@/lib/client-store";
+import { getVesselsForBoater } from "@/lib/mock-data";
 import { AddCoiSheet } from "./add-coi-sheet";
+import {
+  RecordEditDialog,
+  type FieldSpec,
+} from "@/components/record-edit-dialog";
 import { cn } from "@/lib/utils";
 import type { InsuranceCertificate } from "@/lib/types";
 
@@ -28,9 +37,30 @@ export function InsuranceCard({
 }) {
   const certs = useInsuranceForBoater(boaterId);
   const [addOpen, setAddOpen] = React.useState(false);
+  const [editing, setEditing] = React.useState<InsuranceCertificate | undefined>();
+  const [editOpen, setEditOpen] = React.useState(false);
   const sorted = certs
     .slice()
     .sort((a, b) => (a.effective_end < b.effective_end ? 1 : -1));
+
+  const vessels = getVesselsForBoater(boaterId);
+  const COI_FIELDS: FieldSpec<InsuranceCertificate>[] = [
+    { key: "carrier", label: "Carrier", kind: "text", required: true, placeholder: "BoatU.S. Insurance" },
+    { key: "policy_number", label: "Policy number", kind: "text", required: true, col: 2 },
+    {
+      key: "vessel_id",
+      label: "Vessel",
+      kind: "select",
+      required: true,
+      col: 2,
+      options: vessels.map((v) => ({ value: v.id, label: v.name })),
+    },
+    { key: "liability_limit", label: "Liability limit ($)", kind: "money", required: true, step: "10000", col: 2 },
+    { key: "hull_value", label: "Hull value ($)", kind: "money", step: "1000", col: 2 },
+    { key: "effective_start", label: "Effective start", kind: "date", required: true, col: 2 },
+    { key: "effective_end", label: "Effective end", kind: "date", required: true, col: 2 },
+    { key: "pdf_url", label: "PDF URL", kind: "text", placeholder: "/mock/coi.pdf" },
+  ];
 
   // Per-vessel: the latest cert wins for status calc; older ones show
   // as "superseded" instead of expired/lapsed.
@@ -65,6 +95,10 @@ export function InsuranceCard({
                 key={c.id}
                 cert={c}
                 isLatest={latestByVessel.get(c.vessel_id) === c.id}
+                onClick={() => {
+                  setEditing(c);
+                  setEditOpen(true);
+                }}
               />
             ))}
           </ul>
@@ -77,16 +111,36 @@ export function InsuranceCard({
         defaultBoaterId={boaterId}
         uploadedBy={uploadedBy}
       />
+
+      <RecordEditDialog<InsuranceCertificate>
+        open={editOpen}
+        onOpenChange={setEditOpen}
+        title={editing ? `Edit COI — ${editing.policy_number}` : "Certificate"}
+        description="Updates affect notification triage immediately. Lapsed certs auto-surface."
+        record={editing}
+        fields={COI_FIELDS}
+        onSave={(values) => upsertInsuranceCertificate(values as InsuranceCertificate)}
+        onDelete={editing ? (c) => deleteInsuranceCertificate(c.id) : undefined}
+      />
     </div>
   );
 }
 
-function CoiRow({ cert, isLatest }: { cert: InsuranceCertificate; isLatest: boolean }) {
+function CoiRow({
+  cert,
+  isLatest,
+  onClick,
+}: {
+  cert: InsuranceCertificate;
+  isLatest: boolean;
+  onClick: () => void;
+}) {
   const status = coiStatus(cert, isLatest);
   return (
     <li
+      onClick={onClick}
       className={cn(
-        "flex flex-wrap items-start justify-between gap-3 rounded-[10px] border border-l-4 bg-surface-2 px-3 py-2.5",
+        "flex cursor-pointer flex-wrap items-start justify-between gap-3 rounded-[10px] border border-l-4 bg-surface-2 px-3 py-2.5 transition-colors hover:bg-surface-3",
         status.borderClass
       )}
     >
@@ -110,7 +164,12 @@ function CoiRow({ cert, isLatest }: { cert: InsuranceCertificate; isLatest: bool
       </div>
       {cert.pdf_url && (
         <Button variant="ghost" size="sm" asChild>
-          <a href={cert.pdf_url} target="_blank" rel="noreferrer">
+          <a
+            href={cert.pdf_url}
+            target="_blank"
+            rel="noreferrer"
+            onClick={(e) => e.stopPropagation()}
+          >
             <FileText className="size-3.5" />
             PDF
           </a>

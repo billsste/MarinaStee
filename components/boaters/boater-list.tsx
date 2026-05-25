@@ -35,11 +35,45 @@ export function BoaterList() {
     });
   }, [boaters, reservations, ledger]);
 
+  type QuickFilter = "all" | "annual" | "seasonal" | "transient" | "past_due" | "expiring";
+  const [quickFilter, setQuickFilter] = React.useState<QuickFilter>("all");
+
   const filtered = React.useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return rows;
-    if (/^(add|create|new|register|sign up)\b/i.test(q)) return rows; // create mode shows all, agent will draft
-    return rows.filter((r) => {
+    const now = Date.now();
+    const ninetyDays = 90 * 86_400_000;
+    let out = rows;
+
+    // Apply quick filter first
+    if (quickFilter !== "all") {
+      out = out.filter((r) => {
+        switch (quickFilter) {
+          case "annual":
+            return r.boater.billing_cadence === "annual" || r.boater.billing_cadence === "monthly";
+          case "seasonal":
+            return r.boater.billing_cadence === "seasonal";
+          case "transient":
+            return r.boater.billing_cadence === "transient";
+          case "past_due":
+            return r.openBalance > 0;
+          case "expiring": {
+            // Boater has an active contract ending in the next 90 days
+            const hasExpiring = ledger.length >= 0 && reservations.some((res) => {
+              if (res.boater_id !== r.boater.id) return false;
+              if (res.status !== "occupied") return false;
+              const end = new Date(res.departure_date).getTime();
+              return end > now && end - now <= ninetyDays;
+            });
+            return hasExpiring;
+          }
+        }
+        return true;
+      });
+    }
+
+    if (!q) return out;
+    if (/^(add|create|new|register|sign up)\b/i.test(q)) return out;
+    return out.filter((r) => {
       const b = r.boater;
       return (
         b.display_name.toLowerCase().includes(q) ||
@@ -49,7 +83,7 @@ export function BoaterList() {
         r.currentReservation?.slip_id.toLowerCase().includes(q)
       );
     });
-  }, [rows, query]);
+  }, [rows, query, quickFilter, ledger, reservations]);
 
   return (
     <div className="space-y-4">
@@ -58,12 +92,12 @@ export function BoaterList() {
       <div className="flex items-center justify-between">
         <div className="flex flex-wrap items-center gap-2 text-[11px] text-fg-tertiary">
           <span>Quick filters:</span>
-          <FilterChip label="All" active />
-          <FilterChip label="Annual" />
-          <FilterChip label="Seasonal" />
-          <FilterChip label="Transient" />
-          <FilterChip label="Past due" />
-          <FilterChip label="Contract expiring" />
+          <FilterChip label="All" value="all" current={quickFilter} onClick={setQuickFilter} />
+          <FilterChip label="Annual" value="annual" current={quickFilter} onClick={setQuickFilter} />
+          <FilterChip label="Seasonal" value="seasonal" current={quickFilter} onClick={setQuickFilter} />
+          <FilterChip label="Transient" value="transient" current={quickFilter} onClick={setQuickFilter} />
+          <FilterChip label="Past due" value="past_due" current={quickFilter} onClick={setQuickFilter} />
+          <FilterChip label="Contract expiring" value="expiring" current={quickFilter} onClick={setQuickFilter} />
         </div>
         <Button variant="primary" size="sm" onClick={() => setNewOpen(true)}>
           <Plus className="size-3.5" />
@@ -116,10 +150,22 @@ export function BoaterList() {
   );
 }
 
-function FilterChip({ label, active = false }: { label: string; active?: boolean }) {
+function FilterChip<V extends string>({
+  label,
+  value,
+  current,
+  onClick,
+}: {
+  label: string;
+  value: V;
+  current: V;
+  onClick: (v: V) => void;
+}) {
+  const active = current === value;
   return (
     <button
       type="button"
+      onClick={() => onClick(value)}
       className={
         "rounded-full border px-2.5 py-1 text-[11px] transition-colors " +
         (active

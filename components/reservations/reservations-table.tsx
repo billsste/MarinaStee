@@ -4,21 +4,69 @@ import * as React from "react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { BOATERS, getSlip } from "@/lib/mock-data";
-import { useReservations } from "@/lib/client-store";
+import { BOATERS, getSlip, SLIPS } from "@/lib/mock-data";
+import {
+  deleteReservation,
+  upsertReservation,
+  useReservations,
+} from "@/lib/client-store";
+import { RecordEditDialog, type FieldSpec } from "@/components/record-edit-dialog";
 import { NewReservationSheet } from "./new-reservation-sheet";
+import type { Reservation } from "@/lib/types";
 
 /*
- * "All reservations" table at the bottom of /reservations. Reads live from
- * the client store so newly-created reservations appear immediately. The
- * top arrivals/departures/upcoming panels still render server-side from the
- * static mock — fine for date-windowed queries since brand-new entries
- * default to today's arrival when created via the sheet, and re-render
- * here without a page reload.
+ * "All reservations" table at the bottom of /reservations. Row click opens
+ * RecordEditDialog seeded with the row. + New reservation still uses the
+ * existing sheet so the create-flow path matches the agent's
+ * create_reservation tool exactly.
  */
+
+const RESERVATION_FIELDS: FieldSpec<Reservation>[] = [
+  { key: "number", label: "Number", kind: "text", required: true, placeholder: "R-1234" },
+  {
+    key: "boater_id",
+    label: "Boater",
+    kind: "select",
+    required: true,
+    options: BOATERS.map((b) => ({ value: b.id, label: b.display_name })),
+  },
+  {
+    key: "slip_id",
+    label: "Slip",
+    kind: "select",
+    required: true,
+    col: 2,
+    options: SLIPS.map((s) => ({ value: s.id, label: `${s.dock} · ${s.number}` })),
+  },
+  {
+    key: "type",
+    label: "Type",
+    kind: "select",
+    required: true,
+    col: 2,
+    options: ["annual", "seasonal", "monthly", "transient", "recurring"].map((t) => ({ value: t, label: t })),
+  },
+  { key: "arrival_date", label: "Arrival", kind: "date", required: true, col: 2 },
+  { key: "departure_date", label: "Departure", kind: "date", required: true, col: 2 },
+  {
+    key: "status",
+    label: "Status",
+    kind: "select",
+    required: true,
+    options: ["scheduled", "occupied", "completed", "cancelled"].map((s) => ({ value: s, label: s })),
+  },
+];
+
 export function ReservationsTable() {
   const reservations = useReservations();
   const [newOpen, setNewOpen] = React.useState(false);
+  const [editing, setEditing] = React.useState<Reservation | undefined>();
+  const [editOpen, setEditOpen] = React.useState(false);
+
+  function openEdit(r: Reservation) {
+    setEditing(r);
+    setEditOpen(true);
+  }
 
   return (
     <>
@@ -56,13 +104,21 @@ export function ReservationsTable() {
                     : r.status === "completed" ? "neutral"
                     : "danger";
                   return (
-                    <tr key={r.id} className="border-b border-hairline last:border-b-0 hover:bg-surface-2">
+                    <tr
+                      key={r.id}
+                      onClick={() => openEdit(r)}
+                      className="cursor-pointer border-b border-hairline last:border-b-0 transition-colors hover:bg-surface-2"
+                    >
                       <Td className="font-mono text-[12px] font-medium text-fg">
                         {r.number}{r.seq !== "1/1" ? ` ${r.seq}` : ""}
                       </Td>
                       <Td>
                         {boater ? (
-                          <Link href={`/boaters/${boater.id}`} className="text-primary hover:underline">
+                          <Link
+                            href={`/boaters/${boater.id}`}
+                            className="text-primary hover:underline"
+                            onClick={(e) => e.stopPropagation()}
+                          >
                             {boater.display_name}
                           </Link>
                         ) : (
@@ -89,6 +145,16 @@ export function ReservationsTable() {
       </div>
 
       <NewReservationSheet open={newOpen} onOpenChange={setNewOpen} />
+      <RecordEditDialog<Reservation>
+        open={editOpen}
+        onOpenChange={setEditOpen}
+        title={editing ? `Edit reservation — ${editing.number}` : "Reservation"}
+        description="Changing dates / status updates the calendar, today's queue, and the boater's history immediately."
+        record={editing}
+        fields={RESERVATION_FIELDS}
+        onSave={(values) => upsertReservation(values as Reservation)}
+        onDelete={editing ? (r) => deleteReservation(r.id) : undefined}
+      />
     </>
   );
 }

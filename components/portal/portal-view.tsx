@@ -23,6 +23,7 @@ import {
   getVesselsForBoater,
 } from "@/lib/mock-data";
 import {
+  upsertContract,
   useCardsForBoater,
   useContractsForBoater,
   useLedgerForBoater,
@@ -355,9 +356,37 @@ export function PortalView({ boaterId }: { boaterId: string }) {
                     </div>
                     <div className="flex shrink-0 items-center gap-1.5">
                       {isDraft ? (
-                        <Button variant="primary" size="sm">Sign now</Button>
+                        <Button
+                          variant="primary"
+                          size="sm"
+                          onClick={() => {
+                            // Demo flow: marks the contract executed + active.
+                            // Production swap-in: navigate to a dedicated
+                            // contract-signing variant of /sign/[token].
+                            upsertContract({
+                              ...c,
+                              status: "active",
+                              signed_at: new Date().toISOString(),
+                            });
+                          }}
+                        >
+                          Sign now
+                        </Button>
                       ) : (
-                        <Button variant="ghost" size="sm">View PDF</Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            if (c.signed_pdf_url) {
+                              window.open(c.signed_pdf_url, "_blank", "noopener");
+                            } else {
+                              // No PDF on file — silently no-op rather than error
+                              // (production would fetch + render the signed PDF here).
+                            }
+                          }}
+                        >
+                          View PDF
+                        </Button>
                       )}
                     </div>
                   </li>
