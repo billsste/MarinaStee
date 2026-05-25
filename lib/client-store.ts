@@ -8,6 +8,7 @@ import {
   CONTRACTS,
   INSURANCE_CERTIFICATES,
   LEDGER,
+  MARINA_EVENTS,
   POS_LOCATIONS,
   POS_ORDERS,
   RESERVATIONS,
@@ -23,6 +24,7 @@ import type {
   Contract,
   InsuranceCertificate,
   LedgerEntry,
+  MarinaEvent,
   PosOrder,
   QbSyncStatus,
   Reservation,
@@ -81,6 +83,7 @@ type State = {
   insurance: InsuranceCertificate[];
   waitlist: WaitlistEntry[];
   staffNotes: StaffNote[];
+  events: MarinaEvent[];
 };
 
 let state: State = {
@@ -99,6 +102,7 @@ let state: State = {
   insurance: [...INSURANCE_CERTIFICATES],
   waitlist: [...WAITLIST],
   staffNotes: [...STAFF_NOTES],
+  events: [...MARINA_EVENTS],
 };
 
 const subscribers = new Set<() => void>();
@@ -283,6 +287,33 @@ export function addContract(c: Contract) {
   notify();
 }
 
+export function addMarinaEvent(e: MarinaEvent) {
+  state = { ...state, events: [e, ...state.events] };
+  notify();
+}
+
+export function toggleEventRsvp(eventId: string, boaterId: string) {
+  state = {
+    ...state,
+    events: state.events.map((e) => {
+      if (e.id !== eventId) return e;
+      const has = e.rsvp_boater_ids.includes(boaterId);
+      return {
+        ...e,
+        rsvp_boater_ids: has
+          ? e.rsvp_boater_ids.filter((id) => id !== boaterId)
+          : [...e.rsvp_boater_ids, boaterId],
+      };
+    }),
+  };
+  notify();
+}
+
+export function deleteMarinaEvent(id: string) {
+  state = { ...state, events: state.events.filter((e) => e.id !== id) };
+  notify();
+}
+
 export function addStaffNote(n: StaffNote) {
   state = { ...state, staffNotes: [n, ...state.staffNotes] };
   notify();
@@ -410,6 +441,10 @@ export function useWaitlist(): WaitlistEntry[] {
   return useStore().waitlist;
 }
 
+export function useMarinaEvents(): MarinaEvent[] {
+  return useStore().events;
+}
+
 export function useStaffNotesForBoater(boaterId: string): StaffNote[] {
   const s = useStore();
   return s.staffNotes.filter((n) => n.boater_id === boaterId);
@@ -492,4 +527,8 @@ export function nextWaitlistId() {
 
 export function nextStaffNoteId() {
   return `sn_runtime_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+}
+
+export function nextEventId() {
+  return `ev_runtime_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
 }

@@ -68,6 +68,36 @@ export interface Vessel {
  * (which is two-way and boater-visible) — these are STAFF ONLY and never
  * surface in the portal or get sent out.
  */
+/*
+ * MarinaEvent — non-reservation things on the calendar. Regattas, tournaments,
+ * dock parties, fireworks, season opening/closing. Distinct from Reservation
+ * (which is a slip booking) but rendered alongside on the existing calendar.
+ */
+export type MarinaEventType =
+  | "social"        // dock party, raft-up, end-of-season
+  | "tournament"    // fishing, sailing
+  | "regatta"
+  | "fireworks"
+  | "season"        // opening / closing day
+  | "maintenance"   // dredging window, dock work
+  | "other";
+
+export interface MarinaEvent {
+  id: string;
+  title: string;
+  description?: string;
+  event_type: MarinaEventType;
+  start_date: string;       // ISO date (all-day) — start
+  end_date: string;         // ISO date — inclusive end; same as start for one-day
+  start_time?: string;      // HH:mm, optional (omitted = all day)
+  end_time?: string;
+  location?: string;        // "Damsite A Dock", "Pavilion", "Channel"
+  capacity?: number;        // optional cap on RSVPs
+  rsvp_boater_ids: string[]; // who's coming
+  public_to_boaters: boolean; // true = surface on /portal calendar (TBD)
+  created_at: string;
+}
+
 export interface StaffNote {
   id: string;
   boater_id: string;

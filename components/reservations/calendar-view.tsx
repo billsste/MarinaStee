@@ -2,14 +2,29 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { ChevronLeft, ChevronRight, X } from "lucide-react";
+import {
+  CalendarPlus,
+  ChevronLeft,
+  ChevronRight,
+  Flag,
+  PartyPopper,
+  Sparkles,
+  Trophy,
+  Wrench,
+  X,
+} from "lucide-react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { BOATERS, getSlip } from "@/lib/mock-data";
-import { useReservations } from "@/lib/client-store";
+import {
+  toggleEventRsvp,
+  useMarinaEvents,
+  useReservations,
+} from "@/lib/client-store";
 import { cn } from "@/lib/utils";
-import type { Reservation, ReservationType } from "@/lib/types";
+import { AddEventSheet } from "@/components/events/add-event-sheet";
+import type { MarinaEvent, MarinaEventType, Reservation, ReservationType } from "@/lib/types";
 
 /*
  * Month-grid calendar for reservations. Each cell shows reservations active
@@ -32,14 +47,33 @@ const TYPE_TONE: Record<ReservationType, string> = {
   recurring: "bg-status-warn/20 border-status-warn/40 text-status-warn",
 };
 
+// Marina events use a distinct purple swatch so they never visually conflict
+// with reservation bars on the same day. All events share the tone — the icon
+// communicates type.
+const EVENT_TONE = "bg-[#c084fc]/20 border-[#c084fc]/50 text-[#7c3aed] dark:text-[#c084fc]";
+
+const EVENT_ICON: Record<MarinaEventType, React.ComponentType<{ className?: string }>> = {
+  social: PartyPopper,
+  tournament: Trophy,
+  regatta: Flag,
+  fireworks: Sparkles,
+  season: Flag,
+  maintenance: Wrench,
+  other: Sparkles,
+};
+
 export function CalendarView() {
   const reservations = useReservations();
+  const events = useMarinaEvents();
   // Anchor month at today's month; users can navigate with prev/next.
   const [anchor, setAnchor] = React.useState<Date>(() => {
     const now = new Date();
     return new Date(now.getFullYear(), now.getMonth(), 1);
   });
   const [selectedDate, setSelectedDate] = React.useState<string | null>(null);
+  const [selectedEventId, setSelectedEventId] = React.useState<string | null>(null);
+  const [showEvents, setShowEvents] = React.useState(true);
+  const [addEventOpen, setAddEventOpen] = React.useState(false);
 
   const days = React.useMemo(() => buildMonthGrid(anchor), [anchor]);
 
@@ -61,6 +95,29 @@ export function CalendarView() {
     }
     return m;
   }, [reservations]);
+
+  // Same pattern for events
+  const eventsByDate = React.useMemo(() => {
+    const m = new Map<string, MarinaEvent[]>();
+    if (!showEvents) return m;
+    for (const e of events) {
+      const start = new Date(e.start_date);
+      const end = new Date(e.end_date);
+      const cursor = new Date(start);
+      while (cursor <= end) {
+        const key = cursor.toISOString().slice(0, 10);
+        const list = m.get(key) ?? [];
+        list.push(e);
+        m.set(key, list);
+        cursor.setDate(cursor.getDate() + 1);
+      }
+    }
+    return m;
+  }, [events, showEvents]);
+
+  const selectedEvent = selectedEventId
+    ? events.find((e) => e.id === selectedEventId) ?? null
+    : null;
 
   const monthLabel = anchor.toLocaleDateString(undefined, {
     month: "long",
@@ -102,6 +159,19 @@ export function CalendarView() {
           >
             Today
           </Button>
+          <label className="ml-2 inline-flex items-center gap-1.5 text-[12px] text-fg-subtle">
+            <input
+              type="checkbox"
+              checked={showEvents}
+              onChange={(e) => setShowEvents(e.target.checked)}
+              className="size-3.5"
+            />
+            Show events
+          </label>
+          <Button variant="primary" size="sm" onClick={() => setAddEventOpen(true)}>
+            <CalendarPlus className="size-3.5" />
+            New event
+          </Button>
         </div>
 
         <div className="flex flex-wrap items-center gap-2 text-[11px] text-fg-tertiary">
@@ -110,6 +180,7 @@ export function CalendarView() {
           <LegendDot label="Monthly" cls={TYPE_TONE.monthly} />
           <LegendDot label="Transient" cls={TYPE_TONE.transient} />
           <LegendDot label="Recurring" cls={TYPE_TONE.recurring} />
+          {showEvents && <LegendDot label="Event" cls={EVENT_TONE} />}
         </div>
       </div>
 
@@ -128,15 +199,29 @@ export function CalendarView() {
           const key = day.iso;
           const inMonth = day.inMonth;
           const dayRes = byDate.get(key) ?? [];
+          const dayEvents = eventsByDate.get(key) ?? [];
           const isToday = key === todayKey;
           const isSelected = key === selectedDate;
+          const totalItems = dayRes.length + dayEvents.length;
+          // Show events first (they're rarer / more important), then reservations
+          const visibleEvents = dayEvents.slice(0, 2);
+          const remainingSlots = Math.max(0, 3 - visibleEvents.length);
+          const visibleRes = dayRes.slice(0, remainingSlots);
+          const hiddenCount = totalItems - visibleEvents.length - visibleRes.length;
           return (
-            <button
+            <div
               key={key}
-              type="button"
+              role="button"
+              tabIndex={0}
               onClick={() => setSelectedDate(key)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  setSelectedDate(key);
+                }
+              }}
               className={cn(
-                "flex min-h-[88px] flex-col gap-1 bg-surface-1 px-1.5 py-1 text-left transition-colors hover:bg-surface-2",
+                "flex min-h-[88px] cursor-pointer flex-col gap-1 bg-surface-1 px-1.5 py-1 text-left transition-colors hover:bg-surface-2 focus:outline-none focus:ring-1 focus:ring-primary",
                 !inMonth && "bg-surface-2/60",
                 isToday && "ring-1 ring-inset ring-primary/50",
                 isSelected && "bg-primary-soft/40"
@@ -152,7 +237,28 @@ export function CalendarView() {
                 {day.day}
               </span>
               <div className="flex flex-col gap-0.5">
-                {dayRes.slice(0, 3).map((r) => {
+                {visibleEvents.map((e) => {
+                  const Icon = EVENT_ICON[e.event_type];
+                  return (
+                    <button
+                      key={e.id + key}
+                      type="button"
+                      onClick={(ev) => {
+                        ev.stopPropagation();
+                        setSelectedEventId(e.id);
+                      }}
+                      className={cn(
+                        "flex items-center gap-0.5 truncate rounded-[3px] border-l-2 px-1 py-px text-left text-[10px] font-medium hover:brightness-110",
+                        EVENT_TONE
+                      )}
+                      title={e.title}
+                    >
+                      <Icon className="size-2.5 shrink-0" />
+                      <span className="truncate">{e.title}</span>
+                    </button>
+                  );
+                })}
+                {visibleRes.map((r) => {
                   const isStart = r.arrival_date === key;
                   const isEnd = r.departure_date === key;
                   const boater = BOATERS.find((b) => b.id === r.boater_id);
@@ -172,11 +278,11 @@ export function CalendarView() {
                     </div>
                   );
                 })}
-                {dayRes.length > 3 && (
-                  <div className="text-[10px] text-fg-tertiary">+{dayRes.length - 3} more</div>
+                {hiddenCount > 0 && (
+                  <div className="text-[10px] text-fg-tertiary">+{hiddenCount} more</div>
                 )}
               </div>
-            </button>
+            </div>
           );
         })}
       </div>
@@ -188,7 +294,23 @@ export function CalendarView() {
       <DayDrawer
         date={selectedDate}
         reservations={selectedDate ? byDate.get(selectedDate) ?? [] : []}
+        events={selectedDate ? eventsByDate.get(selectedDate) ?? [] : []}
         onClose={() => setSelectedDate(null)}
+        onOpenEvent={(id) => {
+          setSelectedDate(null);
+          setSelectedEventId(id);
+        }}
+      />
+
+      <EventDetailDialog
+        event={selectedEvent}
+        onClose={() => setSelectedEventId(null)}
+      />
+
+      <AddEventSheet
+        open={addEventOpen}
+        onOpenChange={setAddEventOpen}
+        defaultDate={selectedDate ?? undefined}
       />
     </div>
   );
@@ -199,11 +321,15 @@ export function CalendarView() {
 function DayDrawer({
   date,
   reservations,
+  events,
   onClose,
+  onOpenEvent,
 }: {
   date: string | null;
   reservations: Reservation[];
+  events: MarinaEvent[];
   onClose: () => void;
+  onOpenEvent: (id: string) => void;
 }) {
   if (!date) return null;
   const friendly = new Date(date).toLocaleDateString(undefined, {
@@ -232,6 +358,7 @@ function DayDrawer({
                 {arrivals.length} arrival{arrivals.length === 1 ? "" : "s"} ·{" "}
                 {departures.length} departure{departures.length === 1 ? "" : "s"} ·{" "}
                 {occupied.length} mid-stay
+                {events.length > 0 ? ` · ${events.length} event${events.length === 1 ? "" : "s"}` : ""}
               </DialogPrimitive.Description>
             </div>
             <DialogPrimitive.Close
@@ -243,9 +370,148 @@ function DayDrawer({
           </header>
 
           <div className="space-y-4 overflow-y-auto p-5" style={{ maxHeight: "calc(100vh - 80px)" }}>
+            {events.length > 0 && (
+              <div>
+                <h3 className="mb-2 inline-flex items-center gap-2 text-[12px] font-medium uppercase tracking-wide text-fg-subtle">
+                  Events
+                  <Badge tone="primary" size="sm">{events.length}</Badge>
+                </h3>
+                <ul className="space-y-1.5">
+                  {events.map((e) => {
+                    const Icon = EVENT_ICON[e.event_type];
+                    return (
+                      <li key={e.id}>
+                        <button
+                          type="button"
+                          onClick={() => onOpenEvent(e.id)}
+                          className={cn(
+                            "flex w-full items-start gap-2 rounded-[8px] border px-3 py-2 text-left",
+                            EVENT_TONE,
+                            "hover:brightness-110"
+                          )}
+                        >
+                          <Icon className="mt-0.5 size-3.5 shrink-0" />
+                          <div className="min-w-0">
+                            <div className="text-[13px] font-medium">{e.title}</div>
+                            <div className="text-[11px] opacity-80">
+                              {e.start_time ? `${e.start_time}${e.end_time ? `–${e.end_time}` : ""}` : "All day"}
+                              {e.location ? ` · ${e.location}` : ""}
+                            </div>
+                          </div>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            )}
+
             <DaySection title="Arriving" tone="ok" items={arrivals} />
             <DaySection title="Departing" tone="warn" items={departures} />
             <DaySection title="Mid-stay" tone="neutral" items={occupied} />
+          </div>
+        </DialogPrimitive.Content>
+      </DialogPrimitive.Portal>
+    </DialogPrimitive.Root>
+  );
+}
+
+// Event detail dialog — used by both the day-drawer event rows and the
+// inline event bars in the calendar grid.
+function EventDetailDialog({
+  event,
+  onClose,
+}: {
+  event: MarinaEvent | null;
+  onClose: () => void;
+}) {
+  if (!event) return null;
+  const Icon = EVENT_ICON[event.event_type];
+  const sameDay = event.start_date === event.end_date;
+  const dateLine = sameDay
+    ? new Date(event.start_date).toLocaleDateString(undefined, {
+        weekday: "long", month: "long", day: "numeric", year: "numeric",
+      })
+    : `${event.start_date} → ${event.end_date}`;
+  const timeLine = event.start_time
+    ? `${event.start_time}${event.end_time ? ` – ${event.end_time}` : ""}`
+    : "All day";
+  const rsvps = event.rsvp_boater_ids
+    .map((id) => BOATERS.find((b) => b.id === id))
+    .filter(Boolean);
+
+  return (
+    <DialogPrimitive.Root open={Boolean(event)} onOpenChange={(o) => !o && onClose()}>
+      <DialogPrimitive.Portal>
+        <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
+        <DialogPrimitive.Content className="fixed left-1/2 top-1/2 z-50 w-full max-w-[480px] -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-[14px] border border-hairline bg-surface-1 shadow-2xl focus:outline-none data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0">
+          <header className="flex items-start justify-between gap-3 border-b border-hairline px-5 py-4">
+            <div className="flex items-start gap-3">
+              <div className={cn("flex size-9 shrink-0 items-center justify-center rounded-[10px]", EVENT_TONE)}>
+                <Icon className="size-4" />
+              </div>
+              <div>
+                <DialogPrimitive.Title className="display-tight text-[18px] font-semibold text-fg">
+                  {event.title}
+                </DialogPrimitive.Title>
+                <DialogPrimitive.Description className="mt-0.5 text-[12px] text-fg-subtle">
+                  {dateLine} · {timeLine}
+                  {event.location ? ` · ${event.location}` : ""}
+                </DialogPrimitive.Description>
+              </div>
+            </div>
+            <DialogPrimitive.Close
+              aria-label="Close"
+              className="rounded-md p-1 text-fg-subtle hover:bg-surface-2 hover:text-fg"
+            >
+              <X className="size-4" />
+            </DialogPrimitive.Close>
+          </header>
+
+          <div className="space-y-3 p-5">
+            <div className="flex flex-wrap items-center gap-1.5">
+              <Badge tone="outline" size="sm">{event.event_type}</Badge>
+              {event.public_to_boaters && <Badge tone="primary" size="sm">Visible to boaters</Badge>}
+              {event.capacity && (
+                <Badge
+                  tone={rsvps.length >= event.capacity ? "danger" : "neutral"}
+                  size="sm"
+                >
+                  {rsvps.length} / {event.capacity} RSVPs
+                </Badge>
+              )}
+              {!event.capacity && rsvps.length > 0 && (
+                <Badge tone="neutral" size="sm">{rsvps.length} RSVPs</Badge>
+              )}
+            </div>
+
+            {event.description && (
+              <p className="text-[13px] leading-5 text-fg">{event.description}</p>
+            )}
+
+            {rsvps.length > 0 && (
+              <div>
+                <div className="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-fg-tertiary">
+                  RSVPs
+                </div>
+                <ul className="space-y-1">
+                  {rsvps.map((b) => (
+                    <li key={b!.id} className="flex items-center justify-between text-[12px]">
+                      <Link href={`/boaters/${b!.id}`} className="text-fg hover:text-primary">
+                        {b!.display_name}
+                      </Link>
+                      <button
+                        type="button"
+                        onClick={() => toggleEventRsvp(event.id, b!.id)}
+                        className="text-[11px] text-fg-tertiary hover:text-status-danger"
+                      >
+                        Remove
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </div>
         </DialogPrimitive.Content>
       </DialogPrimitive.Portal>

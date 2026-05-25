@@ -25,6 +25,7 @@ import type {
   InsuranceCertificate,
   WaitlistEntry,
   StaffNote,
+  MarinaEvent,
 } from "@/lib/types";
 
 export const USERS: User[] = [
@@ -950,6 +951,83 @@ export const INSURANCE_CERTIFICATES: InsuranceCertificate[] = [
     pdf_url: "/mock/coi-emmons-old.pdf",
     uploaded_at: "2024-01-29T09:00:00Z",
     uploaded_by: "marina",
+  },
+];
+
+// Marina-hosted events. Rendered as a layer on the existing /reservations
+// Calendar (different color from reservations). Not slip bookings — these
+// are marina-wide things like raft-ups and tournaments.
+export const MARINA_EVENTS: MarinaEvent[] = [
+  {
+    id: "ev_memorial_raftup",
+    title: "Memorial Day raft-up",
+    description: "Annual all-marina raft-up in the channel. BYO grill. Live music starts 3pm.",
+    event_type: "social",
+    start_date: "2026-05-25",
+    end_date: "2026-05-25",
+    start_time: "14:00",
+    end_time: "21:00",
+    location: "Channel — south of A Dock",
+    capacity: 40,
+    rsvp_boater_ids: ["b_emmons", "b_peterson"],
+    public_to_boaters: true,
+    created_at: "2026-04-01T10:00:00Z",
+  },
+  {
+    id: "ev_jr_fishing",
+    title: "Junior fishing tournament",
+    description: "Kids 12 and under. Free entry, prizes for biggest catch in 3 categories. Registration at the harbormaster shed 7am.",
+    event_type: "tournament",
+    start_date: "2026-06-13",
+    end_date: "2026-06-13",
+    start_time: "07:00",
+    end_time: "13:00",
+    location: "Fuel dock + community pavilion",
+    capacity: 30,
+    rsvp_boater_ids: ["b_peterson"],
+    public_to_boaters: true,
+    created_at: "2026-04-15T14:00:00Z",
+  },
+  {
+    id: "ev_fireworks",
+    title: "Independence Day fireworks viewing",
+    description: "Best seats are at our channel mouth. Marina opens the seawall to the public from 8pm. Slip holders raft up at the pavilion.",
+    event_type: "fireworks",
+    start_date: "2026-07-04",
+    end_date: "2026-07-04",
+    start_time: "20:00",
+    end_time: "23:00",
+    location: "Pavilion + channel",
+    rsvp_boater_ids: [],
+    public_to_boaters: true,
+    created_at: "2026-04-20T09:00:00Z",
+  },
+  {
+    id: "ev_dredging",
+    title: "Channel dredging — partial closure",
+    description: "Contractor working in main channel 8am-4pm. North entrance only. Notify your guests.",
+    event_type: "maintenance",
+    start_date: "2026-06-02",
+    end_date: "2026-06-04",
+    location: "Main channel",
+    rsvp_boater_ids: [],
+    public_to_boaters: true,
+    created_at: "2026-05-10T11:00:00Z",
+  },
+  {
+    id: "ev_season_close",
+    title: "End-of-season party",
+    description: "Pavilion. Catered dinner, slideshow of the season, awards for biggest fish + best wake.",
+    event_type: "social",
+    start_date: "2026-10-04",
+    end_date: "2026-10-04",
+    start_time: "17:00",
+    end_time: "22:00",
+    location: "Pavilion",
+    capacity: 80,
+    rsvp_boater_ids: ["b_emmons"],
+    public_to_boaters: true,
+    created_at: "2026-05-01T12:00:00Z",
   },
 ];
 
