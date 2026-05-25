@@ -1,3 +1,5 @@
+"use client";
+
 import Link from "next/link";
 import { Anchor, Ship, Sun, MoonStar, Calendar } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -9,6 +11,7 @@ import {
   getSlip,
   initialsOf,
 } from "@/lib/mock-data";
+import { updateReservationStatus } from "@/lib/client-store";
 import type { Reservation } from "@/lib/types";
 
 export function ReservationCard({
@@ -84,18 +87,28 @@ export function ReservationCard({
         </div>
         <div className="flex shrink-0 flex-col items-end gap-1">
           {variant === "arrival" && (
-            <Button variant="primary" size="sm">
-              Check in
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={() => updateReservationStatus(reservation.id, "occupied")}
+              disabled={reservation.status === "occupied"}
+            >
+              {reservation.status === "occupied" ? "Checked in" : "Check in"}
             </Button>
           )}
           {variant === "departure" && (
-            <Button variant="secondary" size="sm">
-              Check out
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => updateReservationStatus(reservation.id, "completed")}
+              disabled={reservation.status === "completed"}
+            >
+              {reservation.status === "completed" ? "Checked out" : "Check out"}
             </Button>
           )}
-          {variant === "upcoming" && (
-            <Button variant="ghost" size="sm">
-              View
+          {variant === "upcoming" && boater && (
+            <Button variant="ghost" size="sm" asChild>
+              <Link href={`/boaters/${boater.id}`}>View</Link>
             </Button>
           )}
         </div>

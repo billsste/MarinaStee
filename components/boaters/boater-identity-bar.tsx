@@ -1,11 +1,15 @@
 "use client";
 
+import * as React from "react";
 import { MessageSquarePlus, Wrench, CalendarPlus, MoreHorizontal } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { formatMoney, initialsOf } from "@/lib/mock-data";
 import { useLedgerForBoater } from "@/lib/client-store";
+import { NewMessageSheet } from "@/components/comms/new-message-sheet";
+import { NewWorkOrderSheet } from "@/components/work-orders/new-work-order-sheet";
+import { NewReservationSheet } from "@/components/reservations/new-reservation-sheet";
 import type { Boater, Reservation } from "@/lib/types";
 
 export function BoaterIdentityBar({
@@ -23,6 +27,11 @@ export function BoaterIdentityBar({
   const balanceTone = openBalance > 0 ? "warn" : "ok";
   const cadenceLabel =
     boater.billing_cadence.charAt(0).toUpperCase() + boater.billing_cadence.slice(1);
+
+  // Top-of-page action sheets (per user audit: previously all 3 were dead).
+  const [msgOpen, setMsgOpen] = React.useState(false);
+  const [woOpen, setWoOpen] = React.useState(false);
+  const [resOpen, setResOpen] = React.useState(false);
 
   return (
     <div className="rounded-[12px] border border-hairline bg-surface-1 px-5 py-4">
@@ -70,13 +79,13 @@ export function BoaterIdentityBar({
         </div>
 
         <div className="flex items-center gap-2">
-          <Button variant="secondary" size="md">
+          <Button variant="secondary" size="md" onClick={() => setMsgOpen(true)}>
             <MessageSquarePlus className="size-4" /> Message
           </Button>
-          <Button variant="secondary" size="md">
+          <Button variant="secondary" size="md" onClick={() => setWoOpen(true)}>
             <Wrench className="size-4" /> Work Order
           </Button>
-          <Button variant="primary" size="md">
+          <Button variant="primary" size="md" onClick={() => setResOpen(true)}>
             <CalendarPlus className="size-4" /> Reservation
           </Button>
           <Button variant="ghost" size="icon" aria-label="More actions">
@@ -84,6 +93,10 @@ export function BoaterIdentityBar({
           </Button>
         </div>
       </div>
+
+      <NewMessageSheet open={msgOpen} onOpenChange={setMsgOpen} defaultBoaterId={boater.id} />
+      <NewWorkOrderSheet open={woOpen} onOpenChange={setWoOpen} defaultBoaterId={boater.id} />
+      <NewReservationSheet open={resOpen} onOpenChange={setResOpen} defaultBoaterId={boater.id} />
     </div>
   );
 }

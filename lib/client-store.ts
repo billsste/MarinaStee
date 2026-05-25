@@ -284,6 +284,14 @@ export function addReservation(r: Reservation) {
   notify();
 }
 
+export function updateReservationStatus(id: string, status: Reservation["status"]) {
+  state = {
+    ...state,
+    reservations: state.reservations.map((r) => (r.id === id ? { ...r, status } : r)),
+  };
+  notify();
+}
+
 export function addBoater(b: Boater) {
   state = { ...state, boaters: [b, ...state.boaters] };
   notify();
