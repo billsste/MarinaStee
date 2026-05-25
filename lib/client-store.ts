@@ -2,6 +2,7 @@
 
 import { useSyncExternalStore } from "react";
 import {
+  ADDITIONAL_FEES,
   BOATERS,
   CARDS_ON_FILE,
   COMMUNICATIONS,
@@ -11,6 +12,7 @@ import {
   MARINA_EVENTS,
   POS_LOCATIONS,
   POS_ORDERS,
+  RATES,
   RESERVATIONS,
   STAFF_NOTES,
   VESSELS,
@@ -18,6 +20,7 @@ import {
   WORK_ORDERS,
 } from "@/lib/mock-data";
 import type {
+  AdditionalFee,
   Boater,
   CardOnFile,
   Communication,
@@ -27,6 +30,7 @@ import type {
   MarinaEvent,
   PosOrder,
   QbSyncStatus,
+  Rate,
   Reservation,
   StaffNote,
   Vessel,
@@ -84,6 +88,8 @@ type State = {
   waitlist: WaitlistEntry[];
   staffNotes: StaffNote[];
   events: MarinaEvent[];
+  rates: Rate[];
+  fees: AdditionalFee[];
 };
 
 let state: State = {
@@ -103,6 +109,8 @@ let state: State = {
   waitlist: [...WAITLIST],
   staffNotes: [...STAFF_NOTES],
   events: [...MARINA_EVENTS],
+  rates: [...RATES],
+  fees: [...ADDITIONAL_FEES],
 };
 
 const subscribers = new Set<() => void>();
@@ -301,6 +309,34 @@ export function updateContract(id: string, patch: Partial<Contract>) {
   notify();
 }
 
+// ── Rates CRUD ───────────────────────────────────────────────
+export function upsertRate(r: Rate) {
+  const exists = state.rates.some((x) => x.id === r.id);
+  state = {
+    ...state,
+    rates: exists ? state.rates.map((x) => (x.id === r.id ? r : x)) : [r, ...state.rates],
+  };
+  notify();
+}
+export function deleteRate(id: string) {
+  state = { ...state, rates: state.rates.filter((r) => r.id !== id) };
+  notify();
+}
+
+// ── Fees CRUD ────────────────────────────────────────────────
+export function upsertFee(f: AdditionalFee) {
+  const exists = state.fees.some((x) => x.id === f.id);
+  state = {
+    ...state,
+    fees: exists ? state.fees.map((x) => (x.id === f.id ? f : x)) : [f, ...state.fees],
+  };
+  notify();
+}
+export function deleteFee(id: string) {
+  state = { ...state, fees: state.fees.filter((f) => f.id !== id) };
+  notify();
+}
+
 export function addMarinaEvent(e: MarinaEvent) {
   state = { ...state, events: [e, ...state.events] };
   notify();
@@ -463,6 +499,14 @@ export function useMarinaEvents(): MarinaEvent[] {
   return useStore().events;
 }
 
+export function useRates(): Rate[] {
+  return useStore().rates;
+}
+
+export function useFees(): AdditionalFee[] {
+  return useStore().fees;
+}
+
 export function useStaffNotesForBoater(boaterId: string): StaffNote[] {
   const s = useStore();
   return s.staffNotes.filter((n) => n.boater_id === boaterId);
@@ -549,4 +593,12 @@ export function nextStaffNoteId() {
 
 export function nextEventId() {
   return `ev_runtime_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+}
+
+export function nextRateId() {
+  return `rate_runtime_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+}
+
+export function nextFeeId() {
+  return `fee_runtime_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
 }
