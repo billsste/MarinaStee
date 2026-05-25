@@ -6,6 +6,7 @@ import {
   BOATERS,
   CARDS_ON_FILE,
   COMMUNICATIONS,
+  CONTRACT_TEMPLATES,
   CONTRACTS,
   INSURANCE_CERTIFICATES,
   LEDGER,
@@ -25,6 +26,7 @@ import type {
   CardOnFile,
   Communication,
   Contract,
+  ContractTemplate,
   InsuranceCertificate,
   LedgerEntry,
   MarinaEvent,
@@ -90,6 +92,7 @@ type State = {
   events: MarinaEvent[];
   rates: Rate[];
   fees: AdditionalFee[];
+  templates: ContractTemplate[];
 };
 
 let state: State = {
@@ -111,6 +114,7 @@ let state: State = {
   events: [...MARINA_EVENTS],
   rates: [...RATES],
   fees: [...ADDITIONAL_FEES],
+  templates: [...CONTRACT_TEMPLATES],
 };
 
 const subscribers = new Set<() => void>();
@@ -295,6 +299,22 @@ export function addContract(c: Contract) {
   notify();
 }
 
+export function upsertContract(c: Contract) {
+  const exists = state.contracts.some((x) => x.id === c.id);
+  state = {
+    ...state,
+    contracts: exists
+      ? state.contracts.map((x) => (x.id === c.id ? c : x))
+      : [c, ...state.contracts],
+  };
+  notify();
+}
+
+export function deleteContract(id: string) {
+  state = { ...state, contracts: state.contracts.filter((c) => c.id !== id) };
+  notify();
+}
+
 export function bulkAddContracts(contracts: Contract[]) {
   if (contracts.length === 0) return;
   state = { ...state, contracts: [...contracts, ...state.contracts] };
@@ -306,6 +326,22 @@ export function updateContract(id: string, patch: Partial<Contract>) {
     ...state,
     contracts: state.contracts.map((c) => (c.id === id ? { ...c, ...patch } : c)),
   };
+  notify();
+}
+
+// ── Templates CRUD ────────────────────────────────────────────
+export function upsertTemplate(t: ContractTemplate) {
+  const exists = state.templates.some((x) => x.id === t.id);
+  state = {
+    ...state,
+    templates: exists
+      ? state.templates.map((x) => (x.id === t.id ? t : x))
+      : [t, ...state.templates],
+  };
+  notify();
+}
+export function deleteTemplate(id: string) {
+  state = { ...state, templates: state.templates.filter((t) => t.id !== id) };
   notify();
 }
 
@@ -507,6 +543,10 @@ export function useFees(): AdditionalFee[] {
   return useStore().fees;
 }
 
+export function useContractTemplates(): ContractTemplate[] {
+  return useStore().templates;
+}
+
 export function useStaffNotesForBoater(boaterId: string): StaffNote[] {
   const s = useStore();
   return s.staffNotes.filter((n) => n.boater_id === boaterId);
@@ -601,4 +641,8 @@ export function nextRateId() {
 
 export function nextFeeId() {
   return `fee_runtime_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+}
+
+export function nextTemplateId() {
+  return `tpl_runtime_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
 }
