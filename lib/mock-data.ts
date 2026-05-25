@@ -103,6 +103,10 @@ const emmonsVessel: Vessel = {
   draft_inches: 30,
   height_inches: 9 * 12,
   registration: "NM2694EC",
+  photos: [
+    "https://images.unsplash.com/photo-1567899378494-47b22a2ae96a?w=400&h=300&fit=crop",
+    "https://images.unsplash.com/photo-1605281317010-fe5ffe798166?w=400&h=300&fit=crop",
+  ],
   active: true,
 };
 
@@ -685,6 +689,9 @@ const petersonSloop: Vessel = {
   beam_inches: 12 * 12 + 11,
   draft_inches: 5 * 12 + 6,
   registration: "NM4521BG",
+  photos: [
+    "https://images.unsplash.com/photo-1500627964684-141351970a7f?w=400&h=300&fit=crop",
+  ],
   active: true,
 };
 

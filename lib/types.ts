@@ -58,7 +58,8 @@ export interface Vessel {
   hull_vin?: string;
   registration?: string;
   power_hp?: number;
-  photo_url?: string;
+  photo_url?: string;       // legacy single-photo field (kept for back-compat)
+  photos?: string[];        // gallery — URLs ordered newest-first
   notes?: string;
   active: boolean;
 }

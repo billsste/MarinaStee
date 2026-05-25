@@ -55,33 +55,59 @@ export function VesselsTab({
         </Button>
       </div>
 
-      {allVessels.map((v) => (
-        <div key={v.id} className="rounded-[12px] border border-hairline bg-surface-1 p-5">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <h3 className="text-[16px] font-medium text-fg">{v.name}</h3>
-              <div className="text-[12px] text-fg-subtle">
-                {[v.year, v.make, v.model, v.color].filter(Boolean).join(" ")}
+      {allVessels.map((v) => {
+        const photos = v.photos ?? (v.photo_url ? [v.photo_url] : []);
+        return (
+          <div key={v.id} className="rounded-[12px] border border-hairline bg-surface-1 p-5">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 className="text-[16px] font-medium text-fg">{v.name}</h3>
+                <div className="text-[12px] text-fg-subtle">
+                  {[v.year, v.make, v.model, v.color].filter(Boolean).join(" ")}
+                </div>
+              </div>
+              <div className="flex items-center gap-1.5">
+                {v.active && <Badge tone="ok">Active</Badge>}
+                {v.vessel_type && <Badge tone="neutral">{v.vessel_type}</Badge>}
+                {v.fuel_type && <Badge tone="outline">{v.fuel_type}</Badge>}
               </div>
             </div>
-            <div className="flex items-center gap-1.5">
-              {v.active && <Badge tone="ok">Active</Badge>}
-              {v.vessel_type && <Badge tone="neutral">{v.vessel_type}</Badge>}
-              {v.fuel_type && <Badge tone="outline">{v.fuel_type}</Badge>}
+
+            {photos.length > 0 && (
+              <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
+                {photos.map((url, i) => (
+                  /* eslint-disable-next-line @next/next/no-img-element */
+                  <img
+                    key={url + i}
+                    src={url}
+                    alt={`${v.name} photo ${i + 1}`}
+                    loading="lazy"
+                    className="aspect-[4/3] w-full rounded-[8px] border border-hairline bg-surface-2 object-cover"
+                  />
+                ))}
+                <button
+                  type="button"
+                  className="aspect-[4/3] w-full rounded-[8px] border border-dashed border-hairline-strong bg-surface-2 text-[11px] text-fg-tertiary hover:bg-surface-3 hover:text-fg-subtle"
+                  title="Demo only — photo upload coming with backend"
+                >
+                  + Add photo
+                </button>
+              </div>
+            )}
+
+            <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-6">
+              <Stat label="LOA" value={formatInches(v.loa_inches)} />
+              <Stat label="Beam" value={formatInches(v.beam_inches)} />
+              <Stat label="Draft" value={formatInches(v.draft_inches)} />
+              <Stat label="Height" value={formatInches(v.height_inches)} />
+              <Stat label="Power" value={v.power_hp ? `${v.power_hp} hp` : "—"} />
+              <Stat label="VIN" value={v.hull_vin ?? "—"} />
+              <Stat label="Registration" value={v.registration ?? "—"} />
+              <Stat label="Co-owners" value={v.co_owner_ids.length > 0 ? `${v.co_owner_ids.length}` : "—"} />
             </div>
           </div>
-          <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-6">
-            <Stat label="LOA" value={formatInches(v.loa_inches)} />
-            <Stat label="Beam" value={formatInches(v.beam_inches)} />
-            <Stat label="Draft" value={formatInches(v.draft_inches)} />
-            <Stat label="Height" value={formatInches(v.height_inches)} />
-            <Stat label="Power" value={v.power_hp ? `${v.power_hp} hp` : "—"} />
-            <Stat label="VIN" value={v.hull_vin ?? "—"} />
-            <Stat label="Registration" value={v.registration ?? "—"} />
-            <Stat label="Co-owners" value={v.co_owner_ids.length > 0 ? `${v.co_owner_ids.length}` : "—"} />
-          </div>
-        </div>
-      ))}
+        );
+      })}
 
       <InsuranceCard boaterId={boaterId} uploadedBy="marina" />
 

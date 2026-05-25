@@ -1,6 +1,7 @@
 import { Zap, Droplets, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { RentalsAsk } from "@/components/rentals/rentals-ask";
+import { SpacesToolbar } from "@/components/rentals/spaces-toolbar";
 import {
   RENTAL_GROUPS,
   RENTAL_SPACES,
@@ -24,10 +25,13 @@ export default function SpacesPage() {
         placeholder="Ask about spaces — e.g. 'show me all 32-foot vacant slips with pump-out'"
         suggestions={[
           "Vacant > 30ft with power",
+          "Issue a day pass to a 28-footer for slip A12",
           "Out-of-service spaces",
           "Move David Emmons to A18",
         ]}
       />
+
+      <SpacesToolbar />
 
       <div className="space-y-3">
         {RENTAL_GROUPS.map((g) => {

@@ -221,23 +221,39 @@ export function PortalView({ boaterId }: { boaterId: string }) {
             <Empty text="No vessels on file. Contact the marina to register one." />
           ) : (
             <ul className="space-y-2">
-              {vessels.map((v) => (
-                <li
-                  key={v.id}
-                  className="flex items-start justify-between gap-3 rounded-[10px] border border-hairline bg-surface-2 px-4 py-3"
-                >
-                  <div>
-                    <div className="text-[14px] font-medium text-fg">{v.name}</div>
-                    <div className="text-[12px] text-fg-subtle">
-                      {[v.year, v.make, v.model].filter(Boolean).join(" ") || "—"}
+              {vessels.map((v) => {
+                const cover = (v.photos && v.photos[0]) ?? v.photo_url;
+                return (
+                  <li
+                    key={v.id}
+                    className="flex items-center gap-3 rounded-[10px] border border-hairline bg-surface-2 px-3 py-2.5"
+                  >
+                    {cover ? (
+                      /* eslint-disable-next-line @next/next/no-img-element */
+                      <img
+                        src={cover}
+                        alt={v.name}
+                        loading="lazy"
+                        className="size-14 shrink-0 rounded-[8px] border border-hairline object-cover"
+                      />
+                    ) : (
+                      <div className="flex size-14 shrink-0 items-center justify-center rounded-[8px] border border-dashed border-hairline-strong bg-surface-3 text-[9px] uppercase tracking-wide text-fg-tertiary">
+                        no photo
+                      </div>
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <div className="text-[14px] font-medium text-fg">{v.name}</div>
+                      <div className="text-[12px] text-fg-subtle">
+                        {[v.year, v.make, v.model].filter(Boolean).join(" ") || "—"}
+                      </div>
                     </div>
-                  </div>
-                  <div className="flex shrink-0 flex-wrap items-center gap-1.5">
-                    {v.vessel_type && <Badge tone="neutral" size="sm">{v.vessel_type}</Badge>}
-                    {v.fuel_type && <Badge tone="outline" size="sm">{v.fuel_type}</Badge>}
-                  </div>
-                </li>
-              ))}
+                    <div className="flex shrink-0 flex-wrap items-center gap-1.5">
+                      {v.vessel_type && <Badge tone="neutral" size="sm">{v.vessel_type}</Badge>}
+                      {v.fuel_type && <Badge tone="outline" size="sm">{v.fuel_type}</Badge>}
+                    </div>
+                  </li>
+                );
+              })}
             </ul>
           )}
         </Section>
