@@ -6,10 +6,10 @@ import { AgentChat } from "@/components/agent/agent-chat";
 import { cn } from "@/lib/utils";
 
 const SUGGESTIONS = [
-  "How many slips are vacant?",
-  "Who has the largest open balance?",
-  "Charge a hoist fee to David Emmons",
-  "Any meter anomalies this period?",
+  "Who's up for renewal in the next 90 days?",
+  "Draft 2027 renewals for everyone on A Dock",
+  "Run the spring billing for all annual holders",
+  "Who hasn't paid Q2 yet?",
 ];
 
 export function AgentHero() {

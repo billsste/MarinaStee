@@ -41,10 +41,10 @@ export default function DashboardPage() {
                   Quick actions
                 </div>
                 <div className="flex flex-col gap-1.5">
-                  <QuickAction label="Assign a transient slip" href="/rentals/spaces" />
-                  <QuickAction label="Send arrivals reminder" href="/boaters" />
-                  <QuickAction label="Open POS terminal" href="/ledger" />
-                  <QuickAction label="Run end-of-day reconciliation" href="/ledger" />
+                  <QuickAction label="Open the slip roster" href="/rentals/spaces" />
+                  <QuickAction label="Run the renewal pipeline" href="/rentals/contracts" />
+                  <QuickAction label="Generate annual invoices" href="/ledger" />
+                  <QuickAction label="See contracts expiring in 90 days" href="/reports" />
                 </div>
               </div>
             </div>
