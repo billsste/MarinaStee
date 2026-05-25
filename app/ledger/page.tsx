@@ -1,12 +1,13 @@
 "use client";
 
 import * as React from "react";
-import { CreditCard, ScrollText, Banknote, CloudUpload } from "lucide-react";
+import { Banknote, CloudUpload, CreditCard, FileText, ScrollText } from "lucide-react";
 import { PageShell } from "@/components/page-shell";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PosTerminal } from "@/components/pos/pos-terminal";
 import { PosOrders } from "@/components/pos/pos-orders";
 import { ArAging } from "@/components/pos/ar-aging";
+import { BillingRuns } from "@/components/pos/billing-runs";
 import { QbSync } from "@/components/pos/qb-sync";
 import { RentalsAsk } from "@/components/rentals/rentals-ask";
 
@@ -27,8 +28,12 @@ export default function LedgerPage() {
       />
 
       <div className="mt-5">
-        <Tabs defaultValue="terminal" className="w-full">
+        <Tabs defaultValue="billing" className="w-full">
           <TabsList>
+            <TabsTrigger value="billing">
+              <FileText className="size-3.5" />
+              Billing runs
+            </TabsTrigger>
             <TabsTrigger value="terminal">
               <CreditCard className="size-3.5" />
               POS Terminal
@@ -47,6 +52,9 @@ export default function LedgerPage() {
             </TabsTrigger>
           </TabsList>
 
+          <TabsContent value="billing">
+            <BillingRuns />
+          </TabsContent>
           <TabsContent value="terminal">
             <PosTerminal />
           </TabsContent>
