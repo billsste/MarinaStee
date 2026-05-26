@@ -110,7 +110,7 @@ export function WoKanban({ initial }: { initial?: WorkOrder[] }) {
           "Winterize David's Bayliner",
           "Why hasn't Peterson signed the paint quote?",
           "Reassign Davis's haul-out to J. Reyes",
-          "Send winterization quotes to all annual boaters",
+          "Send winterization quotes to all annual holders",
         ]}
       />
 

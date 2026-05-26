@@ -5,6 +5,21 @@ import { CreateSheet, Field, Select, TextInput, Textarea } from "@/components/cr
 import { Button } from "@/components/ui/button";
 import { executeAgentAction } from "@/lib/agent-actions";
 
+/*
+ * Code generation: holders get a system-assigned shorthand at create time
+ * derived from billing cadence. Annual / seasonal / monthly get a slot
+ * suffix that gets superseded when a slip is assigned via the contract
+ * flow (e.g. "DSM A29" once attached to slip A29 on Damsite). Transients
+ * get a stable "TRN-####" stamp. Either way, staff doesn't type it.
+ */
+function generateHolderCode(cadence: "annual" | "seasonal" | "monthly" | "transient"): string {
+  const stamp = Date.now().toString(36).slice(-4).toUpperCase();
+  if (cadence === "transient") return `TRN-${stamp}`;
+  if (cadence === "monthly") return `M-${stamp}`;
+  if (cadence === "seasonal") return `S-${stamp}`;
+  return `A-${stamp}`;
+}
+
 export function NewBoaterSheet({
   open,
   onOpenChange,
@@ -16,7 +31,6 @@ export function NewBoaterSheet({
   const [lastName, setLastName] = React.useState("");
   const [email, setEmail] = React.useState("");
   const [phone, setPhone] = React.useState("");
-  const [code, setCode] = React.useState("");
   const [preferredChannel, setPreferredChannel] = React.useState<"email" | "sms" | "voice">("email");
   const [billingCadence, setBillingCadence] = React.useState<"annual" | "seasonal" | "monthly" | "transient">("transient");
   const [notes, setNotes] = React.useState("");
@@ -27,7 +41,6 @@ export function NewBoaterSheet({
       setLastName("");
       setEmail("");
       setPhone("");
-      setCode("");
       setPreferredChannel("email");
       setBillingCadence("transient");
       setNotes("");
@@ -45,7 +58,9 @@ export function NewBoaterSheet({
       last_name: lastName.trim(),
       email: email.trim() || undefined,
       phone: phone.trim() || undefined,
-      code: code.trim() || undefined,
+      // Auto-generated code — gets superseded by slip-encoded code when a
+      // slip is attached via the contract flow.
+      code: generateHolderCode(billingCadence),
       preferred_channel: preferredChannel,
       billing_cadence: billingCadence,
       notes: notes.trim() || undefined,
@@ -57,14 +72,14 @@ export function NewBoaterSheet({
     <CreateSheet
       open={open}
       onOpenChange={onOpenChange}
-      title="New boater"
-      description="Add a new slip-holder, seasonal, or transient account. Vessels and slips can be attached after."
+      title="New holder"
+      description="Add a new slip holder, seasonal, or transient account. Vessels and slips can be attached after. A code is auto-generated and replaced with the slip ID when a slip is assigned."
       size="lg"
       footer={
         <>
           <Button variant="ghost" size="md" onClick={() => onOpenChange(false)}>Cancel</Button>
           <Button variant="primary" size="md" onClick={submit} disabled={!canSubmit}>
-            Create boater
+            Create holder
           </Button>
         </>
       }
@@ -105,10 +120,6 @@ export function NewBoaterSheet({
             </Select>
           </Field>
         </div>
-
-        <Field label="Code" hint="Optional shorthand, often slip-encoded (e.g. 'DSM A29').">
-          <TextInput value={code} onChange={(e) => setCode(e.target.value)} placeholder="DSM A29" />
-        </Field>
 
         <Field label="Notes">
           <Textarea

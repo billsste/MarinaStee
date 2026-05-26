@@ -174,16 +174,29 @@ export function VesselsTab({
               </div>
             )}
 
-            <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-6">
-              <Stat label="LOA" value={formatInches(v.loa_inches)} />
-              <Stat label="Beam" value={formatInches(v.beam_inches)} />
-              <Stat label="Draft" value={formatInches(v.draft_inches)} />
-              <Stat label="Height" value={formatInches(v.height_inches)} />
-              <Stat label="Power" value={v.power_hp ? `${v.power_hp} hp` : "—"} />
-              <Stat label="VIN" value={v.hull_vin ?? "—"} />
-              <Stat label="Registration" value={v.registration ?? "—"} />
-              <Stat label="Co-owners" value={v.co_owner_ids.length > 0 ? `${v.co_owner_ids.length}` : "—"} />
-            </div>
+            {/* Specs — cap at 4 columns so they don't stretch across the
+                full card. Empty values (—) are filtered out entirely so the
+                grid doesn't get padded with dead cells. */}
+            {(() => {
+              const specs: Array<{ label: string; value: string }> = [
+                { label: "LOA", value: formatInches(v.loa_inches) },
+                { label: "Beam", value: formatInches(v.beam_inches) },
+                { label: "Draft", value: formatInches(v.draft_inches) },
+                { label: "Height", value: formatInches(v.height_inches) },
+                v.power_hp ? { label: "Power", value: `${v.power_hp} hp` } : null,
+                v.hull_vin ? { label: "VIN", value: v.hull_vin } : null,
+                v.registration ? { label: "Registration", value: v.registration } : null,
+                v.co_owner_ids.length > 0 ? { label: "Co-owners", value: String(v.co_owner_ids.length) } : null,
+              ].filter((s): s is { label: string; value: string } => s !== null);
+              if (specs.length === 0) return null;
+              return (
+                <div className="mt-4 grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-3 md:grid-cols-4">
+                  {specs.map((s) => (
+                    <Stat key={s.label} label={s.label} value={s.value} />
+                  ))}
+                </div>
+              );
+            })()}
           </div>
         );
       })}

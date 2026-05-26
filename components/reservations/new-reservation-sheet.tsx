@@ -3,6 +3,7 @@
 import * as React from "react";
 import { CreateSheet, Field, TextInput, Select } from "@/components/create-sheet";
 import { Button } from "@/components/ui/button";
+import { Combobox } from "@/components/ui/combobox";
 import {
   BOATERS,
   RENTAL_SPACES,
@@ -73,7 +74,7 @@ export function NewReservationSheet({
       open={open}
       onOpenChange={onOpenChange}
       title="New reservation"
-      description="Block a slip for a boater. Annual / seasonal usually flow from a contract; transient is for short-stay arrivals."
+      description="Block a slip for a holder. Annual / seasonal usually flow from a contract; transient is for short-stay arrivals."
       size="md"
       footer={
         <>
@@ -87,15 +88,18 @@ export function NewReservationSheet({
       }
     >
       <div className="space-y-3">
-        <Field label="Boater" required>
-          <Select value={boaterId} onChange={setBoaterId}>
-            <option value="">Pick a boater…</option>
-            {BOATERS.map((b) => (
-              <option key={b.id} value={b.id}>
-                {b.display_name} {b.code ? `· ${b.code}` : ""}
-              </option>
-            ))}
-          </Select>
+        <Field label="Holder" required>
+          <Combobox
+            value={boaterId}
+            onChange={setBoaterId}
+            options={BOATERS.map((b) => ({
+              value: b.id,
+              label: b.display_name,
+              hint: b.code ? `· ${b.code}` : undefined,
+            }))}
+            placeholder="Pick a holder…"
+            searchPlaceholder="Search by name, code…"
+          />
         </Field>
 
         <div className="grid grid-cols-2 gap-3">

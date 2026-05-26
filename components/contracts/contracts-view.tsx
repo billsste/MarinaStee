@@ -50,7 +50,7 @@ const CONTRACT_FIELDS: FieldSpec<Contract>[] = [
   { key: "number", label: "Contract number", kind: "text", required: true, placeholder: "C-1054" },
   {
     key: "boater_id",
-    label: "Boater",
+    label: "Holder",
     kind: "select",
     required: true,
     options: [], // populated dynamically per render
@@ -81,33 +81,26 @@ const TEMPLATE_TYPE_OPTIONS: ContractTemplateType[] = [
   "mooring", "rental", "winterization", "service",
 ];
 
+/*
+ * Template fields are the SERVICE TYPE + the actual document only.
+ * Per-contract values (term, rate, cadence, auto-renew) belong on each
+ * Contract instance — they're snapshotted from the matching Rate card
+ * at draft time, not baked into the template. See task #169 for the
+ * data-model rethink.
+ */
 const TEMPLATE_FIELDS: FieldSpec<ContractTemplate>[] = [
-  { key: "name", label: "Template name", kind: "text", required: true, placeholder: "Annual Slip Lease" },
+  { key: "name", label: "Template name", kind: "text", required: true, col: 2, placeholder: "Annual Slip Lease" },
   {
-    key: "type", label: "Type", kind: "select", required: true, col: 2,
+    key: "type", label: "Service type", kind: "select", required: true, col: 2,
     options: TEMPLATE_TYPE_OPTIONS.map((t) => ({ value: t, label: t.replace("_", " ") })),
   },
-  { key: "version", label: "Version", kind: "number", step: "1", col: 2 },
-  { key: "default_term_months", label: "Default term (months)", kind: "number", step: "1", col: 2 },
-  {
-    key: "default_billing_cadence", label: "Default cadence", kind: "select", required: true, col: 2,
-    options: [
-      { value: "monthly", label: "monthly" },
-      { value: "annual", label: "annual" },
-      { value: "seasonal", label: "seasonal" },
-      { value: "transient", label: "transient" },
-    ],
-  },
-  { key: "default_annual_rate", label: "Default annual rate ($)", kind: "money", step: "1" },
-  { key: "auto_renew", label: "Auto-renew", kind: "boolean", placeholder: "Auto-renew at term end" },
   {
     key: "source_file_url",
     label: "Upload contract (PDF or DOCX)",
     kind: "file",
     accept: "application/pdf,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    hint: "Drop in your lawyer-drafted contract. The agent uses this when drafting send-for-signature packages.",
+    hint: "Drop in your lawyer-drafted contract. The agent fills in merge fields (e.g. {{boater.legal_name}}, {{slip.number}}) at draft time using the matching Rate card.",
   },
-  { key: "body_preview", label: "Body preview / opening clause", kind: "textarea", placeholder: "Used in agent drafting when no source file is uploaded." },
 ];
 
 export function ContractsView() {
@@ -196,7 +189,7 @@ export function ContractsView() {
               <thead>
                 <tr className="border-b border-hairline text-[11px] uppercase tracking-wide text-fg-tertiary">
                   <Th>Number</Th>
-                  <Th>Boater</Th>
+                  <Th>Holder</Th>
                   <Th>Template</Th>
                   <Th>Effective</Th>
                   <Th className="text-right">Annual</Th>
@@ -256,14 +249,21 @@ export function ContractsView() {
         fields={TEMPLATE_FIELDS}
         entity="template"
         onSave={(values) => {
+          // Term, rate, cadence, auto-renew are no longer template-level
+          // attributes — they belong on each Contract instance (snapshotted
+          // from the matching Rate card at draft time). For backwards
+          // compatibility with existing templates, retain any existing
+          // values; new templates get inert defaults.
           const final: ContractTemplate = {
             ...values,
             id: values.id || nextTemplateId(),
-            version: Number(values.version) || 1,
-            default_term_months: Number(values.default_term_months) || 12,
-            default_annual_rate: values.default_annual_rate ? Number(values.default_annual_rate) : undefined,
+            version: editingTemplate?.version ?? 1,
+            default_term_months: editingTemplate?.default_term_months ?? 12,
+            default_annual_rate: editingTemplate?.default_annual_rate,
+            default_billing_cadence: editingTemplate?.default_billing_cadence ?? "monthly",
+            body_preview: editingTemplate?.body_preview ?? "",
             required_signers: values.required_signers ?? ["boater"],
-            auto_renew: Boolean(values.auto_renew),
+            auto_renew: editingTemplate?.auto_renew ?? false,
           } as ContractTemplate;
           upsertTemplate(final);
         }}

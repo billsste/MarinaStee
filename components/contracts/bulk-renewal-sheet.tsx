@@ -127,7 +127,7 @@ export function BulkRenewalSheet({
       open={open}
       onOpenChange={onOpenChange}
       title={`Draft ${targetYear} renewals`}
-      description="Generates one successor contract per matching active contract. Each draft inherits boater, vessel, slip, and cadence — only the term shifts and the annual rate gets the lift applied."
+      description="Generates one successor contract per matching active contract. Each draft inherits holder, vessel, slip, and cadence — only the term shifts and the annual rate gets the lift applied."
       size="lg"
       footer={
         <>

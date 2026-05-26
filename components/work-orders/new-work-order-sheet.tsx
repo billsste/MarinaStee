@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { CreateSheet, Field, TextInput, Select, Textarea } from "@/components/create-sheet";
+import { Combobox } from "@/components/ui/combobox";
 import { Button } from "@/components/ui/button";
 import {
   BOATERS,
@@ -85,7 +86,7 @@ export function NewWorkOrderSheet({
       open={open}
       onOpenChange={onOpenChange}
       title="New work order"
-      description="Schedule a service job. Marina Stee will tie it to the boater, vessel, and slip you pick."
+      description="Schedule a service job. Marina Stee will tie it to the holder, vessel, and slip you pick."
       size="lg"
       footer={
         <>
@@ -108,15 +109,18 @@ export function NewWorkOrderSheet({
         </Field>
 
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Boater" required>
-            <Select value={boaterId} onChange={setBoaterId}>
-              <option value="">Pick a boater…</option>
-              {BOATERS.map((b) => (
-                <option key={b.id} value={b.id}>
-                  {b.display_name} {b.code ? `· ${b.code}` : ""}
-                </option>
-              ))}
-            </Select>
+          <Field label="Holder" required>
+            <Combobox
+              value={boaterId}
+              onChange={setBoaterId}
+              options={BOATERS.map((b) => ({
+                value: b.id,
+                label: b.display_name,
+                hint: b.code ? `· ${b.code}` : undefined,
+              }))}
+              placeholder="Pick a holder…"
+              searchPlaceholder="Search by name, code…"
+            />
           </Field>
           <Field label="Activity type">
             <Select

@@ -3,6 +3,8 @@
 import * as React from "react";
 import { CreateSheet, Field, NumberInput, Select, TextInput } from "@/components/create-sheet";
 import { Button } from "@/components/ui/button";
+import { Combobox } from "@/components/ui/combobox";
+import { NewBoaterSheet } from "@/components/boaters/new-boater-sheet";
 import { BOATERS, CONTRACT_TEMPLATES, RENTAL_SPACES, VESSELS } from "@/lib/mock-data";
 import { useBoaters } from "@/lib/client-store";
 import { executeAgentAction } from "@/lib/agent-actions";
@@ -31,6 +33,15 @@ export function NewContractSheet({
   const [end, setEnd] = React.useState("");
   const [annualRate, setAnnualRate] = React.useState("");
   const [cadence, setCadence] = React.useState<"annual" | "seasonal" | "monthly" | "transient">("monthly");
+  const [newHolderOpen, setNewHolderOpen] = React.useState(false);
+  // Attachments (signed PDF, addenda, supporting docs). Stored locally
+  // as { name, dataUrl, type } and passed through to executeAgentAction
+  // when the contract is drafted. In the prototype, the data URL goes
+  // into Contract.attachments[]; in production it would upload to S3
+  // and the URL would replace the data URL.
+  type LocalAttachment = { name: string; dataUrl: string; mime: string; sizeBytes: number };
+  const [attachments, setAttachments] = React.useState<LocalAttachment[]>([]);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   React.useEffect(() => {
     if (open) {
@@ -48,8 +59,38 @@ export function NewContractSheet({
       setEnd(endDate);
       setAnnualRate(firstTpl?.default_annual_rate?.toString() ?? "");
       setCadence(firstTpl?.default_billing_cadence ?? "monthly");
+      setAttachments([]);
     }
   }, [open, defaultBoaterId, defaultSlipId]);
+
+  async function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files ?? []);
+    const reads = await Promise.all(
+      files.map(
+        (f) =>
+          new Promise<LocalAttachment>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => {
+              resolve({
+                name: f.name,
+                dataUrl: typeof reader.result === "string" ? reader.result : "",
+                mime: f.type || "application/octet-stream",
+                sizeBytes: f.size,
+              });
+            };
+            reader.onerror = () => reject(reader.error);
+            reader.readAsDataURL(f);
+          })
+      )
+    );
+    setAttachments((prev) => [...prev, ...reads]);
+    // Reset input so selecting the same file again still fires onChange.
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }
+
+  function removeAttachment(idx: number) {
+    setAttachments((prev) => prev.filter((_, i) => i !== idx));
+  }
 
   // When template changes, reset rate + cadence + suggested end date
   React.useEffect(() => {
@@ -94,8 +135,23 @@ export function NewContractSheet({
       effective_end: end,
       annual_rate: annualRate ? Number(annualRate) : undefined,
       billing_cadence: cadence,
+      attachments: attachments.length > 0
+        ? attachments.map((a) => ({
+            name: a.name,
+            url: a.dataUrl,
+            mime_type: a.mime,
+            size_bytes: a.sizeBytes,
+            type: "supporting_doc",
+          }))
+        : undefined,
     });
     onOpenChange(false);
+  }
+
+  function fmtSize(bytes: number): string {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+    return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
   }
 
   return (
@@ -103,7 +159,7 @@ export function NewContractSheet({
       open={open}
       onOpenChange={onOpenChange}
       title="New contract"
-      description="Pick a template, set the term, and Marina Stee drafts the agreement. Send for signature from the boater's Contracts list after."
+      description="Pick a template, set the term, and Marina Stee drafts the agreement. Send for signature from the holder's Contracts list after."
       size="lg"
       footer={
         <>
@@ -114,16 +170,39 @@ export function NewContractSheet({
         </>
       }
     >
+      {/* Inline create-new-holder dialog launched from the Holder selector */}
+      <NewBoaterSheet
+        open={newHolderOpen}
+        onOpenChange={(b) => {
+          setNewHolderOpen(b);
+          // When the holder sheet closes, the new holder lands in the
+          // useBoaters store; auto-pick the most recently created one so
+          // the contract flow continues without an extra selection step.
+          if (!b) {
+            const sorted = [...liveBoaters].sort((a, c) => (a.id < c.id ? 1 : -1));
+            const latest = sorted[0];
+            if (latest && !boaters.find((x) => x.id === boaterId)) {
+              setBoaterId(latest.id);
+            }
+          }
+        }}
+      />
+
       <div className="space-y-3">
-        <Field label="Boater" required>
-          <Select value={boaterId} onChange={setBoaterId}>
-            <option value="">Pick a boater…</option>
-            {boaters.map((b) => (
-              <option key={b.id} value={b.id}>
-                {b.display_name} {b.code ? `· ${b.code}` : ""}
-              </option>
-            ))}
-          </Select>
+        <Field label="Holder" required>
+          <Combobox
+            value={boaterId}
+            onChange={setBoaterId}
+            options={boaters.map((b) => ({
+              value: b.id,
+              label: b.display_name,
+              hint: b.code ? `· ${b.code}` : undefined,
+            }))}
+            placeholder="Pick a holder…"
+            searchPlaceholder="Search by name, code…"
+            onCreateNew={() => setNewHolderOpen(true)}
+            createNewLabel="Create new holder"
+          />
         </Field>
 
         <Field label="Template" required>
@@ -190,6 +269,48 @@ export function NewContractSheet({
         {start && end && start > end && (
           <p className="text-[12px] text-status-danger">End must be on or after start.</p>
         )}
+
+        {/* Attachments — signed PDF, addenda, supporting docs */}
+        <Field
+          label="Attachments"
+          hint="Optional. PDFs, DOCX, scans of signed contracts, addenda, COI riders, etc."
+        >
+          <div className="space-y-2">
+            <label className="inline-flex w-full cursor-pointer items-center justify-center gap-2 rounded-[10px] border border-dashed border-hairline-strong bg-surface-2 px-4 py-3 text-[12px] text-fg-subtle hover:bg-surface-3">
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                accept="application/pdf,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/*"
+                onChange={handleFileSelect}
+                className="hidden"
+              />
+              <span>+ Add attachment(s)</span>
+            </label>
+            {attachments.length > 0 && (
+              <ul className="space-y-1.5">
+                {attachments.map((a, idx) => (
+                  <li
+                    key={`${a.name}-${idx}`}
+                    className="flex items-center justify-between gap-2 rounded-[8px] border border-hairline bg-surface-2 px-3 py-1.5 text-[12px]"
+                  >
+                    <div className="min-w-0 flex-1 truncate">
+                      <span className="font-medium text-fg">{a.name}</span>
+                      <span className="ml-2 text-fg-tertiary">{fmtSize(a.sizeBytes)}</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => removeAttachment(idx)}
+                      className="text-[11px] text-fg-subtle hover:text-status-danger"
+                    >
+                      Remove
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </Field>
       </div>
     </CreateSheet>
   );

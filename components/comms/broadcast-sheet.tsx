@@ -146,7 +146,7 @@ export function BroadcastSheet({
       open={open}
       onOpenChange={onOpenChange}
       title="Broadcast message"
-      description="Send one message to many boaters. Pick the audience, write once, fan out."
+      description="Send one message to many holders. Pick the audience, write once, fan out."
       size="lg"
       footer={
         <>

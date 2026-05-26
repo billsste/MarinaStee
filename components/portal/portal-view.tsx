@@ -74,7 +74,7 @@ export function PortalView({ boaterId }: { boaterId: string }) {
   if (!boater) {
     return (
       <main className="grid min-h-screen place-items-center">
-        <p className="text-fg-subtle">Boater not found.</p>
+        <p className="text-fg-subtle">Holder not found.</p>
       </main>
     );
   }

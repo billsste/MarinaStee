@@ -113,7 +113,7 @@ export function NumberInput(props: React.InputHTMLAttributes<HTMLInputElement>) 
       inputMode="decimal"
       {...props}
       className={cn(
-        "tabular h-10 w-full rounded-[8px] border border-hairline bg-surface-2 px-3 text-right text-[14px] text-fg placeholder:text-fg-tertiary focus:border-hairline-strong focus:outline-none",
+        "tabular h-10 w-full rounded-[8px] border border-hairline bg-surface-2 px-3 text-left text-[14px] text-fg placeholder:text-fg-tertiary focus:border-hairline-strong focus:outline-none",
         props.className
       )}
     />

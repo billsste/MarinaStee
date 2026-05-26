@@ -130,6 +130,15 @@ export type AgentAction =
       effective_end: string;
       annual_rate?: number;
       billing_cadence: "annual" | "seasonal" | "monthly" | "transient";
+      // Optional attachments uploaded at draft time. Stored as data URLs
+      // in the prototype; S3-backed once the backend lands.
+      attachments?: Array<{
+        name: string;
+        url: string;
+        mime_type: string;
+        size_bytes?: number;
+        type?: "signed_contract" | "addendum" | "supporting_doc" | "other";
+      }>;
     }
   | {
       kind: "add_card";

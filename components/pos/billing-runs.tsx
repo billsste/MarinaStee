@@ -216,7 +216,7 @@ export function BillingRuns() {
             <table className="w-full text-[13px]">
               <thead className="bg-surface-2 text-[10px] uppercase tracking-wide text-fg-tertiary">
                 <tr>
-                  <Th>Boater</Th>
+                  <Th>Holder</Th>
                   <Th>Slip</Th>
                   <Th>Cadence</Th>
                   <Th>Contract</Th>

@@ -251,6 +251,31 @@ export function OverviewTab({
             </div>
           </Panel>
         )}
+
+        {/* Vessels moved here from the right column so the left doesn't end
+            while the right keeps scrolling. Layout #161 rebalance. */}
+        <Panel title={`Vessels (${vessels.length})`}>
+          {vessels.length === 0 ? (
+            <EmptyInline text="No vessels on file." />
+          ) : (
+            <ul className="divide-y divide-hairline">
+              {vessels.map((v) => (
+                <li key={v.id} className="flex items-start justify-between gap-3 py-2 first:pt-0 last:pb-0">
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-[13px] font-medium text-fg">{v.name}</div>
+                    <div className="text-[12px] text-fg-subtle">
+                      {[v.year, v.make, v.model].filter(Boolean).join(" ")}
+                    </div>
+                    <div className="mt-0.5 text-[11px] text-fg-tertiary">
+                      {formatInches(v.loa_inches)} LOA · {v.fuel_type ?? "—"}
+                    </div>
+                  </div>
+                  {v.active && <Badge tone="ok" size="sm">Active</Badge>}
+                </li>
+              ))}
+            </ul>
+          )}
+        </Panel>
       </div>
 
       {/* Action rail — wider right column */}
@@ -297,29 +322,6 @@ export function OverviewTab({
           </Panel>
         )}
 
-        <Panel title={`Vessels (${vessels.length})`}>
-          {vessels.length === 0 ? (
-            <EmptyInline text="No vessels on file." />
-          ) : (
-            <ul className="divide-y divide-hairline">
-              {vessels.map((v) => (
-                <li key={v.id} className="flex items-start justify-between gap-3 py-2 first:pt-0 last:pb-0">
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate text-[13px] font-medium text-fg">{v.name}</div>
-                    <div className="text-[12px] text-fg-subtle">
-                      {[v.year, v.make, v.model].filter(Boolean).join(" ")}
-                    </div>
-                    <div className="mt-0.5 text-[11px] text-fg-tertiary">
-                      {formatInches(v.loa_inches)} LOA · {v.fuel_type ?? "—"}
-                    </div>
-                  </div>
-                  {v.active && <Badge tone="ok" size="sm">Active</Badge>}
-                </li>
-              ))}
-            </ul>
-          )}
-        </Panel>
-
         <StaffNotesCard boaterId={boater.id} />
       </div>
 
@@ -327,7 +329,7 @@ export function OverviewTab({
         open={editContactOpen}
         onOpenChange={setEditContactOpen}
         title={`Edit contact — ${boater.display_name}`}
-        description="Updates the boater's primary contact, address, and communication preferences."
+        description="Updates the holder's primary contact, address, and communication preferences."
         record={{
           id: boater.id,
           first_name: boater.first_name,

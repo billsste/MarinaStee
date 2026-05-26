@@ -272,6 +272,7 @@ function runAction(action: AgentAction): void {
   }
 
   if (action.kind === "create_contract") {
+    const now = new Date().toISOString();
     const contract: Contract = {
       id: nextContractId(),
       number: nextContractNumber(),
@@ -285,6 +286,15 @@ function runAction(action: AgentAction): void {
       effective_end: action.effective_end,
       annual_rate: action.annual_rate,
       billing_cadence: action.billing_cadence,
+      attachments: action.attachments?.map((a, i) => ({
+        id: `att_${Date.now().toString(36)}_${i}`,
+        name: a.name,
+        type: a.type ?? "supporting_doc",
+        url: a.url,
+        mime_type: a.mime_type,
+        size_bytes: a.size_bytes,
+        uploaded_at: now,
+      })),
     };
     addContract(contract);
     return;

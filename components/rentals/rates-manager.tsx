@@ -28,7 +28,8 @@ const CADENCE_ORDER: RateCadence[] = ["annual", "seasonal", "monthly", "weekly",
 const ALL_OCCUPANCY: OccupancyType[] = ["Standard", "Jet Ski", "Buoy", "Dry Storage", "Mooring"];
 
 const RATE_FIELDS: FieldSpec<Rate>[] = [
-  { key: "name", label: "Rate name", kind: "text", required: true, placeholder: "2027 Annual Slip — Standard" },
+  { key: "name", label: "Rate name", kind: "text", required: true, col: 2, placeholder: "2027 Annual Slip — Standard" },
+  { key: "amount", label: "Amount ($)", kind: "money", required: true, col: 2, step: "1", placeholder: "3900" },
   {
     key: "occupancy_type",
     label: "Occupancy type",
@@ -45,7 +46,6 @@ const RATE_FIELDS: FieldSpec<Rate>[] = [
     col: 2,
     options: CADENCE_ORDER.map((c) => ({ value: c, label: c })),
   },
-  { key: "amount", label: "Amount ($)", kind: "money", required: true, step: "1", placeholder: "3900" },
   { key: "effective_start", label: "Effective start", kind: "date", col: 2, hint: "Optional — leave blank for indefinite." },
   { key: "effective_end", label: "Effective end", kind: "date", col: 2 },
 ];

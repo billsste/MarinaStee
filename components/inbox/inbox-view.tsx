@@ -232,7 +232,7 @@ export function InboxView() {
             />
           </div>
           <p className="mt-3 text-[12px] leading-5 text-fg-subtle">
-            Open a thread and click <span className="font-medium text-fg">Draft reply</span> — the agent reads the boater's history and proposes 1-3 sentences for your approval.
+            Open a thread and click <span className="font-medium text-fg">Draft reply</span> — the agent reads the holder's history and proposes 1-3 sentences for your approval.
           </p>
         </div>
 

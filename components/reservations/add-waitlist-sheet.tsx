@@ -3,6 +3,7 @@
 import * as React from "react";
 import { CreateSheet, Field, NumberInput, Select, TextInput, Textarea } from "@/components/create-sheet";
 import { Button } from "@/components/ui/button";
+import { Combobox } from "@/components/ui/combobox";
 import { BOATERS } from "@/lib/mock-data";
 import {
   addWaitlistEntry,
@@ -106,21 +107,24 @@ export function AddWaitlistSheet({
                 (kind === k ? "bg-surface-1 text-fg shadow-sm" : "text-fg-subtle hover:text-fg")
               }
             >
-              {k === "prospect" ? "New prospect" : "Existing boater"}
+              {k === "prospect" ? "New prospect" : "Existing holder"}
             </button>
           ))}
         </div>
 
         {kind === "existing" ? (
-          <Field label="Boater" required>
-            <Select value={boaterId} onChange={setBoaterId}>
-              <option value="">Pick a boater…</option>
-              {boaters.map((b) => (
-                <option key={b.id} value={b.id}>
-                  {b.display_name}
-                </option>
-              ))}
-            </Select>
+          <Field label="Holder" required>
+            <Combobox
+              value={boaterId}
+              onChange={setBoaterId}
+              options={boaters.map((b) => ({
+                value: b.id,
+                label: b.display_name,
+                hint: b.code ? `· ${b.code}` : undefined,
+              }))}
+              placeholder="Pick a holder…"
+              searchPlaceholder="Search by name…"
+            />
           </Field>
         ) : (
           <>

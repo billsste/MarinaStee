@@ -3,6 +3,7 @@
 import * as React from "react";
 import { CreateSheet, Field, NumberInput, Select, Textarea, TextInput } from "@/components/create-sheet";
 import { Button } from "@/components/ui/button";
+import { Combobox } from "@/components/ui/combobox";
 import { BOATERS, formatMoney } from "@/lib/mock-data";
 import { useStore } from "@/lib/client-store";
 import { executeAgentAction } from "@/lib/agent-actions";
@@ -83,15 +84,18 @@ export function EnterPaymentSheet({
       }
     >
       <div className="space-y-3">
-        <Field label="Boater" required>
-          <Select value={boaterId} onChange={setBoaterId}>
-            <option value="">Pick a boater…</option>
-            {BOATERS.map((b) => (
-              <option key={b.id} value={b.id}>
-                {b.display_name} {b.code ? `· ${b.code}` : ""}
-              </option>
-            ))}
-          </Select>
+        <Field label="Holder" required>
+          <Combobox
+            value={boaterId}
+            onChange={setBoaterId}
+            options={BOATERS.map((b) => ({
+              value: b.id,
+              label: b.display_name,
+              hint: b.code ? `· ${b.code}` : undefined,
+            }))}
+            placeholder="Pick a holder…"
+            searchPlaceholder="Search by name, code…"
+          />
         </Field>
 
         <div className="grid grid-cols-2 gap-3">

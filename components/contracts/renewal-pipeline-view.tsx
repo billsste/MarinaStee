@@ -144,7 +144,7 @@ export function RenewalPipelineView() {
           tone="info"
           count={draftedSuccessors.length}
           empty="No draft renewals yet."
-          help="Successor contracts in draft. Click Send to push to the boater for signature."
+          help="Successor contracts in draft. Click Send to push to the holder for signature."
         >
           {draftedSuccessors.map((c) => (
             <PipelineRow
@@ -161,7 +161,7 @@ export function RenewalPipelineView() {
           tone="info"
           count={sentSuccessors.length}
           empty="Nothing waiting on signatures."
-          help="Contracts the boater has but hasn't signed yet. Nudge or mark received."
+          help="Contracts the holder has but hasn't signed yet. Nudge or mark received."
         >
           {sentSuccessors.map((c) => (
             <PipelineRow

@@ -317,7 +317,7 @@ export function ReportsView() {
           <TrendChart months={months} />
         </Panel>
 
-        <Panel title="Top boaters" icon={<Crown className="size-3.5" />}>
+        <Panel title="Top holders" icon={<Crown className="size-3.5" />}>
           {topBoaters.length === 0 ? (
             <Empty text="No revenue yet." />
           ) : (

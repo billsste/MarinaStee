@@ -25,7 +25,7 @@ const RESERVATION_FIELDS: FieldSpec<Reservation>[] = [
   { key: "number", label: "Number", kind: "text", required: true, placeholder: "R-1234" },
   {
     key: "boater_id",
-    label: "Boater",
+    label: "Holder",
     kind: "select",
     required: true,
     options: BOATERS.map((b) => ({ value: b.id, label: b.display_name })),
@@ -82,7 +82,7 @@ export function ReservationsTable() {
             <thead>
               <tr className="border-b border-hairline text-[11px] uppercase tracking-wide text-fg-tertiary">
                 <Th>Number</Th>
-                <Th>Boater</Th>
+                <Th>Holder</Th>
                 <Th>Slip</Th>
                 <Th>Arrival</Th>
                 <Th>Departure</Th>
@@ -149,7 +149,7 @@ export function ReservationsTable() {
         open={editOpen}
         onOpenChange={setEditOpen}
         title={editing ? `Edit reservation — ${editing.number}` : "Reservation"}
-        description="Changing dates / status updates the calendar, today's queue, and the boater's history immediately."
+        description="Changing dates / status updates the calendar, today's queue, and the holder's history immediately."
         record={editing}
         fields={RESERVATION_FIELDS}
         onSave={(values) => upsertReservation(values as Reservation)}

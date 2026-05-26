@@ -70,7 +70,7 @@ const FEE_FIELDS: FieldSpec<AdditionalFee>[] = [
     key: "description",
     label: "Description",
     kind: "textarea",
-    placeholder: "What boaters see on the invoice line item.",
+    placeholder: "What holders see on the invoice line item.",
   },
 ];
 
@@ -161,7 +161,7 @@ export function FeesManager() {
         open={open}
         onOpenChange={setOpen}
         title={editing ? `Edit fee — ${editing.name}` : "New additional fee"}
-        description="Fees catalog applies across all boaters. Existing invoices keep the amount they were billed at."
+        description="Fees catalog applies across all holders. Existing invoices keep the amount they were billed at."
         record={editing}
         fields={FEE_FIELDS}
         onSave={handleSave}

@@ -211,7 +211,7 @@ function Body({
 
       <div className="space-y-4 px-5 py-4">
         {boater && (
-          <Section title="Boater">
+          <Section title="Holder">
             <Link
               href={`/holders/${boater.id}`}
               className="flex items-center gap-2 rounded-[8px] border border-hairline bg-surface-2 px-3 py-2 transition-colors hover:border-hairline-strong"

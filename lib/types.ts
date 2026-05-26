@@ -427,6 +427,23 @@ export interface Contract {
   signed_pdf_url?: string;
   renewed_into_contract_id?: string;
   superseded_by_id?: string;
+  /**
+   * Per-contract attachments (signed PDF, addenda, supporting docs).
+   * Stored as base64 data URLs in the prototype; S3-backed once the
+   * backend lands.
+   */
+  attachments?: ContractAttachment[];
+}
+
+export interface ContractAttachment {
+  id: string;
+  name: string;
+  type: "signed_contract" | "addendum" | "supporting_doc" | "other";
+  url: string;            // data URL in mock; S3 URL in prod
+  mime_type: string;
+  size_bytes?: number;
+  uploaded_at: string;
+  uploaded_by?: string;
 }
 
 export interface Boater {
