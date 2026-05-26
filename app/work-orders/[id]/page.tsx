@@ -1,10 +1,11 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ChevronLeft, Calendar, Clock, Flag } from "lucide-react";
+import { Calendar, Clock, Flag } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { QuoteSection } from "@/components/work-orders/quote-section";
 import { LinkedEntitiesRail } from "@/components/work-orders/linked-entities-rail";
+import { WorkOrderBackLink } from "@/components/work-orders/back-link";
 import { RentalsAsk } from "@/components/rentals/rentals-ask";
 import { BOATERS, getQuoteForWorkOrder, getWorkOrder } from "@/lib/mock-data";
 
@@ -41,12 +42,7 @@ export default async function WorkOrderDetailPage({ params }: Props) {
 
   return (
     <div className="mx-auto w-full max-w-[1280px] px-5 pt-6 pb-32">
-      <Link
-        href="/work-orders"
-        className="mb-3 inline-flex items-center gap-1 text-[12px] text-fg-subtle hover:text-fg"
-      >
-        <ChevronLeft className="size-3.5" /> All work orders
-      </Link>
+      <WorkOrderBackLink fallbackBoaterId={wo.boater_id} />
 
       {/* Identity bar */}
       <div className="rounded-[12px] border border-hairline bg-surface-1 px-5 py-4">
