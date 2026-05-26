@@ -5,7 +5,7 @@ import { CreateSheet, Field, NumberInput, Select, TextInput } from "@/components
 import { Button } from "@/components/ui/button";
 import { Combobox } from "@/components/ui/combobox";
 import { NewBoaterSheet } from "@/components/boaters/new-boater-sheet";
-import { BOATERS, CONTRACT_TEMPLATES, RENTAL_SPACES, VESSELS } from "@/lib/mock-data";
+import { BOATERS, CONTRACT_TEMPLATES, RENTAL_SPACES, SLIPS, VESSELS } from "@/lib/mock-data";
 import { useBoaters } from "@/lib/client-store";
 import { executeAgentAction } from "@/lib/agent-actions";
 
@@ -159,8 +159,11 @@ export function NewContractSheet({
   // the underlying contract is an implementation detail. Reframe the
   // title + CTA accordingly. Otherwise it's a free-standing new contract.
   const fromSlip = Boolean(defaultSlipId);
+  // Look up the slip in BOTH inventories — Roster uses SLIPS (ids like
+  // "A01") while the older RENTAL_SPACES uses ids like "sp_dsm_a_29".
   const slipForTitle = fromSlip
-    ? RENTAL_SPACES.find((s) => s.id === defaultSlipId)
+    ? SLIPS.find((s) => s.id === defaultSlipId) ??
+      RENTAL_SPACES.find((s) => s.id === defaultSlipId)
     : null;
   const dialogTitle = fromSlip
     ? `Assign slip ${slipForTitle?.number ?? defaultSlipId}`
@@ -243,14 +246,17 @@ export function NewContractSheet({
             </Select>
           </Field>
           <Field label="Slip">
-            <Select value={slipId} onChange={setSlipId}>
-              <option value="">No slip</option>
-              {RENTAL_SPACES.slice(0, 40).map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.number} · {s.occupancy_type}
-                </option>
-              ))}
-            </Select>
+            <Combobox
+              value={slipId}
+              onChange={setSlipId}
+              options={SLIPS.map((s) => ({
+                value: s.id,
+                label: s.id,
+                hint: `· ${s.dock}`,
+              }))}
+              placeholder="No slip"
+              searchPlaceholder="Search by slip ID, dock…"
+            />
           </Field>
         </div>
 
