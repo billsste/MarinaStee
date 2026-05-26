@@ -184,6 +184,7 @@ export function ReportsView() {
             value={formatMoney(annualARR)}
             sub={`${activeAnnualContracts.length} active contracts`}
             tone="ok"
+            href="/rentals/contracts"
           />
           <Kpi
             icon={<CalendarClock className="size-4" />}
@@ -191,6 +192,7 @@ export function ReportsView() {
             value={`${expiring90.length}`}
             sub={`${expiring180.length} within 180 days`}
             tone={expiring90.length > 0 ? "warn" : "neutral"}
+            href="/rentals/spaces"
           />
           <Kpi
             icon={<FileSignature className="size-4" />}
@@ -202,6 +204,7 @@ export function ReportsView() {
                 : `${renewedCount} of ${endedLastYear.length} renewed`
             }
             tone={renewalRate === null ? "neutral" : renewalRate >= 85 ? "ok" : renewalRate >= 70 ? "info" : "warn"}
+            href="/rentals/contracts"
           />
           <Kpi
             icon={<Ship className="size-4" />}
@@ -209,6 +212,7 @@ export function ReportsView() {
             value={`${lapsedContracts.length}`}
             sub="Need re-engagement or waitlist match"
             tone={lapsedContracts.length > 0 ? "warn" : "ok"}
+            href="/rentals/spaces"
           />
         </div>
       </section>
@@ -225,6 +229,7 @@ export function ReportsView() {
             value={formatMoney(mtd)}
             sub={`${invoicesBetween(invoices, monthStart, now).length} invoices`}
             tone="neutral"
+            href="/ledger"
           />
           <Kpi
             icon={<TrendingUp className="size-4" />}
@@ -236,6 +241,7 @@ export function ReportsView() {
             }
             sub={`${formatMoney(ytd)} this year`}
             tone={yoyDelta >= 0 ? "ok" : "warn"}
+            href="/ledger"
           />
           <Kpi
             icon={<Percent className="size-4" />}
@@ -243,6 +249,7 @@ export function ReportsView() {
             value={`${occ.pct.toFixed(0)}%`}
             sub={`${occ.occupied} of ${occ.total} spaces`}
             tone={occ.pct > 80 ? "ok" : occ.pct > 50 ? "info" : "warn"}
+            href="/rentals"
           />
           <Kpi
             icon={<Ship className="size-4" />}
@@ -250,6 +257,7 @@ export function ReportsView() {
             value={formatMoney(avgSlipInvoice)}
             sub={`${slipInvoices.length} slip invoices`}
             tone="neutral"
+            href="/ledger"
           />
         </div>
       </section>
@@ -381,12 +389,15 @@ function Kpi({
   value,
   sub,
   tone,
+  href,
 }: {
   icon: React.ReactNode;
   label: string;
   value: string;
   sub: string;
   tone: "ok" | "warn" | "info" | "neutral";
+  /** Optional drill-through. Clicking the tile navigates to a filtered list. */
+  href?: string;
 }) {
   const dot =
     tone === "warn" ? "bg-status-warn"
@@ -394,16 +405,27 @@ function Kpi({
     : tone === "ok" ? "bg-status-ok"
     : "bg-fg-tertiary/40";
   const valueTone = tone === "warn" ? "text-status-warn" : tone === "ok" ? "text-status-ok" : "text-fg";
-  return (
-    <div className="rounded-[12px] border border-hairline bg-surface-1 p-4">
+  const inner = (
+    <>
       <div className="mb-1.5 flex items-center justify-between text-fg-subtle">
         <span className="inline-flex items-center gap-1.5 text-[12px] font-medium">{icon}{label}</span>
         <span className={"size-1.5 rounded-full " + dot} aria-hidden />
       </div>
       <div className={cn("money-display text-[26px]", valueTone)}>{value}</div>
       <div className="mt-1 text-[11px] text-fg-tertiary">{sub}</div>
-    </div>
+    </>
   );
+  if (href) {
+    return (
+      <Link
+        href={href}
+        className="rounded-[12px] border border-hairline bg-surface-1 p-4 transition-colors hover:border-hairline-strong hover:bg-surface-2"
+      >
+        {inner}
+      </Link>
+    );
+  }
+  return <div className="rounded-[12px] border border-hairline bg-surface-1 p-4">{inner}</div>;
 }
 
 function Panel({
