@@ -16,7 +16,7 @@ import { formatMoney } from "@/lib/mock-data";
 import type { AdditionalFee, FeeBillingMode } from "@/lib/types";
 
 /*
- * /docks/fees — Edit/Remove/Add for the additional-fee catalog.
+ * /slips/fees — Edit/Remove/Add for the additional-fee catalog.
  * Click a card to edit, "+ New additional fee" tile to create, delete inside
  * the dialog. Same RecordEditDialog as Rates.
  */

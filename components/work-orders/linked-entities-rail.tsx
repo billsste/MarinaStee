@@ -56,7 +56,7 @@ export function LinkedEntitiesRail({ wo }: { wo: WorkOrder }) {
           {slip && (
             <RowLink
               icon={<Anchor className="size-3.5" />}
-              href={`/docks/slips`}
+              href={`/slips/roster`}
               primary={`${slip.dock} · ${slip.number}`}
               secondary={`${slip.invoice_category}`}
             />
@@ -67,7 +67,7 @@ export function LinkedEntitiesRail({ wo }: { wo: WorkOrder }) {
           <Section title="Contract">
             <RowLink
               icon={<FileText className="size-3.5" />}
-              href={`/docks/contracts`}
+              href={`/slips/contracts`}
               primary={contract.number}
               secondary={`${contract.effective_start} → ${contract.effective_end}`}
             />

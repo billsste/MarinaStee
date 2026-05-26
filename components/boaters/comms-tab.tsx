@@ -163,7 +163,7 @@ function CommDetailDialog({
     const href =
       type === "work_order" ? `/work-orders/${id}` :
       type === "reservation" ? `/reservations` :
-      type === "contract" ? `/docks/contracts` :
+      type === "contract" ? `/slips/contracts` :
       "#";
     return (
       <Link

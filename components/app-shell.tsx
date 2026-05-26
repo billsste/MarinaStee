@@ -52,7 +52,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 function Breadcrumb({ pathname }: { pathname: string }) {
   const label = (() => {
     if (pathname === "/") return "Dashboard";
-    if (pathname.startsWith("/docks")) return "Rentals";
+    if (pathname.startsWith("/slips")) return "Rentals";
     if (pathname.startsWith("/holders")) return "Holders";
     if (pathname.startsWith("/work-orders")) return "Work Orders";
     if (pathname.startsWith("/reservations")) return "Reservations";

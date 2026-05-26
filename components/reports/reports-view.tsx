@@ -184,7 +184,7 @@ export function ReportsView() {
             value={formatMoney(annualARR)}
             sub={`${activeAnnualContracts.length} active contracts`}
             tone="ok"
-            href="/docks/contracts"
+            href="/slips/contracts"
           />
           <Kpi
             icon={<CalendarClock className="size-4" />}
@@ -192,7 +192,7 @@ export function ReportsView() {
             value={`${expiring90.length}`}
             sub={`${expiring180.length} within 180 days`}
             tone={expiring90.length > 0 ? "warn" : "neutral"}
-            href="/docks/slips"
+            href="/slips/roster"
           />
           <Kpi
             icon={<FileSignature className="size-4" />}
@@ -204,7 +204,7 @@ export function ReportsView() {
                 : `${renewedCount} of ${endedLastYear.length} renewed`
             }
             tone={renewalRate === null ? "neutral" : renewalRate >= 85 ? "ok" : renewalRate >= 70 ? "info" : "warn"}
-            href="/docks/contracts"
+            href="/slips/contracts"
           />
           <Kpi
             icon={<Ship className="size-4" />}
@@ -212,7 +212,7 @@ export function ReportsView() {
             value={`${lapsedContracts.length}`}
             sub="Need re-engagement or waitlist match"
             tone={lapsedContracts.length > 0 ? "warn" : "ok"}
-            href="/docks/slips"
+            href="/slips/roster"
           />
         </div>
       </section>
@@ -249,7 +249,7 @@ export function ReportsView() {
             value={`${occ.pct.toFixed(0)}%`}
             sub={`${occ.occupied} of ${occ.total} spaces`}
             tone={occ.pct > 80 ? "ok" : occ.pct > 50 ? "info" : "warn"}
-            href="/docks"
+            href="/slips"
           />
           <Kpi
             icon={<Ship className="size-4" />}
