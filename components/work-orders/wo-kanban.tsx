@@ -9,7 +9,7 @@ import { WoCard } from "./wo-card";
 import { NewWorkOrderSheet } from "./new-work-order-sheet";
 import { cn } from "@/lib/utils";
 import { getQuoteForWorkOrder } from "@/lib/mock-data";
-import { useWorkOrders } from "@/lib/client-store";
+import { updateWorkOrder, useWorkOrders } from "@/lib/client-store";
 import type {
   WorkOrder,
   WorkOrderStatus,
@@ -97,6 +97,11 @@ export function WoKanban({ initial }: { initial?: WorkOrder[] }) {
       setDragOverCol(null);
       return;
     }
+    // Persist the transition through the store so the closeout chain
+    // fires on transitions to "completed" (posts invoice + dispatches
+    // service-complete comm). Local override stays as a visual fallback
+    // for the initial paint while the store updates.
+    updateWorkOrder(draggingId, { status: newStatus });
     setLocalOverrides((prev) => ({ ...prev, [draggingId]: newStatus }));
     setDraggingId(null);
     setDragOverCol(null);

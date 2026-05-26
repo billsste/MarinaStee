@@ -23,7 +23,7 @@ import {
   getVesselsForBoater,
 } from "@/lib/mock-data";
 import {
-  upsertContract,
+  mintContractSignatureToken,
   useCardsForBoater,
   useContractsForBoater,
   useLedgerForBoater,
@@ -360,14 +360,18 @@ export function PortalView({ boaterId }: { boaterId: string }) {
                           variant="primary"
                           size="sm"
                           onClick={() => {
-                            // Demo flow: marks the contract executed + active.
-                            // Production swap-in: navigate to a dedicated
-                            // contract-signing variant of /sign/[token].
-                            upsertContract({
-                              ...c,
-                              status: "active",
-                              signed_at: new Date().toISOString(),
-                            });
+                            // Mints a token if one isn't already on the
+                            // contract, then routes to the public onboarding
+                            // experience — same URL the holder gets in their
+                            // emailed invite, so the in-portal flow and the
+                            // email-link flow funnel to one place.
+                            const token =
+                              c.signature_token ??
+                              mintContractSignatureToken(c.id) ??
+                              "";
+                            if (token) {
+                              window.location.href = `/onboard/${token}`;
+                            }
                           }}
                         >
                           Sign now

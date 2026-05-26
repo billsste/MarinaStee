@@ -14,10 +14,14 @@
 
 import {
   ADDITIONAL_FEES,
+  BOAT_RENTALS,
   BOATERS,
+  INSURANCE_CERTIFICATES,
   POS_CATALOG,
   POS_LOCATIONS,
+  RENTAL_BOATS,
   RENTAL_SPACES,
+  SLIPS,
   VESSELS,
 } from "@/lib/mock-data";
 import {
@@ -115,10 +119,33 @@ function translate(ev: WireEvent): AgentStreamEvent | null {
     return { kind: "tool_step", name: ev.name, result: ev.result };
 
   if (ev.type === "tool") {
-    // create_boater is special: it CREATES a boater, so there's no existing
-    // boater_query to resolve. Handle it before the boater-lookup path.
+    // Tools that DON'T key off boater_query — they look up by boat /
+    // slip / rental / coi instead. Handle these before the boater path.
     if (ev.name === "create_boater") {
       const action = resolveCreateBoaterAction(ev);
+      if (action) return { kind: "action", action };
+      return null;
+    }
+    if (ev.name === "create_boat_rental") {
+      const action = resolveCreateBoatRentalAction(ev);
+      if (action) return { kind: "action", action };
+      return null;
+    }
+    if (
+      ev.name === "close_boat_rental" ||
+      ev.name === "send_pickup_link"
+    ) {
+      const action = resolveRentalLookupAction(ev);
+      if (action) return { kind: "action", action };
+      return null;
+    }
+    if (ev.name === "notify_waitlist") {
+      const action = resolveNotifyWaitlistAction(ev);
+      if (action) return { kind: "action", action };
+      return null;
+    }
+    if (ev.name === "request_coi_renewal") {
+      const action = resolveCoiRenewalAction(ev);
       if (action) return { kind: "action", action };
       return null;
     }
@@ -345,6 +372,157 @@ function resolveToolToAction(ev: Extract<WireEvent, { type: "tool" }>): AgentAct
   return null;
 }
 
+// ── New chain resolvers (Boat Rentals + Waitlist + COI) ─────────────
+
+function resolveCreateBoatRentalAction(
+  ev: Extract<WireEvent, { type: "tool" }>
+): AgentAction | null {
+  const boatQuery = String(ev.input.boat_query ?? "").trim();
+  if (!boatQuery) return null;
+  const boat = findRentalBoatFuzzy(boatQuery);
+  if (!boat) return null;
+  const start_at = String(ev.input.start_at ?? "").trim();
+  const end_at = String(ev.input.end_at ?? "").trim();
+  if (!start_at || !end_at) return null;
+  const rateKind =
+    (ev.input.rate_kind as "hourly" | "half_day" | "full_day" | undefined) ??
+    "hourly";
+
+  // Customer — either existing boater or walk-in
+  const boaterQuery = ev.input.boater_query ? String(ev.input.boater_query) : "";
+  const boater = boaterQuery ? findBoaterFuzzy(boaterQuery) : undefined;
+  const patronName = ev.input.patron_name ? String(ev.input.patron_name) : undefined;
+  const patronEmail = ev.input.patron_email ? String(ev.input.patron_email) : undefined;
+  const patronPhone = ev.input.patron_phone ? String(ev.input.patron_phone) : undefined;
+  if (!boater && !patronName) return null;
+
+  const customerLabel = boater
+    ? boater.display_name
+    : (patronName ?? "Walk-in");
+  return {
+    kind: "create_boat_rental",
+    label: `Book ${boat.name} for ${customerLabel}`,
+    boat_id: boat.id,
+    boater_id: boater?.id,
+    patron_name: patronName,
+    patron_email: patronEmail,
+    patron_phone: patronPhone,
+    start_at,
+    end_at,
+    rate_kind: rateKind,
+  };
+}
+
+function resolveRentalLookupAction(
+  ev: Extract<WireEvent, { type: "tool" }>
+): AgentAction | null {
+  const q = String(ev.input.rental_query ?? "").trim();
+  if (!q) return null;
+  const rental = findBoatRentalFuzzy(q);
+  if (!rental) return null;
+  if (ev.name === "close_boat_rental") {
+    return {
+      kind: "close_boat_rental",
+      label: `Close ${rental.number}`,
+      rental_id: rental.id,
+      fuel_in_pct:
+        ev.input.fuel_in_pct != null ? Number(ev.input.fuel_in_pct) : undefined,
+      hours_in:
+        ev.input.hours_in != null ? Number(ev.input.hours_in) : undefined,
+      damage_notes: ev.input.damage_notes
+        ? String(ev.input.damage_notes)
+        : undefined,
+      damage_charge:
+        ev.input.damage_charge != null
+          ? Number(ev.input.damage_charge)
+          : undefined,
+    };
+  }
+  if (ev.name === "send_pickup_link") {
+    return {
+      kind: "send_pickup_link",
+      label: `Send pickup link for ${rental.number}`,
+      rental_id: rental.id,
+    };
+  }
+  return null;
+}
+
+function resolveNotifyWaitlistAction(
+  ev: Extract<WireEvent, { type: "tool" }>
+): AgentAction | null {
+  const q = String(ev.input.slip_query ?? "").trim();
+  if (!q) return null;
+  const slip = findSlipFuzzy(q);
+  if (!slip) return null;
+  const topN = ev.input.top_n != null ? Number(ev.input.top_n) : 5;
+  return {
+    kind: "notify_waitlist",
+    label: `Notify top ${topN} waitlisters about slip ${slip.id}`,
+    slip_id: slip.id,
+    top_n: topN,
+  };
+}
+
+function resolveCoiRenewalAction(
+  ev: Extract<WireEvent, { type: "tool" }>
+): AgentAction | null {
+  const q = String(ev.input.coi_query ?? "").trim();
+  if (!q) return null;
+  const coi = findCoiFuzzy(q);
+  if (!coi) return null;
+  return {
+    kind: "request_coi_renewal",
+    label: `Request renewal — ${coi.carrier} policy ${coi.policy_number}`,
+    coi_id: coi.id,
+  };
+}
+
+function findRentalBoatFuzzy(q: string) {
+  const t = q.toLowerCase();
+  return (
+    RENTAL_BOATS.find((b) => b.id === q) ??
+    RENTAL_BOATS.find((b) => b.name.toLowerCase().includes(t)) ??
+    RENTAL_BOATS.find((b) => b.type.replace("_", " ").includes(t))
+  );
+}
+
+function findBoatRentalFuzzy(q: string) {
+  const t = q.toLowerCase().trim();
+  return (
+    BOAT_RENTALS.find((r) => r.id === q) ??
+    BOAT_RENTALS.find((r) => r.number.toLowerCase() === t) ??
+    BOAT_RENTALS.find((r) => r.number.toLowerCase().includes(t)) ??
+    BOAT_RENTALS.find((r) =>
+      (r.patron_name ?? "").toLowerCase().includes(t)
+    ) ??
+    BOAT_RENTALS.find((r) => {
+      const b = BOATERS.find((x) => x.id === r.boater_id);
+      return b?.display_name.toLowerCase().includes(t);
+    })
+  );
+}
+
+function findCoiFuzzy(q: string) {
+  const t = q.toLowerCase().trim();
+  // Exact id wins
+  const byId = INSURANCE_CERTIFICATES.find((c) => c.id === q);
+  if (byId) return byId;
+  // Then expiring/lapsed for the named boater
+  const now = Date.now();
+  const expiringCerts = INSURANCE_CERTIFICATES.filter(
+    (c) => new Date(c.effective_end).getTime() - now < 60 * 86_400_000
+  );
+  return (
+    expiringCerts.find((c) => {
+      const b = BOATERS.find((x) => x.id === c.boater_id);
+      return b?.display_name.toLowerCase().includes(t);
+    }) ??
+    INSURANCE_CERTIFICATES.find((c) => c.policy_number.toLowerCase() === t) ??
+    expiringCerts[0]
+  );
+}
+
 // create_boater doesn't carry boater_id (it creates one), so it's handled outside
 // the boater-required block above. We splice it in by inspecting ev.name early.
 function resolveCreateBoaterAction(ev: Extract<WireEvent, { type: "tool" }>): AgentAction | null {
@@ -384,7 +562,12 @@ function findVesselFuzzy(q: string, boaterId?: string) {
 function findSlipFuzzy(q: string) {
   if (!q) return undefined;
   const t = q.toLowerCase().trim();
+  // SLIPS (current Roster) first — "A07" style ids land here. Then fall
+  // back to RENTAL_SPACES for older surfaces that still seed sp_* ids.
   return (
+    SLIPS.find((s) => s.id.toLowerCase() === t) ??
+    SLIPS.find((s) => s.number.toLowerCase() === t) ??
+    SLIPS.find((s) => t.includes(s.id.toLowerCase())) ??
     RENTAL_SPACES.find((s) => s.id === q) ??
     RENTAL_SPACES.find((s) => s.number.toLowerCase() === t) ??
     RENTAL_SPACES.find((s) => t.includes(s.number.toLowerCase()))

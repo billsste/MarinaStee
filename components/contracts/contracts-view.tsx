@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { FilePlus2, FileText, Plus, RefreshCw } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -105,6 +106,7 @@ const TEMPLATE_FIELDS: FieldSpec<ContractTemplate>[] = [
 
 export function ContractsView() {
   const contracts = useContracts();
+  const router = useRouter();
   const templates = useContractTemplates();
   const active = contracts.filter((c) => c.status === "active");
   const expiringSoon = contracts.filter((c) => {
@@ -202,7 +204,10 @@ export function ContractsView() {
                     key={c.id}
                     c={c}
                     templates={templates}
-                    onClick={() => { setEditingContract(c); setContractOpen(true); }}
+                    // Row click drills into the contract detail / renewal
+                    // workflow page, not the inline edit dialog. The
+                    // detail page exposes its own edit affordance.
+                    onClick={() => router.push(`/slips/contracts/${c.id}`)}
                   />
                 ))}
                 {contracts.length === 0 && (

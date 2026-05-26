@@ -1,12 +1,25 @@
 "use client";
 
 import * as React from "react";
-import { CreditCard, FileText, RotateCcw } from "lucide-react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import {
+  CreditCard,
+  FileText,
+  RotateCcw,
+  Send,
+  Copy,
+  Check,
+  ExternalLink,
+  CheckCheck,
+} from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { RecordEditDialog, type FieldSpec } from "@/components/record-edit-dialog";
 import { formatMoney, getTemplate } from "@/lib/mock-data";
 import {
+  addCommunication,
+  mintContractSignatureToken,
   useCardsForBoater,
   useContractsForBoater,
   useLedgerForBoater,
@@ -17,7 +30,7 @@ import { useLedgerDrawer } from "@/components/ledger/ledger-entry-drawer";
 import { EnterPaymentSheet } from "@/components/financials/enter-payment-sheet";
 import { AddCardSheet } from "@/components/financials/add-card-sheet";
 import { NewContractSheet } from "@/components/financials/new-contract-sheet";
-import type { CardOnFile, Contract, LedgerEntry } from "@/lib/types";
+import type { Boater, CardOnFile, Communication, Contract, LedgerEntry } from "@/lib/types";
 
 const CARD_FIELDS: FieldSpec<CardOnFile>[] = [
   {
@@ -42,14 +55,15 @@ const CARD_FIELDS: FieldSpec<CardOnFile>[] = [
 type FilterKey = "all" | "invoices" | "payments" | "refunds";
 
 export function FinancialsTab({
-  boaterId,
+  boater,
   cards,
   contracts,
 }: {
-  boaterId: string;
+  boater: Boater;
   cards: CardOnFile[];
   contracts: Contract[];
 }) {
+  const boaterId = boater.id;
   // Live ledger from client store — reflects POS sales completed this session.
   const ledger = useLedgerForBoater(boaterId);
   const liveCards = useCardsForBoater(boaterId);
@@ -167,11 +181,16 @@ export function FinancialsTab({
                 return (
                   <li
                     key={c.id}
-                    className="flex items-start justify-between gap-3 rounded-[8px] border border-hairline bg-surface-2 px-3 py-2.5"
+                    className="flex items-start justify-between gap-3 rounded-[8px] border border-hairline bg-surface-2 px-3 py-2.5 transition-colors hover:bg-surface-3"
                   >
-                    <div className="min-w-0">
+                    <Link
+                      href={`/slips/contracts/${c.id}`}
+                      className="min-w-0 flex-1 cursor-pointer"
+                    >
                       <div className="flex items-center gap-2">
-                        <span className="font-medium text-fg">{c.number}</span>
+                        <span className="font-mono font-medium text-primary hover:underline">
+                          {c.number}
+                        </span>
                         <Badge tone={c.status === "active" ? "ok" : "neutral"} size="sm">
                           {c.status}
                         </Badge>
@@ -185,10 +204,11 @@ export function FinancialsTab({
                           {formatMoney(c.annual_rate)} / yr · billed {c.billing_cadence}
                         </div>
                       )}
-                    </div>
-                    <div className="flex shrink-0 items-center gap-1.5">
-                      <Button variant="ghost" size="sm">View</Button>
-                      <Button variant="secondary" size="sm">Renew</Button>
+                    </Link>
+                    {/* Action cluster — stopPropagation so the row link
+                        doesn't fire when staff hits Send / Resend / etc. */}
+                    <div onClick={(e) => e.stopPropagation()}>
+                      <ContractRowActions contract={c} boater={boater} />
                     </div>
                   </li>
                 );
@@ -342,6 +362,188 @@ function LedgerRow({ entry }: { entry: LedgerEntry }) {
         ) : null}
       </Td>
     </tr>
+  );
+}
+
+/*
+ * Status-aware contract action cluster.
+ *
+ * draft           → "Send for signature" (mints token + dispatches Communication)
+ * sent / partial  → Copy link / Resend / Open as boater
+ * executed        → Copy link / Open as boater (still awaiting card-on-file)
+ * active / signed → "Signed" badge + Renew
+ *
+ * Mirrors components/work-orders/signature-panel.tsx for the Contract entity.
+ * Lets staff trigger / re-trigger onboarding from outside the wizard
+ * (e.g., a contract created via the New Contract sheet or via bulk renewal
+ * still needs to be sent).
+ */
+function ContractRowActions({
+  contract,
+  boater,
+}: {
+  contract: Contract;
+  boater: Boater;
+}) {
+  const [copied, setCopied] = React.useState(false);
+  const [resentAt, setResentAt] = React.useState<string | null>(null);
+
+  const origin = typeof window !== "undefined" ? window.location.origin : "";
+  const onboardUrl = contract.signature_token
+    ? `${origin}/onboard/${contract.signature_token}`
+    : null;
+
+  function dispatchOnboardComm(token: string, reminder: boolean) {
+    const url = `${origin}/onboard/${token}`;
+    const channel = boater.communication_prefs.preferred_channel;
+    const commType: Communication["type"] = channel;
+    const recipient =
+      commType === "email"
+        ? (boater.primary_contact.email ?? "")
+        : (boater.primary_contact.phone ?? "");
+    addCommunication({
+      id: `cm_contract_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      boater_id: boater.id,
+      type: commType,
+      direction: "outbound",
+      sender_label: "Marina Stee",
+      sender_is_system: true,
+      recipient,
+      subject: reminder
+        ? `Reminder: complete onboarding for contract ${contract.number}`
+        : `Please complete onboarding for contract ${contract.number}`,
+      body_preview: `Sign and add a payment method here: ${url}`,
+      full_body:
+        `Hi ${boater.first_name},\n\n` +
+        (reminder
+          ? `Just a friendly reminder to complete your onboarding for contract ${contract.number}.`
+          : `Your contract ${contract.number} is ready to sign.`) +
+        ` It only takes a couple of minutes:\n\n${url}\n\n` +
+        `Reply to this message if you'd like a hand.`,
+      sent_at: new Date().toISOString(),
+      status: "delivered",
+      related_entity: { type: "contract", id: contract.id },
+    });
+  }
+
+  function handleSend() {
+    const token = mintContractSignatureToken(contract.id);
+    if (!token) return;
+    dispatchOnboardComm(token, false);
+    // Auto-copy so staff can paste into a chat if they want.
+    setTimeout(() => {
+      if (typeof navigator !== "undefined" && navigator.clipboard) {
+        void navigator.clipboard.writeText(`${origin}/onboard/${token}`);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1500);
+      }
+    }, 0);
+  }
+
+  function handleResend() {
+    if (!onboardUrl || !contract.signature_token) return;
+    dispatchOnboardComm(contract.signature_token, true);
+    setResentAt(new Date().toISOString());
+    setTimeout(() => setResentAt(null), 2000);
+  }
+
+  async function handleCopy() {
+    if (!onboardUrl) return;
+    try {
+      await navigator.clipboard.writeText(onboardUrl);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      /* clipboard blocked */
+    }
+  }
+
+  // Signed (executed or active): show a checkmark + Renew
+  if (contract.signed_at || contract.status === "active" || contract.status === "executed") {
+    return (
+      <div className="flex shrink-0 items-center gap-1.5">
+        {contract.signed_at && (
+          <span className="inline-flex items-center gap-1 text-[11px] text-status-ok">
+            <CheckCheck className="size-3" />
+            Signed
+          </span>
+        )}
+        {onboardUrl && contract.status === "executed" && (
+          <a
+            href={onboardUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 rounded-[6px] border border-hairline bg-surface-1 px-2 py-1 text-[11px] text-fg-subtle hover:bg-surface-2 hover:text-fg"
+            title="Open as boater (still awaiting payment method)"
+          >
+            <ExternalLink className="size-3" />
+            Open
+          </a>
+        )}
+        <Button variant="secondary" size="sm">Renew</Button>
+      </div>
+    );
+  }
+
+  // Sent / partially_signed: link is live, show the action cluster
+  if (onboardUrl) {
+    return (
+      <div className="flex shrink-0 items-center gap-1.5">
+        <button
+          type="button"
+          onClick={handleCopy}
+          className="inline-flex items-center gap-1 rounded-[6px] border border-hairline bg-surface-1 px-2 py-1 text-[11px] text-fg-subtle hover:bg-surface-2 hover:text-fg"
+        >
+          {copied ? (
+            <>
+              <Check className="size-3 text-status-ok" />
+              Copied
+            </>
+          ) : (
+            <>
+              <Copy className="size-3" />
+              Copy link
+            </>
+          )}
+        </button>
+        <button
+          type="button"
+          onClick={handleResend}
+          className="inline-flex items-center gap-1 rounded-[6px] border border-hairline bg-surface-1 px-2 py-1 text-[11px] text-fg-subtle hover:bg-surface-2 hover:text-fg"
+        >
+          {resentAt ? (
+            <>
+              <Check className="size-3 text-status-ok" />
+              Sent
+            </>
+          ) : (
+            <>
+              <Send className="size-3" />
+              Resend
+            </>
+          )}
+        </button>
+        <a
+          href={onboardUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1 rounded-[6px] border border-hairline bg-surface-1 px-2 py-1 text-[11px] text-fg-subtle hover:bg-surface-2 hover:text-fg"
+        >
+          <ExternalLink className="size-3" />
+          Open as boater
+        </a>
+      </div>
+    );
+  }
+
+  // Draft, never sent → primary CTA to send
+  return (
+    <div className="flex shrink-0 items-center gap-1.5">
+      <Button variant="primary" size="sm" onClick={handleSend}>
+        <Send className="size-3.5" />
+        Send for signature
+      </Button>
+    </div>
   );
 }
 

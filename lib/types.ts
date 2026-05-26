@@ -30,7 +30,7 @@ export interface Address {
 
 export interface CardOnFile {
   id: string;
-  brand: "visa" | "mastercard" | "amex" | "discover";
+  brand: "visa" | "mastercard" | "amex" | "discover" | "other";
   last4: string;
   exp_month: number;
   exp_year: number;
@@ -108,7 +108,7 @@ export interface StaffNote {
   pinned: boolean;
 }
 
-export type WaitlistStatus = "pending" | "offered" | "converted" | "declined" | "withdrawn";
+export type WaitlistStatus = "pending" | "offered" | "converted" | "declined" | "withdrawn" | "expired";
 
 export interface WaitlistEntry {
   id: string;
@@ -130,7 +130,10 @@ export interface WaitlistEntry {
   // When status === offered/converted, where it went
   offered_slip_id?: string;
   offered_at?: string;
+  offer_expires_at?: string;       // ISO — typically offered_at + 24h
+  claim_token?: string;            // public URL token for /claim/[token]
   converted_reservation_id?: string;
+  converted_contract_id?: string;  // when a holder accepted and started the onboarding chain
 }
 
 export interface InsuranceCertificate {
@@ -146,7 +149,30 @@ export interface InsuranceCertificate {
   pdf_url?: string;
   uploaded_at: string;
   uploaded_by: "marina" | "boater"; // who submitted it
+  // Renewal request chain — same pattern as contract/booking tokens.
+  // Staff (or auto-trigger on expiry alert) hits "Request renewal,"
+  // which mints upload_token + dispatches a Comm with the public
+  // /coi-upload/[token] URL. Boater uploads the new PDF → a new
+  // InsuranceCertificate is created and the original entry's
+  // renewed_by_coi_id back-links to it.
+  upload_token?: string;
+  upload_link_sent_at?: string;
+  upload_link_viewed_at?: string;
+  renewed_by_coi_id?: string;
 }
+
+/**
+ * Physical slip class — drives the default annual rate. Marinas
+ * typically price by amenity tier (covered/uncovered/T-head/buoy/dry)
+ * rather than by length alone, so the class is the primary lookup
+ * and length is the constraint check.
+ */
+export type SlipClass =
+  | "covered"          // roof — top-tier indoor protection
+  | "uncovered"        // standard dock slip, open
+  | "t_head"           // end-of-dock with extra clearance + premium pricing
+  | "buoy"             // mooring ball
+  | "dry_storage";     // out of water, indoor or yard
 
 export interface Slip {
   id: string;              // e.g. "A29"
@@ -157,6 +183,16 @@ export interface Slip {
   max_beam_inches: number;
   has_power: boolean;
   has_water: boolean;
+  // ── Annual pricing baked into the slip itself.
+  // The slip *is* the SKU for annual lease — staff doesn't pick a
+  // separate rate card. Each slip has a class (covered/uncovered/...)
+  // and a default_annual_rate that the assignment wizard pre-fills.
+  // Staff can still override the rate per-contract (discounts, special
+  // arrangements) but the default lives here.
+  slip_class: SlipClass;
+  default_annual_rate: number;      // dollars / year
+  default_monthly_rate?: number;    // optional — for split billing
+  default_seasonal_rate?: number;   // 6mo
 }
 
 export type ReservationStatus = "scheduled" | "occupied" | "completed" | "cancelled";
@@ -433,6 +469,30 @@ export interface Contract {
    * backend lands.
    */
   attachments?: ContractAttachment[];
+  /**
+   * Signature + onboarding state. signature_token mints the public
+   * /onboard/[token] URL so a holder can complete signature + payment
+   * setup in one boater-facing flow. signed_at is declared above.
+   */
+  signature_token?: string;
+  signer_name?: string;
+  signature_data_url?: string;        // base64 PNG of signature pad
+  signer_ip?: string;                  // captured for audit
+  /**
+   * Per-step onboarding progress. Drives the staff-side progress rail.
+   * Each field is set to the ISO timestamp when the step completed; a
+   * step is "done" iff its timestamp is present.
+   */
+  onboarding?: ContractOnboardingProgress;
+}
+
+export interface ContractOnboardingProgress {
+  link_sent_at?: string;     // outbound Communication dispatched
+  link_viewed_at?: string;   // holder opened /onboard/[token]
+  signed_at?: string;        // signature captured
+  card_added_at?: string;    // payment method on file
+  coi_uploaded_at?: string;  // COI uploaded (optional gate)
+  welcomed_at?: string;      // holder completed welcome step
 }
 
 export interface ContractAttachment {
@@ -602,6 +662,121 @@ export interface FuelSale {
   boater_id?: string;           // when charged to boater account
   patron_id?: string;           // walk-in
   payment_method: "card" | "cash" | "charge_to_account";
+}
+
+// ============================================================
+// Boat Rentals — the marina's own fleet (pontoons, kayaks,
+// jet skis, paddleboards, fishing skiffs) rented by the hour /
+// half-day / full-day to either walk-in patrons or existing
+// annual holders. Distinct from Slips (annual lease of dockage)
+// and Reservations (transient slip booking).
+// ============================================================
+
+export type RentalBoatType =
+  | "pontoon"
+  | "kayak"
+  | "paddleboard"
+  | "jet_ski"
+  | "fishing_skiff"
+  | "wakeboat";
+
+export type RentalBoatStatus =
+  | "available"
+  | "rented"
+  | "maintenance"
+  | "off_season";
+
+export interface RentalBoat {
+  id: string;
+  name: string;                       // "Pontoon 1", "Yellow Kayak"
+  type: RentalBoatType;
+  capacity: number;                   // max passengers
+  // Tiered pricing — boats with engines tend to set all three;
+  // kayaks/SUPs usually set hourly + full_day only.
+  hourly_rate?: number;
+  half_day_rate?: number;             // 4 hrs
+  full_day_rate?: number;             // 8 hrs
+  deposit_amount: number;             // refundable hold authorized at pickup
+  // Engine + fuel — only meaningful for motorized boats
+  fuel_capacity_gal?: number;
+  current_fuel_pct?: number;          // 0..100, snapshot from last return
+  hour_meter_reading?: number;        // current engine hours
+  home_dock: string;                  // physical pickup location
+  photo_url?: string;
+  status: RentalBoatStatus;
+  notes?: string;
+  active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export type BoatRentalStatus =
+  | "reserved"           // booked, awaiting agreement + deposit
+  | "confirmed"          // agreement signed + card on file
+  | "checked_out"        // boat in customer's hands, on the water
+  | "returned"           // boat back, charges being finalized
+  | "closed"             // final invoice posted, all settled
+  | "cancelled"
+  | "no_show";
+
+export type BoatRentalRateKind = "hourly" | "half_day" | "full_day";
+
+/*
+ * Booking → pickup → return progress. Each step gets an ISO
+ * timestamp as the customer advances through /pickup/[token],
+ * exactly mirroring ContractOnboardingProgress so the staff-side
+ * progress rail uses the same pattern.
+ */
+export interface BoatRentalCheckinProgress {
+  link_sent_at?: string;          // outbound comm dispatched
+  link_viewed_at?: string;        // customer opened /pickup/[token]
+  agreement_signed_at?: string;   // rental agreement + damage waiver
+  deposit_authorized_at?: string; // card on file + hold placed
+  checked_out_at?: string;        // dockhand handed over keys
+  returned_at?: string;           // boat back at the dock
+}
+
+export interface BoatRental {
+  id: string;
+  number: string;                    // BR-1001
+  boat_id: string;
+  // Customer — exactly one of boater_id (existing holder) or
+  // the walk-in patron fields. Walk-ins capture name + contact
+  // + ID at pickup time; we don't create a Patron entity since
+  // POS already treats walk-ins as anonymous-with-snapshot.
+  boater_id?: string;
+  patron_name?: string;
+  patron_email?: string;
+  patron_phone?: string;
+  patron_id_last4?: string;          // driver's license last 4 for the agreement
+  start_at: string;                  // ISO datetime — booked pickup
+  end_at: string;                    // ISO datetime — booked return
+  rate_kind: BoatRentalRateKind;
+  base_amount: number;               // booked rental fee
+  deposit_hold: number;              // refundable hold authorized
+  // Signing + payment artifacts (parallels Contract / Quote)
+  pickup_token?: string;
+  signer_name?: string;
+  signature_data_url?: string;
+  signer_ip?: string;
+  deposit_card_id?: string;          // CardOnFile ref (boater) or processor_token (patron)
+  // Return-time captures (filled in by the dockhand on /dock)
+  fuel_out_pct?: number;
+  fuel_in_pct?: number;
+  hours_out?: number;
+  hours_in?: number;
+  damage_notes?: string;
+  // Final-charge breakdown (computed at return)
+  fuel_charge?: number;
+  damage_charge?: number;
+  late_fee?: number;
+  final_total?: number;
+  status: BoatRentalStatus;
+  checkin: BoatRentalCheckinProgress;
+  related_ledger_entry_id?: string;  // final invoice posted to ledger on close
+  notes?: string;
+  created_at: string;
+  updated_at: string;
 }
 
 // ============================================================

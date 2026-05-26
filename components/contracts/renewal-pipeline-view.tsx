@@ -1,10 +1,11 @@
 "use client";
 
 import * as React from "react";
-import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { FilePlus2, Send, Sparkles } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { BOATERS, SLIPS, formatMoney } from "@/lib/mock-data";
 import { updateContract, useContracts } from "@/lib/client-store";
 import { BulkRenewalSheet } from "./bulk-renewal-sheet";
@@ -14,23 +15,17 @@ import type { Contract } from "@/lib/types";
 /*
  * Renewal pipeline — the fall-cycle workflow for an annual-holder marina.
  *
- * Layout:
- *   Top: this-year ARR + projected next-year ARR (with current lift) +
- *        renewal rate progress bar
- *   Bulk action: "Draft 202X renewals" → BulkRenewalSheet
- *   4 buckets:
- *     1. Up for renewal — active contracts ending THIS YEAR with no
- *        successor in the store yet (todo list)
- *     2. Drafted — successor contracts in draft status
- *     3. Sent — successor contracts in sent / partially_signed
- *     4. Signed — successors in executed / active for next season
- *
- * Each bucket is a card list. Per-row actions advance the contract
- * through the pipeline.
+ * Sub-tabs replace the 2×2 card grid: one table per renewal stage so
+ * staff can drill into a specific bucket without competing visual
+ * weight. Clicking a row routes to the contract detail page where
+ * status-aware actions live.
  */
+
+type Stage = "up_for_renewal" | "drafted" | "sent" | "signed";
 
 export function RenewalPipelineView() {
   const contracts = useContracts();
+  const router = useRouter();
   const now = new Date();
   const currentYear = now.getFullYear();
   const targetYear = currentYear + 1;
@@ -43,12 +38,11 @@ export function RenewalPipelineView() {
     return new Date(c.effective_end).getFullYear() === currentYear;
   });
 
-  // Successors for those (any contract for same slip with end-year = next year)
+  // Successors (any contract for next year's term)
   const successors = contracts.filter((c) => {
     return new Date(c.effective_end).getFullYear() === targetYear;
   });
 
-  // Bucket the successors by status
   const draftedSuccessors = successors.filter((c) => c.status === "draft");
   const sentSuccessors = successors.filter(
     (c) => c.status === "sent" || c.status === "partially_signed"
@@ -56,8 +50,6 @@ export function RenewalPipelineView() {
   const signedSuccessors = successors.filter(
     (c) => c.status === "executed" || c.status === "active"
   );
-
-  // "Up for renewal" = endingThisYear without a successor of any status
   const upForRenewal = activeEndingThisYear.filter((c) => {
     return !successors.some((s) => s.slip_id === c.slip_id);
   });
@@ -68,6 +60,10 @@ export function RenewalPipelineView() {
 
   const currentARR = activeEndingThisYear.reduce((s, c) => s + (c.annual_rate ?? 0), 0);
   const nextARR = successors.reduce((s, c) => s + (c.annual_rate ?? 0), 0);
+
+  function openContract(id: string) {
+    router.push(`/slips/contracts/${id}`);
+  }
 
   return (
     <div className="space-y-4">
@@ -125,66 +121,73 @@ export function RenewalPipelineView() {
         </Button>
       </div>
 
-      {/* Buckets */}
-      <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
-        <Bucket
-          title={`Up for renewal — ${currentYear}`}
-          tone="warn"
-          count={upForRenewal.length}
-          empty="Every expiring contract has a successor in flight."
-          help="Active contracts ending this year that don't yet have a draft. Use the bulk action above to draft in batch."
-        >
-          {upForRenewal.map((c) => (
-            <PipelineRow key={c.id} contract={c} stage="up_for_renewal" />
-          ))}
-        </Bucket>
+      {/* Tabbed tables */}
+      <Tabs defaultValue="up" className="w-full">
+        <TabsList>
+          <TabsTrigger value="up">
+            Up for renewal
+            <CountChip n={upForRenewal.length} tone="warn" />
+          </TabsTrigger>
+          <TabsTrigger value="drafted">
+            Drafted
+            <CountChip n={draftedSuccessors.length} tone="info" />
+          </TabsTrigger>
+          <TabsTrigger value="sent">
+            Sent
+            <CountChip n={sentSuccessors.length} tone="info" />
+          </TabsTrigger>
+          <TabsTrigger value="signed">
+            Signed
+            <CountChip n={signedSuccessors.length} tone="ok" />
+          </TabsTrigger>
+        </TabsList>
 
-        <Bucket
-          title="Drafted"
-          tone="info"
-          count={draftedSuccessors.length}
-          empty="No draft renewals yet."
-          help="Successor contracts in draft. Click Send to push to the holder for signature."
-        >
-          {draftedSuccessors.map((c) => (
-            <PipelineRow
-              key={c.id}
-              contract={c}
-              stage="drafted"
-              onSend={() => updateContract(c.id, { status: "sent" })}
-            />
-          ))}
-        </Bucket>
-
-        <Bucket
-          title="Sent — awaiting signature"
-          tone="info"
-          count={sentSuccessors.length}
-          empty="Nothing waiting on signatures."
-          help="Contracts the holder has but hasn't signed yet. Nudge or mark received."
-        >
-          {sentSuccessors.map((c) => (
-            <PipelineRow
-              key={c.id}
-              contract={c}
-              stage="sent"
-              onMarkSigned={() => updateContract(c.id, { status: "active", signed_at: new Date().toISOString().slice(0, 10) })}
-            />
-          ))}
-        </Bucket>
-
-        <Bucket
-          title={`Signed — ${targetYear} season`}
-          tone="ok"
-          count={signedSuccessors.length}
-          empty="No locked-in renewals yet."
-          help="Successors that are signed and active for next season."
-        >
-          {signedSuccessors.map((c) => (
-            <PipelineRow key={c.id} contract={c} stage="signed" />
-          ))}
-        </Bucket>
-      </div>
+        <TabsContent value="up">
+          <PipelineTable
+            stage="up_for_renewal"
+            contracts={upForRenewal}
+            emptyTitle="Every expiring contract has a successor in flight."
+            emptyBody="Anything that lands in this stage gets a row here once it's active and ending this year."
+            onOpen={openContract}
+          />
+        </TabsContent>
+        <TabsContent value="drafted">
+          <PipelineTable
+            stage="drafted"
+            contracts={draftedSuccessors}
+            emptyTitle="No draft renewals yet."
+            emptyBody="Use the 'Draft renewals' bulk action above, or draft individually from each holder's page."
+            onOpen={openContract}
+            onSend={(c) =>
+              updateContract(c.id, { status: "sent" })
+            }
+          />
+        </TabsContent>
+        <TabsContent value="sent">
+          <PipelineTable
+            stage="sent"
+            contracts={sentSuccessors}
+            emptyTitle="Nothing waiting on signatures."
+            emptyBody="When a draft is sent for signature it'll appear here until the holder signs."
+            onOpen={openContract}
+            onMarkSigned={(c) =>
+              updateContract(c.id, {
+                status: "active",
+                signed_at: new Date().toISOString().slice(0, 10),
+              })
+            }
+          />
+        </TabsContent>
+        <TabsContent value="signed">
+          <PipelineTable
+            stage="signed"
+            contracts={signedSuccessors}
+            emptyTitle="No locked-in renewals yet."
+            emptyBody={`Successors signed and active for the ${targetYear} season will land here.`}
+            onOpen={openContract}
+          />
+        </TabsContent>
+      </Tabs>
 
       <BulkRenewalSheet
         open={bulkOpen}
@@ -208,7 +211,8 @@ function KpiCard({
   sub: string;
   tone?: "ok" | "warn" | "neutral";
 }) {
-  const valueTone = tone === "ok" ? "text-status-ok" : tone === "warn" ? "text-status-warn" : "text-fg";
+  const valueTone =
+    tone === "ok" ? "text-status-ok" : tone === "warn" ? "text-status-warn" : "text-fg";
   return (
     <div className="rounded-[12px] border border-hairline bg-surface-1 p-4">
       <div className="mb-1.5 text-[12px] font-medium text-fg-subtle">{label}</div>
@@ -218,105 +222,170 @@ function KpiCard({
   );
 }
 
-function Bucket({
-  title,
-  tone,
-  count,
-  empty,
-  help,
-  children,
-}: {
-  title: string;
-  tone: "ok" | "warn" | "info" | "neutral";
-  count: number;
-  empty: string;
-  help: string;
-  children: React.ReactNode;
-}) {
+function CountChip({ n, tone }: { n: number; tone: "ok" | "warn" | "info" | "neutral" }) {
+  const tint =
+    tone === "ok"
+      ? "bg-status-ok/15 text-status-ok"
+      : tone === "warn"
+      ? "bg-status-warn/15 text-status-warn"
+      : tone === "info"
+      ? "bg-status-info/15 text-status-info"
+      : "bg-surface-3 text-fg-subtle";
   return (
-    <div className="rounded-[12px] border border-hairline bg-surface-1">
-      <div className="flex items-center justify-between border-b border-hairline px-4 py-2.5">
-        <h3 className="inline-flex items-center gap-2 text-[13px] font-medium text-fg">
-          {title}
-          <Badge tone={tone === "neutral" ? "neutral" : tone} size="sm">
-            {count}
-          </Badge>
-        </h3>
+    <span className={cn("ml-1 rounded-full px-1.5 py-0.5 text-[10px] font-semibold tabular", tint)}>
+      {n}
+    </span>
+  );
+}
+
+function PipelineTable({
+  stage,
+  contracts,
+  emptyTitle,
+  emptyBody,
+  onOpen,
+  onSend,
+  onMarkSigned,
+}: {
+  stage: Stage;
+  contracts: Contract[];
+  emptyTitle: string;
+  emptyBody: string;
+  onOpen: (id: string) => void;
+  onSend?: (c: Contract) => void;
+  onMarkSigned?: (c: Contract) => void;
+}) {
+  if (contracts.length === 0) {
+    return (
+      <div className="mt-3 rounded-[12px] border border-dashed border-hairline-strong bg-surface-1 px-6 py-10 text-center">
+        <p className="text-[14px] font-medium text-fg">{emptyTitle}</p>
+        <p className="mx-auto mt-1 max-w-md text-[12px] text-fg-subtle">{emptyBody}</p>
       </div>
-      <div className="space-y-2 p-3">
-        {count === 0 ? (
-          <div className="rounded-[8px] border border-dashed border-hairline px-3 py-5 text-center text-[12px] text-fg-tertiary">
-            {empty}
-          </div>
-        ) : (
-          children
-        )}
-      </div>
-      <div className="border-t border-hairline px-4 py-2 text-[11px] text-fg-tertiary">{help}</div>
+    );
+  }
+
+  return (
+    <div className="mt-3 overflow-hidden rounded-[12px] border border-hairline bg-surface-1">
+      <table className="w-full text-[13px]">
+        <thead>
+          <tr className="border-b border-hairline bg-surface-2 text-[11px] uppercase tracking-wide text-fg-tertiary">
+            <Th>Holder</Th>
+            <Th>Contract</Th>
+            <Th>Slip</Th>
+            <Th>Term</Th>
+            <Th className="text-right">Rate</Th>
+            <Th className="text-right">Action</Th>
+          </tr>
+        </thead>
+        <tbody>
+          {contracts.map((c) => (
+            <PipelineRow
+              key={c.id}
+              contract={c}
+              stage={stage}
+              onOpen={() => onOpen(c.id)}
+              onSend={onSend ? () => onSend(c) : undefined}
+              onMarkSigned={onMarkSigned ? () => onMarkSigned(c) : undefined}
+            />
+          ))}
+        </tbody>
+      </table>
     </div>
   );
+}
+
+function Th({
+  children,
+  className,
+}: {
+  children?: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <th className={cn("px-3 py-2 text-left font-medium", className)}>{children}</th>
+  );
+}
+
+function Td({
+  children,
+  className,
+}: {
+  children?: React.ReactNode;
+  className?: string;
+}) {
+  return <td className={cn("px-3 py-2 align-middle", className)}>{children}</td>;
 }
 
 function PipelineRow({
   contract,
   stage,
+  onOpen,
   onSend,
   onMarkSigned,
 }: {
   contract: Contract;
-  stage: "up_for_renewal" | "drafted" | "sent" | "signed";
+  stage: Stage;
+  onOpen: () => void;
   onSend?: () => void;
   onMarkSigned?: () => void;
 }) {
   const boater = BOATERS.find((b) => b.id === contract.boater_id);
   const slip = contract.slip_id ? SLIPS.find((s) => s.id === contract.slip_id) : undefined;
-  const cadence = boater?.billing_cadence ?? "—";
+  const cadence = contract.billing_cadence;
 
   return (
-    <div className="flex flex-wrap items-center justify-between gap-2 rounded-[10px] border border-hairline bg-surface-2 px-3 py-2">
-      <div className="min-w-0 flex-1">
-        <div className="flex flex-wrap items-center gap-1.5">
-          {boater ? (
-            <Link
-              href={`/holders/${boater.id}`}
-              className="text-[13px] font-medium text-fg hover:text-primary"
-            >
-              {boater.display_name}
-            </Link>
-          ) : (
-            <span className="text-[13px] font-medium text-fg-tertiary">—</span>
+    <tr
+      onClick={onOpen}
+      className="cursor-pointer border-b border-hairline transition-colors hover:bg-surface-2 last:border-b-0"
+    >
+      <Td>
+        <span className="font-medium text-fg">{boater?.display_name ?? "—"}</span>
+      </Td>
+      <Td>
+        <span className="font-mono text-[12px] font-medium text-primary">
+          {contract.number}
+        </span>
+      </Td>
+      <Td>
+        {slip ? (
+          <span className="font-mono text-[12px] text-fg">{slip.id}</span>
+        ) : (
+          <span className="text-fg-tertiary">—</span>
+        )}
+      </Td>
+      <Td className="text-fg-subtle">
+        {contract.effective_start} → {contract.effective_end}
+      </Td>
+      <Td className="text-right">
+        {contract.annual_rate ? (
+          <>
+            <span className="tabular text-fg">{formatMoney(contract.annual_rate)}</span>
+            <span className="ml-1 text-[10px] text-fg-tertiary">/ {cadence}</span>
+          </>
+        ) : (
+          <span className="text-fg-tertiary">—</span>
+        )}
+      </Td>
+      <Td className="text-right">
+        {/* Stop propagation so action buttons don't double-fire row click */}
+        <div className="inline-flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+          {stage === "up_for_renewal" && (
+            <Badge tone="warn" size="sm">No draft yet</Badge>
           )}
-          <Badge tone="outline" size="sm">{contract.number}</Badge>
-          {slip && (
-            <span className="font-mono text-[11px] text-fg-tertiary">{slip.id}</span>
+          {stage === "drafted" && onSend && (
+            <Button variant="primary" size="sm" onClick={onSend}>
+              <Send className="size-3.5" />
+              Send
+            </Button>
           )}
+          {stage === "sent" && onMarkSigned && (
+            <Button variant="primary" size="sm" onClick={onMarkSigned}>
+              Mark signed
+            </Button>
+          )}
+          {stage === "signed" && <Badge tone="ok" size="sm">Locked in</Badge>}
         </div>
-        <div className="mt-0.5 text-[11px] text-fg-tertiary">
-          {contract.effective_start} → {contract.effective_end}
-          {contract.annual_rate ? ` · ${formatMoney(contract.annual_rate)}/yr` : ""}
-          {` · ${cadence}`}
-        </div>
-      </div>
-
-      <div className="flex shrink-0 items-center gap-1.5">
-        {stage === "drafted" && onSend && (
-          <Button variant="primary" size="sm" onClick={onSend}>
-            <Send className="size-3.5" />
-            Send
-          </Button>
-        )}
-        {stage === "sent" && onMarkSigned && (
-          <Button variant="primary" size="sm" onClick={onMarkSigned}>
-            Mark signed
-          </Button>
-        )}
-        {stage === "up_for_renewal" && (
-          <Badge tone="warn" size="sm">No draft yet</Badge>
-        )}
-        {stage === "signed" && (
-          <Badge tone="ok" size="sm">Locked in</Badge>
-        )}
-      </div>
-    </div>
+      </Td>
+    </tr>
   );
 }

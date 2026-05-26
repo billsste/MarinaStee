@@ -40,6 +40,12 @@ export default async function AssignSlipPage({ params }: Props) {
         hasPower: slip.has_power,
         hasWater: slip.has_water,
         occupancyType: "Standard" as const,
+        // Pricing is intrinsic to the slip — covered/uncovered/T-head
+        // each carry a different default that pre-fills the wizard.
+        slipClass: slip.slip_class,
+        defaultAnnualRate: slip.default_annual_rate,
+        defaultMonthlyRate: slip.default_monthly_rate,
+        defaultSeasonalRate: slip.default_seasonal_rate,
       }
     : {
         id: space!.id,
@@ -50,6 +56,8 @@ export default async function AssignSlipPage({ params }: Props) {
         hasPower: space!.has_power,
         hasWater: space!.has_water,
         occupancyType: space!.occupancy_type,
+        slipClass: "uncovered" as const,
+        defaultAnnualRate: 0,
       };
 
   return <AssignSlipClient slip={slipMeta} />;

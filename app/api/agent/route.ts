@@ -333,6 +333,82 @@ const ACTION_TOOLS: Anthropic.Messages.Tool[] = [
       required: ["boater_query", "brand", "last4", "exp_month", "exp_year"],
     },
   },
+  {
+    name: "create_boat_rental",
+    description:
+      "Propose booking one of the marina's rental boats (pontoons / jet skis / kayaks / paddleboards / fishing skiffs). Requires human approval. On approval a pickup token is minted and an outbound link is dispatched. Either boater_query (existing annual holder) OR patron_name + at least one of patron_email / patron_phone (walk-in customer) is required.",
+    input_schema: {
+      type: "object",
+      properties: {
+        boat_query: { type: "string", description: "Boat name, e.g. 'Pontoon 1' or 'Yellow Kayak'." },
+        boater_query: { type: "string", description: "Existing annual holder — name, code, etc. Omit for walk-ins." },
+        patron_name: { type: "string", description: "Walk-in customer full name. Required when no boater_query." },
+        patron_email: { type: "string" },
+        patron_phone: { type: "string" },
+        start_at: { type: "string", description: "ISO datetime of pickup." },
+        end_at: { type: "string", description: "ISO datetime of return." },
+        rate_kind: {
+          type: "string",
+          enum: ["hourly", "half_day", "full_day"],
+          description: "Pricing block.",
+        },
+      },
+      required: ["boat_query", "start_at", "end_at", "rate_kind"],
+    },
+  },
+  {
+    name: "close_boat_rental",
+    description:
+      "Propose closing out a returned boat rental — records fuel + hours + damage, computes final charges, posts the invoice to the ledger, and dispatches a receipt comm. Requires human approval.",
+    input_schema: {
+      type: "object",
+      properties: {
+        rental_query: { type: "string", description: "Booking number like 'BR-1003' or a customer name." },
+        fuel_in_pct: { type: "number", description: "Fuel level at return (0-100)." },
+        hours_in: { type: "number", description: "Engine hours at return." },
+        damage_notes: { type: "string" },
+        damage_charge: { type: "number", description: "Damage charge in dollars. Default 0." },
+      },
+      required: ["rental_query"],
+    },
+  },
+  {
+    name: "send_pickup_link",
+    description:
+      "Resend the public /pickup/[token] link to a boat-rental customer. Idempotent — reuses an existing token if one is on file. Requires human approval.",
+    input_schema: {
+      type: "object",
+      properties: {
+        rental_query: { type: "string", description: "Booking number or customer name." },
+      },
+      required: ["rental_query"],
+    },
+  },
+  {
+    name: "notify_waitlist",
+    description:
+      "A slip just opened — broadcast claim links to the top N matching waitlisters. Requires human approval. First to confirm gets the slip; others see 'already claimed' or 'expired' after 24h.",
+    input_schema: {
+      type: "object",
+      properties: {
+        slip_query: { type: "string", description: "Slip id like 'A07' or a verbal description." },
+        top_n: { type: "number", description: "How many waitlisters to broadcast to. Default 5." },
+      },
+      required: ["slip_query"],
+    },
+  },
+  {
+    name: "request_coi_renewal",
+    description:
+      "Send a boater the public /coi-upload/[token] link to upload a renewed certificate of insurance. Use when a COI is expired or expiring soon. Requires human approval.",
+    input_schema: {
+      type: "object",
+      properties: {
+        coi_query: { type: "string", description: "Either a COI id or 'expiring COI for <boater name>'." },
+      },
+      required: ["coi_query"],
+    },
+  },
 ];
 
 const ALL_TOOLS = [...READ_TOOLS, ...ACTION_TOOLS];
@@ -446,7 +522,7 @@ Style:
 Tools:
 - query_* tools auto-execute server-side; you'll see the result and can use it to inform your next step.
 - All action tools are PROPOSED — the staff member must approve each in the UI. You can propose multiple in one turn (e.g. one per overdue boater after a query_open_balances call).
-- Available actions: charge_to_account, send_message, create_work_order, create_reservation, record_payment, create_boater, create_vessel, create_contract, add_card.
+- Available actions: charge_to_account, send_message, create_work_order, create_reservation, record_payment, create_boater, create_vessel, create_contract, add_card, create_boat_rental, close_boat_rental, send_pickup_link, notify_waitlist, request_coi_renewal.
 - Chain tools when useful: e.g. for "send a reminder to everyone overdue", first call query_open_balances, then propose one send_message per result.
 - Anything the staff can do via "+ New" buttons in the UI, you can propose with the matching tool. Default sensible values when the user is vague (e.g. preferred_channel=email, billing_cadence=transient for new boaters; activity_type=service, priority=normal for work orders).
 

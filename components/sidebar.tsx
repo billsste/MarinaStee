@@ -16,6 +16,7 @@ import {
   Bell,
   BarChart3,
   ShieldCheck,
+  Sailboat,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -42,6 +43,7 @@ const NAV_GROUPS: NavItem[][] = [
     { label: "Dashboard", href: "/", icon: LayoutDashboard },
     { label: "Slips", href: "/slips", icon: Anchor },
     { label: "Holders", href: "/holders", icon: Users },
+    { label: "Boat Rentals", href: "/boat-rentals", icon: Sailboat },
     { label: "Reservations", href: "/reservations", icon: CalendarRange },
     { label: "Work Orders", href: "/work-orders", icon: Wrench },
     { label: "Ledger / POS", href: "/ledger", icon: Receipt },

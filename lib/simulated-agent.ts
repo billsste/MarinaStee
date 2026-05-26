@@ -150,6 +150,44 @@ export type AgentAction =
       exp_year: number;
       nickname?: string;
       is_default: boolean;
+    }
+  // ── Boat Rentals + waitlist + COI chains ─────────────────────
+  | {
+      kind: "create_boat_rental";
+      label: string;
+      boat_id: string;
+      boater_id?: string;
+      patron_name?: string;
+      patron_email?: string;
+      patron_phone?: string;
+      start_at: string;             // ISO datetime
+      end_at: string;               // ISO datetime
+      rate_kind: "hourly" | "half_day" | "full_day";
+    }
+  | {
+      kind: "close_boat_rental";
+      label: string;
+      rental_id: string;
+      fuel_in_pct?: number;
+      hours_in?: number;
+      damage_notes?: string;
+      damage_charge?: number;
+    }
+  | {
+      kind: "send_pickup_link";
+      label: string;
+      rental_id: string;
+    }
+  | {
+      kind: "notify_waitlist";
+      label: string;
+      slip_id: string;
+      top_n?: number;
+    }
+  | {
+      kind: "request_coi_renewal";
+      label: string;
+      coi_id: string;
     };
 
 export type AgentResponse = {

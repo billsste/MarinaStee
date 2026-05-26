@@ -22,6 +22,46 @@ import { executeAgentAction } from "@/lib/agent-actions";
 import { cn } from "@/lib/utils";
 import type { Boater, Communication } from "@/lib/types";
 
+/**
+ * Map a Communication.related_entity to a router-friendly link + label.
+ * Inbox messages reference contracts / work orders / reservations /
+ * invoices; surfacing those as clickable chips drops the reader straight
+ * onto the entity record they're talking about.
+ */
+function relatedEntityLink(
+  re: Communication["related_entity"],
+  contracts: Map<string, { number: string }>,
+  workOrders: Map<string, { number: string }>,
+  ledger: Map<string, { number?: string }>
+): { href: string; label: string } | null {
+  if (!re) return null;
+  if (re.type === "contract") {
+    const c = contracts.get(re.id);
+    return {
+      href: `/slips/contracts/${re.id}`,
+      label: c ? `Contract ${c.number}` : "Contract",
+    };
+  }
+  if (re.type === "work_order") {
+    const w = workOrders.get(re.id);
+    return {
+      href: `/work-orders/${re.id}`,
+      label: w ? `WO ${w.number}` : "Work order",
+    };
+  }
+  if (re.type === "invoice") {
+    const l = ledger.get(re.id);
+    return {
+      href: `/ledger`,
+      label: l?.number ? `Invoice ${l.number}` : "Invoice",
+    };
+  }
+  if (re.type === "reservation") {
+    return { href: `/reservations`, label: `Reservation` };
+  }
+  return null;
+}
+
 type ChannelFilter = "all" | "email" | "sms" | "voice";
 type StatusFilter = "all" | "unread" | "needs_reply" | "done";
 
@@ -36,8 +76,26 @@ type StatusFilter = "all" | "unread" | "needs_reply" | "done";
  * read_status table.
  */
 export function InboxView() {
-  const { communications } = useStore();
+  const { communications, contracts, workOrders, ledger } = useStore();
   const boaters = useBoaters();
+
+  // Pre-build entity lookups so the related-entity chip below can show
+  // the actual entity number (Contract C-1531) instead of a generic tag.
+  const contractMap = React.useMemo(() => {
+    const m = new Map<string, { number: string }>();
+    for (const c of contracts) m.set(c.id, { number: c.number });
+    return m;
+  }, [contracts]);
+  const workOrderMap = React.useMemo(() => {
+    const m = new Map<string, { number: string }>();
+    for (const w of workOrders) m.set(w.id, { number: w.number });
+    return m;
+  }, [workOrders]);
+  const ledgerMap = React.useMemo(() => {
+    const m = new Map<string, { number?: string }>();
+    for (const l of ledger) m.set(l.id, { number: l.number });
+    return m;
+  }, [ledger]);
 
   // Local triage flags — keyed by communication id
   const [triage, setTriage] = React.useState<
@@ -198,6 +256,9 @@ export function InboxView() {
             onTriage={(msgId, kind) =>
               setTriage((prev) => ({ ...prev, [msgId]: kind }))
             }
+            contractMap={contractMap}
+            workOrderMap={workOrderMap}
+            ledgerMap={ledgerMap}
           />
         ) : (
           <div className="flex flex-1 items-center justify-center text-[12px] text-fg-subtle">
@@ -238,26 +299,77 @@ export function InboxView() {
 
         <div className="rounded-[12px] border border-hairline bg-surface-1 p-4">
           <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-fg-tertiary">
-            Quick prompts
+            Quick filters
           </div>
           <ul className="space-y-1.5 text-[12px]">
             <li>
-              <Link href="/" className="inline-flex items-center gap-1 text-primary hover:underline">
+              <button
+                type="button"
+                onClick={() => {
+                  setStatus("needs_reply");
+                  setChannel("all");
+                  setQuery("");
+                }}
+                className="inline-flex w-full items-center gap-1 text-left text-primary hover:underline"
+              >
                 <ArrowUpRight className="size-3" />
-                "Draft replies to everyone overdue"
-              </Link>
+                Inbound needing reply ({totalInbound})
+              </button>
             </li>
             <li>
-              <Link href="/" className="inline-flex items-center gap-1 text-primary hover:underline">
+              <button
+                type="button"
+                onClick={() => {
+                  setStatus("all");
+                  setChannel("all");
+                  setQuery("renewal");
+                }}
+                className="inline-flex w-full items-center gap-1 text-left text-primary hover:underline"
+              >
                 <ArrowUpRight className="size-3" />
-                "Send arrival reminders to today's transients"
-              </Link>
+                Renewal-related threads
+              </button>
             </li>
             <li>
-              <Link href="/" className="inline-flex items-center gap-1 text-primary hover:underline">
+              <button
+                type="button"
+                onClick={() => {
+                  setStatus("all");
+                  setChannel("all");
+                  setQuery("pickup");
+                }}
+                className="inline-flex w-full items-center gap-1 text-left text-primary hover:underline"
+              >
                 <ArrowUpRight className="size-3" />
-                "Anyone asking about a quote? Summarize."
-              </Link>
+                Boat-rental pickups in flight
+              </button>
+            </li>
+            <li>
+              <button
+                type="button"
+                onClick={() => {
+                  setStatus("all");
+                  setChannel("all");
+                  setQuery("coi");
+                }}
+                className="inline-flex w-full items-center gap-1 text-left text-primary hover:underline"
+              >
+                <ArrowUpRight className="size-3" />
+                COI renewal threads
+              </button>
+            </li>
+            <li>
+              <button
+                type="button"
+                onClick={() => {
+                  setStatus("all");
+                  setChannel("all");
+                  setQuery("");
+                }}
+                className="inline-flex w-full items-center gap-1 text-left text-fg-subtle hover:text-fg"
+              >
+                Reset filters
+              </button>
             </li>
           </ul>
         </div>
@@ -336,10 +448,16 @@ function ThreadView({
   thread,
   triage,
   onTriage,
+  contractMap,
+  workOrderMap,
+  ledgerMap,
 }: {
   thread: ThreadSummary;
   triage: Record<string, "read" | "replied" | "done">;
   onTriage: (msgId: string, kind: "read" | "replied" | "done") => void;
+  contractMap: Map<string, { number: string }>;
+  workOrderMap: Map<string, { number: string }>;
+  ledgerMap: Map<string, { number?: string }>;
 }) {
   const { boater, messages } = thread;
   const [replyBody, setReplyBody] = React.useState("");
@@ -428,6 +546,12 @@ function ThreadView({
       <ol className="flex-1 space-y-3 overflow-y-auto px-4 py-3" style={{ maxHeight: "440px" }}>
         {sortedAsc.map((m) => {
           const inbound = m.direction === "inbound";
+          const linked = relatedEntityLink(
+            m.related_entity,
+            contractMap,
+            workOrderMap,
+            ledgerMap
+          );
           return (
             <li
               key={m.id}
@@ -443,10 +567,14 @@ function ThreadView({
                 <span className="font-medium text-fg-subtle">{m.sender_label}</span>
                 <span>·</span>
                 <span>{new Date(m.sent_at).toLocaleString()}</span>
-                {m.related_entity && (
-                  <Badge tone="outline" size="sm">
-                    re: {m.related_entity.type}
-                  </Badge>
+                {linked && (
+                  <Link
+                    href={linked.href}
+                    className="inline-flex items-center gap-0.5 rounded-full border border-primary/30 bg-primary-soft/40 px-2 py-0.5 text-[10px] font-medium text-primary hover:underline"
+                  >
+                    re: {linked.label}
+                    <ArrowUpRight className="size-2.5" />
+                  </Link>
                 )}
                 {triage[m.id] && (
                   <Badge tone="ok" size="sm">
@@ -457,7 +585,12 @@ function ThreadView({
               {m.subject && (
                 <div className="mb-0.5 text-[13px] font-medium text-fg">{m.subject}</div>
               )}
-              <div className="text-[13px] leading-5 text-fg">{m.body_preview}</div>
+              {/* Prefer full_body when present (mostly outbound system
+                  comms have it) — body_preview is the truncated header
+                  used in the thread list. */}
+              <div className="whitespace-pre-line text-[13px] leading-5 text-fg">
+                {m.full_body ?? m.body_preview}
+              </div>
             </li>
           );
         })}

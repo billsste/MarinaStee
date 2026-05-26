@@ -16,7 +16,7 @@ import { cn } from "@/lib/utils";
 const NAV = [
   { href: "/slips", label: "Overview", icon: LayoutGrid, exact: true },
   { href: "/slips/roster", label: "Roster", icon: List },
-  { href: "/slips/rates", label: "Rates", icon: Tag },
+  { href: "/slips/rates", label: "Service rates", icon: Tag },
   { href: "/slips/fees", label: "Fees", icon: Plus },
   { href: "/slips/gas", label: "Gas", icon: Fuel },
   { href: "/slips/meters", label: "Meters", icon: Gauge },

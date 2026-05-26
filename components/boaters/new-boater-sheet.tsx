@@ -23,9 +23,18 @@ function generateHolderCode(cadence: "annual" | "seasonal" | "monthly" | "transi
 export function NewBoaterSheet({
   open,
   onOpenChange,
+  onCreated,
 }: {
   open: boolean;
   onOpenChange: (b: boolean) => void;
+  /**
+   * Called with the newly-created boater id after successful submit.
+   * Use this in flows that need to auto-select the new holder (e.g.,
+   * the slip-assignment wizard) — sorting the boaters list by id to
+   * find "the latest" is unreliable because runtime ids don't sort
+   * lexicographically after the seeded ones.
+   */
+  onCreated?: (boaterId: string) => void;
 }) {
   const [firstName, setFirstName] = React.useState("");
   const [lastName, setLastName] = React.useState("");
@@ -51,7 +60,7 @@ export function NewBoaterSheet({
 
   function submit() {
     if (!canSubmit) return;
-    executeAgentAction({
+    const result = executeAgentAction({
       kind: "create_boater",
       label: "",
       first_name: firstName.trim(),
@@ -65,6 +74,9 @@ export function NewBoaterSheet({
       billing_cadence: billingCadence,
       notes: notes.trim() || undefined,
     });
+    if (result.ok && result.createdId && onCreated) {
+      onCreated(result.createdId);
+    }
     onOpenChange(false);
   }
 

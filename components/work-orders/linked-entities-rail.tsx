@@ -67,7 +67,7 @@ export function LinkedEntitiesRail({ wo }: { wo: WorkOrder }) {
           <Section title="Contract">
             <RowLink
               icon={<FileText className="size-3.5" />}
-              href={`/slips/contracts`}
+              href={`/slips/contracts/${contract.id}`}
               primary={contract.number}
               secondary={`${contract.effective_start} → ${contract.effective_end}`}
             />

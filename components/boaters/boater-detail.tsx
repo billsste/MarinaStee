@@ -77,7 +77,7 @@ export function BoaterDetail({
         <VesselsTab vessels={vessels} reservations={reservations} boaterId={boater.id} />
       </TabsContent>
       <TabsContent value="financials">
-        <FinancialsTab boaterId={boater.id} cards={cards} contracts={contracts} />
+        <FinancialsTab boater={boater} cards={cards} contracts={contracts} />
       </TabsContent>
       <TabsContent value="work-orders">
         <WorkOrdersTab workOrders={workOrders} boaterId={boater.id} />

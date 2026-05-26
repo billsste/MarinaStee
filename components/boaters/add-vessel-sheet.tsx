@@ -11,10 +11,13 @@ export function AddVesselSheet({
   open,
   onOpenChange,
   defaultBoaterId,
+  onCreated,
 }: {
   open: boolean;
   onOpenChange: (b: boolean) => void;
   defaultBoaterId?: string;
+  /** Called with the new vessel id after successful submit. */
+  onCreated?: (vesselId: string) => void;
 }) {
   // Use live boaters (so a freshly-created boater is selectable immediately).
   // Fall back to static when the store hasn't seeded yet.
@@ -61,7 +64,7 @@ export function AddVesselSheet({
       const n = Number(v);
       return n > 0 ? Math.round(n * 12) : undefined;
     };
-    executeAgentAction({
+    const result = executeAgentAction({
       kind: "create_vessel",
       label: "",
       boater_id: boaterId,
@@ -77,6 +80,9 @@ export function AddVesselSheet({
       hull_vin: hullVin.trim() || undefined,
       registration: registration.trim() || undefined,
     });
+    if (result.ok && result.createdId && onCreated) {
+      onCreated(result.createdId);
+    }
     onOpenChange(false);
   }
 

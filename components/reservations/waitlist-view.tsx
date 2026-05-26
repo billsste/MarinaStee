@@ -2,14 +2,15 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { ListPlus, MailCheck, Sparkles, XCircle } from "lucide-react";
+import { ListPlus, MailCheck, Megaphone, Sparkles, XCircle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { BOATERS, formatInches } from "@/lib/mock-data";
+import { BOATERS, RENTAL_SPACES, SLIPS, formatInches } from "@/lib/mock-data";
 import {
   addReservation,
   nextReservationId,
   nextReservationNumber,
+  notifyWaitlistOfSlipOpening,
   updateWaitlistStatus,
   useWaitlist,
 } from "@/lib/client-store";
@@ -34,6 +35,7 @@ const STATUS_TONE: Record<WaitlistStatus, { tone: "ok" | "warn" | "info" | "dang
   converted: { tone: "ok", label: "converted" },
   declined: { tone: "danger", label: "declined" },
   withdrawn: { tone: "neutral", label: "withdrawn" },
+  expired: { tone: "neutral", label: "expired" },
 };
 
 export function WaitlistView() {
@@ -59,6 +61,10 @@ export function WaitlistView() {
           Add to waitlist
         </Button>
       </div>
+
+      {active.filter((e) => e.status === "pending").length > 0 && (
+        <BroadcastOpening pendingCount={active.filter((e) => e.status === "pending").length} />
+      )}
 
       <Panel
         title="Active queue"
@@ -226,6 +232,93 @@ function WaitlistRow({ entry }: { entry: WaitlistEntry }) {
           <Badge tone="ok" size="sm">→ {entry.converted_reservation_id.slice(-6)}</Badge>
         )}
       </div>
+    </div>
+  );
+}
+
+/*
+ * Broadcast-style "slip opened" panel.
+ *
+ * Staff picks a slip → notifyWaitlistOfSlipOpening fans out claim
+ * URLs to the top N matching waitlisters concurrently. First to
+ * confirm via /claim/[token] wins; the rest see a "this slip was
+ * claimed" state. Complementary to the per-row "Offer" action which
+ * is for one-to-one offers.
+ */
+function BroadcastOpening({ pendingCount }: { pendingCount: number }) {
+  const [slipId, setSlipId] = React.useState("");
+  const [topN, setTopN] = React.useState(5);
+  const [sentAt, setSentAt] = React.useState<{ slipId: string; count: number } | null>(null);
+
+  // Build slip options from the most reliable source — SLIPS (the
+  // current Roster). Fall back to RENTAL_SPACES if SLIPS is empty.
+  const slipOptions =
+    SLIPS.length > 0
+      ? SLIPS.map((s) => ({ value: s.id, label: `${s.id} · ${s.dock}` }))
+      : RENTAL_SPACES.map((s) => ({ value: s.id, label: `${s.number} · ${s.group_id}` }));
+
+  function broadcast() {
+    if (!slipId) return;
+    const offered = notifyWaitlistOfSlipOpening(slipId, { topN });
+    setSentAt({ slipId, count: offered.length });
+    setSlipId("");
+    setTimeout(() => setSentAt(null), 4500);
+  }
+
+  return (
+    <div className="rounded-[12px] border border-status-info/30 bg-status-info/[0.05] p-4">
+      <div className="mb-2 flex items-center gap-2">
+        <Megaphone className="size-4 text-status-info" />
+        <h3 className="text-[13px] font-medium text-fg">A slip just opened?</h3>
+        <span className="ml-auto text-[11px] text-fg-tertiary">
+          {pendingCount} pending waitlister{pendingCount === 1 ? "" : "s"}
+        </span>
+      </div>
+      <p className="mb-3 text-[12px] text-fg-subtle">
+        Fan out a 24-hour claim link to the top {topN} matching waitlisters.
+        First to confirm via <code className="rounded bg-surface-2 px-1 text-[11px]">/claim/[token]</code> wins it.
+      </p>
+      <div className="flex flex-wrap items-end gap-2">
+        <label className="block min-w-[200px] flex-1">
+          <div className="mb-1 text-[11px] font-medium text-fg-subtle">Which slip?</div>
+          <select
+            value={slipId}
+            onChange={(e) => setSlipId(e.target.value)}
+            className="h-9 w-full rounded-[8px] border border-hairline bg-surface-2 px-3 text-[13px] text-fg focus:border-hairline-strong focus:outline-none"
+          >
+            <option value="">Pick a slip…</option>
+            {slipOptions.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="block w-[120px]">
+          <div className="mb-1 text-[11px] font-medium text-fg-subtle">Top N</div>
+          <select
+            value={topN}
+            onChange={(e) => setTopN(Number(e.target.value))}
+            className="h-9 w-full rounded-[8px] border border-hairline bg-surface-2 px-3 text-[13px] text-fg focus:border-hairline-strong focus:outline-none"
+          >
+            {[3, 5, 10].map((n) => (
+              <option key={n} value={n}>
+                Top {n}
+              </option>
+            ))}
+          </select>
+        </label>
+        <Button variant="primary" size="sm" onClick={broadcast} disabled={!slipId}>
+          <Megaphone className="size-3.5" />
+          Notify
+        </Button>
+      </div>
+      {sentAt && (
+        <div className="mt-2 inline-flex items-center gap-1.5 rounded-[8px] bg-status-ok/[0.08] px-2.5 py-1 text-[11px] text-status-ok">
+          <Sparkles className="size-3" />
+          {sentAt.count} {sentAt.count === 1 ? "claim link" : "claim links"} sent · slip {sentAt.slipId}
+        </div>
+      )}
     </div>
   );
 }

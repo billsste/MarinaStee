@@ -10,14 +10,18 @@ import { WizardShell } from "@/components/wizard/wizard-shell";
 import { WizardFooter } from "@/components/wizard/wizard-footer";
 import type { WizardStep } from "@/components/wizard/wizard-progress";
 import { NewBoaterSheet } from "@/components/boaters/new-boater-sheet";
+import { AddVesselSheet } from "@/components/boaters/add-vessel-sheet";
 import { BOATERS, CONTRACT_TEMPLATES, VESSELS, formatMoney } from "@/lib/mock-data";
 import {
+  addCommunication,
+  mintContractSignatureToken,
   useBoaters,
   useContractTemplates,
   useFees,
-  useRates,
+  useVesselsForBoater,
 } from "@/lib/client-store";
 import { executeAgentAction } from "@/lib/agent-actions";
+import type { Communication } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 /*
@@ -43,20 +47,32 @@ type SlipMeta = {
   hasPower: boolean;
   hasWater: boolean;
   occupancyType: string;
+  // Slip-intrinsic pricing — fills the Pricing step automatically.
+  slipClass: "covered" | "uncovered" | "t_head" | "buoy" | "dry_storage";
+  defaultAnnualRate: number;
+  defaultMonthlyRate?: number;
+  defaultSeasonalRate?: number;
 };
 
 const STORAGE_KEY_PREFIX = "marina_assign_slip_draft_";
 
 const STEPS: WizardStep[] = [
   { id: "holder", label: "Holder" },
-  { id: "rate", label: "Rate" },
+  { id: "rate", label: "Pricing" },
   { id: "services", label: "Services" },
   { id: "contract", label: "Contract" },
   { id: "review", label: "Review" },
 ];
 
+type CadenceKind = "annual" | "monthly" | "seasonal";
+
 type DraftState = {
   boaterId: string;
+  // Pricing: cadence + per-period amount, both default from the slip.
+  // Legacy `rateId` is kept on the draft for back-compat with stored
+  // sessionStorage drafts but no longer wired into the UI.
+  cadence: CadenceKind;
+  amount: number;
   rateId: string;
   selectedFeeIds: string[];
   templateId: string;
@@ -77,13 +93,13 @@ export function AssignSlipClient({ slip }: { slip: SlipMeta }) {
   const router = useRouter();
   const liveBoaters = useBoaters();
   const boaters = liveBoaters.length > 0 ? liveBoaters : BOATERS;
-  const rates = useRates();
   const fees = useFees();
   const templates = useContractTemplates();
 
   const [stepIdx, setStepIdx] = React.useState(0);
   const [submitting, setSubmitting] = React.useState(false);
   const [newHolderOpen, setNewHolderOpen] = React.useState(false);
+  const [newVesselOpen, setNewVesselOpen] = React.useState(false);
 
   const [draft, setDraft] = React.useState<DraftState>(() => {
     const firstTpl = templates[0] ?? CONTRACT_TEMPLATES[0];
@@ -94,6 +110,8 @@ export function AssignSlipClient({ slip }: { slip: SlipMeta }) {
       .slice(0, 10);
     return {
       boaterId: "",
+      cadence: "annual" as CadenceKind,
+      amount: slip.defaultAnnualRate,
       rateId: "",
       selectedFeeIds: [],
       templateId: firstTpl?.id ?? "",
@@ -139,34 +157,41 @@ export function AssignSlipClient({ slip }: { slip: SlipMeta }) {
 
   // ── Derived ──────────────────────────────────────────────────────────
   const selectedBoater = boaters.find((b) => b.id === draft.boaterId);
-  const selectedRate = rates.find((r) => r.id === draft.rateId);
   const selectedTemplate = templates.find((t) => t.id === draft.templateId);
   const selectedFees = fees.filter((f) => draft.selectedFeeIds.includes(f.id));
+  // Live vessels for this holder — freshly-created vessels in this session
+  // surface immediately. Falls back to the static seed if the store hasn't
+  // ingested yet.
+  const liveVessels = useVesselsForBoater(draft.boaterId);
   const vesselOptions = selectedBoater
-    ? VESSELS.filter(
-        (v) =>
-          v.boater_id === selectedBoater.id ||
-          v.co_owner_ids.includes(selectedBoater.id)
-      )
+    ? liveVessels.length > 0
+      ? liveVessels
+      : VESSELS.filter(
+          (v) =>
+            v.boater_id === selectedBoater.id ||
+            v.co_owner_ids.includes(selectedBoater.id)
+        )
     : [];
 
-  // Recommend rates matching this slip's occupancy_type. Marina seeds
-  // OccupancyType values like "Standard" / "Jet Ski" / etc.; SLIPS-derived
-  // slips report "Standard" by default.
-  const recommendedRates = rates.filter(
-    (r) =>
-      r.occupancy_type === slip.occupancyType ||
-      r.occupancy_type === "Standard"
-  );
-  const otherRates = rates.filter((r) => !recommendedRates.includes(r));
-
-  // Cadence + annual rate flow from the selected Rate card (Batch 2 #169).
-  const cadence = selectedRate?.cadence ?? "monthly";
-  const annualRate = selectedRate?.amount;
+  // Slip-intrinsic defaults — pre-fill the cadence amount.
+  const slipDefaultForCadence = (c: CadenceKind): number => {
+    if (c === "annual") return slip.defaultAnnualRate;
+    if (c === "monthly") return slip.defaultMonthlyRate ?? Math.round(slip.defaultAnnualRate / 12);
+    return slip.defaultSeasonalRate ?? Math.round(slip.defaultAnnualRate * 0.6);
+  };
+  // Annual rate for the contract record (consumers think in $/year).
+  const annualRate =
+    draft.cadence === "annual"
+      ? draft.amount
+      : draft.cadence === "monthly"
+      ? draft.amount * 12
+      : draft.amount * 2; // seasonal = 6mo, so 2× ≈ annual proxy
+  const cadence = draft.cadence;
 
   // ── Validation gates ────────────────────────────────────────────────
   const canStep0 = draft.boaterId.length > 0;
-  const canStep1 = draft.rateId.length > 0;
+  // Pricing step: any positive amount is valid. Default flows from slip.
+  const canStep1 = draft.amount > 0;
   const canStep2 = true; // services are optional
   const canStep3 =
     draft.templateId.length > 0 &&
@@ -221,10 +246,10 @@ export function AssignSlipClient({ slip }: { slip: SlipMeta }) {
   }
 
   async function submit() {
-    if (!canStep4 || !selectedRate) return;
+    if (!canStep4) return;
     setSubmitting(true);
     try {
-      executeAgentAction({
+      const result = executeAgentAction({
         kind: "create_contract",
         label: "",
         boater_id: draft.boaterId,
@@ -246,15 +271,57 @@ export function AssignSlipClient({ slip }: { slip: SlipMeta }) {
               }))
             : undefined,
       });
+
+      // Onboarding chain — mint the signature token, transition the
+      // contract to "sent," and dispatch an outbound Communication to
+      // the holder with their /onboard/[token] URL. This is what makes
+      // the wizard's output an interconnected workflow rather than a
+      // dead-end draft.
+      if (result.ok && result.createdId && selectedBoater) {
+        const token = mintContractSignatureToken(result.createdId);
+        if (token) {
+          const origin = typeof window !== "undefined" ? window.location.origin : "";
+          const onboardUrl = `${origin}/onboard/${token}`;
+          const channel = selectedBoater.communication_prefs.preferred_channel;
+          const commType: Communication["type"] = channel;
+          const recipient =
+            commType === "email"
+              ? (selectedBoater.primary_contact.email ?? "")
+              : (selectedBoater.primary_contact.phone ?? "");
+          addCommunication({
+            id: `cm_onboard_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+            boater_id: selectedBoater.id,
+            type: commType,
+            direction: "outbound",
+            sender_label: "Marina Stee",
+            sender_is_system: true,
+            recipient,
+            subject: `Welcome to your slip ${slip.number} — complete onboarding`,
+            body_preview: `Sign your contract and add a payment method here: ${onboardUrl}`,
+            full_body:
+              `Hi ${selectedBoater.first_name},\n\n` +
+              `Your slip ${slip.number} at ${slip.dock} is reserved. Please complete the ` +
+              `following to activate your contract:\n\n` +
+              `  1. Review and sign your agreement\n` +
+              `  2. Add a payment method\n\n` +
+              `It takes about 2 minutes: ${onboardUrl}\n\n` +
+              `Reply to this message if you have any questions.`,
+            sent_at: new Date().toISOString(),
+            status: "delivered",
+            related_entity: { type: "contract", id: result.createdId },
+          });
+        }
+      }
+
       // Clear the draft cache once committed
       try {
         window.sessionStorage.removeItem(storageKey);
       } catch {
         /* ignore */
       }
-      // Land them on the holder's page so they see the new contract
-      // inline. If we couldn't resolve a boater for some reason, fall
-      // back to the contracts list.
+      // Land them on the holder's page so they see the onboarding rail
+      // + the just-sent contract + comm. If we couldn't resolve a boater
+      // for some reason, fall back to the contracts list.
       const dest = selectedBoater
         ? `/holders/${selectedBoater.id}`
         : "/slips/contracts";
@@ -277,7 +344,7 @@ export function AssignSlipClient({ slip }: { slip: SlipMeta }) {
         <div className="text-[12px] text-fg-subtle">{slip.dock}</div>
       </div>
       <dl className="space-y-1.5 border-t border-hairline pt-3 text-[12px]">
-        <RailRow label="Type" value={slip.occupancyType} />
+        <RailRow label="Class" value={slip.slipClass.replace("_", " ")} />
         {slip.loaInches > 0 && (
           <RailRow label="Max LOA" value={`${Math.round(slip.loaInches / 12)}'`} />
         )}
@@ -286,6 +353,12 @@ export function AssignSlipClient({ slip }: { slip: SlipMeta }) {
         )}
         <RailRow label="Power" value={slip.hasPower ? "Yes" : "No"} />
         <RailRow label="Water" value={slip.hasWater ? "Yes" : "No"} />
+        {slip.defaultAnnualRate > 0 && (
+          <RailRow
+            label="Annual rate"
+            value={`${formatMoney(slip.defaultAnnualRate)}`}
+          />
+        )}
       </dl>
       {/* Agent affordance — Marina Stee's differentiator */}
       <div className="rounded-[10px] border border-primary/30 bg-primary-soft/40 p-3">
@@ -306,13 +379,23 @@ export function AssignSlipClient({ slip }: { slip: SlipMeta }) {
     <>
       <NewBoaterSheet
         open={newHolderOpen}
-        onOpenChange={(b) => {
-          setNewHolderOpen(b);
-          if (!b) {
-            const sorted = [...liveBoaters].sort((a, c) => (a.id < c.id ? 1 : -1));
-            const latest = sorted[0];
-            if (latest) setDraft((d) => ({ ...d, boaterId: latest.id }));
-          }
+        onOpenChange={setNewHolderOpen}
+        onCreated={(boaterId) => {
+          // Auto-select the newly-created holder so staff doesn't have
+          // to re-open the dropdown and find them. The sheet closes
+          // itself after submit; we just pin the id in the wizard draft.
+          setDraft((d) => ({ ...d, boaterId }));
+        }}
+      />
+
+      <AddVesselSheet
+        open={newVesselOpen}
+        onOpenChange={setNewVesselOpen}
+        defaultBoaterId={draft.boaterId}
+        onCreated={(vesselId) => {
+          // Auto-attach the freshly-created vessel to the wizard draft
+          // so staff doesn't have to re-open the dropdown to find it.
+          setDraft((d) => ({ ...d, vesselId }));
         }}
       />
 
@@ -384,7 +467,11 @@ export function AssignSlipClient({ slip }: { slip: SlipMeta }) {
 
             <FieldLabel
               label="Vessel (optional)"
-              hint="Pick a vessel on file for this holder, or skip and attach later."
+              hint={
+                selectedBoater && vesselOptions.length === 0
+                  ? "No vessels on file yet — add one now or skip and attach later."
+                  : "Pick a vessel on file for this holder, or skip and attach later."
+              }
             >
               <Combobox
                 value={draft.vesselId}
@@ -394,60 +481,134 @@ export function AssignSlipClient({ slip }: { slip: SlipMeta }) {
                   label: v.name,
                   hint: v.year ? `· ${v.year}` : undefined,
                 }))}
-                placeholder={selectedBoater ? "No vessel" : "Pick a holder first"}
+                placeholder={
+                  selectedBoater
+                    ? vesselOptions.length === 0
+                      ? "No vessels on file — add one"
+                      : "No vessel"
+                    : "Pick a holder first"
+                }
                 searchPlaceholder="Search vessels…"
                 disabled={!selectedBoater}
+                onCreateNew={selectedBoater ? () => setNewVesselOpen(true) : undefined}
+                createNewLabel="Add a new vessel"
               />
             </FieldLabel>
           </div>
         )}
 
-        {/* Step 1 — Rate */}
+        {/* Step 1 — Pricing (slip-intrinsic, override allowed) */}
         {stepIdx === 1 && (
           <div className="space-y-4">
-            {recommendedRates.length > 0 && (
-              <div>
-                <div className="mb-2 text-[11px] uppercase tracking-wide text-fg-tertiary">
-                  Recommended for {slip.occupancyType}
-                </div>
-                <div className="grid gap-2 sm:grid-cols-2">
-                  {recommendedRates.map((r) => (
-                    <RateCard
-                      key={r.id}
-                      name={r.name}
-                      amount={r.amount}
-                      cadence={r.cadence}
-                      selected={draft.rateId === r.id}
-                      onClick={() => setDraft((d) => ({ ...d, rateId: r.id }))}
-                    />
-                  ))}
-                </div>
+            <div className="rounded-[10px] border border-primary/30 bg-primary-soft/30 p-3">
+              <div className="text-[11px] uppercase tracking-wide text-primary">
+                Slip default
               </div>
-            )}
-            {otherRates.length > 0 && (
-              <div>
-                <div className="mb-2 text-[11px] uppercase tracking-wide text-fg-tertiary">
-                  All other rates
-                </div>
-                <div className="grid gap-2 sm:grid-cols-2">
-                  {otherRates.map((r) => (
-                    <RateCard
-                      key={r.id}
-                      name={r.name}
-                      amount={r.amount}
-                      cadence={r.cadence}
-                      selected={draft.rateId === r.id}
-                      onClick={() => setDraft((d) => ({ ...d, rateId: r.id }))}
-                    />
-                  ))}
-                </div>
+              <div className="mt-0.5 flex items-baseline gap-2">
+                <span className="text-[13px] font-medium capitalize text-fg">
+                  {slip.slipClass.replace("_", " ")}
+                </span>
+                <span className="text-[12px] text-fg-subtle">
+                  · {Math.round(slip.loaInches / 12)}'
+                </span>
+                <span className="ml-auto money-display text-[20px] text-fg">
+                  {formatMoney(slip.defaultAnnualRate)}
+                </span>
+                <span className="text-[11px] text-fg-tertiary">/ year</span>
               </div>
-            )}
-            {rates.length === 0 && (
-              <div className="rounded-[10px] border border-dashed border-hairline-strong bg-surface-2 p-6 text-center text-[13px] text-fg-subtle">
-                No rate cards configured yet. Add one in <strong>/slips/rates</strong> first.
+              <p className="mt-1 text-[11px] text-fg-tertiary">
+                Pre-filled from slip {slip.id}. Override below if this holder gets a special arrangement.
+              </p>
+            </div>
+
+            <FieldLabel label="Billing cadence">
+              <div className="grid gap-2 sm:grid-cols-3">
+                <CadenceCard
+                  label="Annual"
+                  amount={slip.defaultAnnualRate}
+                  per="/ year"
+                  selected={draft.cadence === "annual"}
+                  onClick={() =>
+                    setDraft((d) => ({
+                      ...d,
+                      cadence: "annual",
+                      amount: slipDefaultForCadence("annual"),
+                    }))
+                  }
+                />
+                <CadenceCard
+                  label="Monthly"
+                  amount={slipDefaultForCadence("monthly")}
+                  per="/ month"
+                  hint="Annual / 12 + 8%"
+                  selected={draft.cadence === "monthly"}
+                  onClick={() =>
+                    setDraft((d) => ({
+                      ...d,
+                      cadence: "monthly",
+                      amount: slipDefaultForCadence("monthly"),
+                    }))
+                  }
+                />
+                <CadenceCard
+                  label="Seasonal"
+                  amount={slipDefaultForCadence("seasonal")}
+                  per="/ season"
+                  hint="6-month block"
+                  selected={draft.cadence === "seasonal"}
+                  onClick={() =>
+                    setDraft((d) => ({
+                      ...d,
+                      cadence: "seasonal",
+                      amount: slipDefaultForCadence("seasonal"),
+                    }))
+                  }
+                />
               </div>
-            )}
+            </FieldLabel>
+
+            <FieldLabel
+              label="Amount"
+              hint={
+                draft.amount !== slipDefaultForCadence(draft.cadence)
+                  ? `Overrides slip default of ${formatMoney(slipDefaultForCadence(draft.cadence))} ${
+                      draft.cadence === "annual" ? "/ year" : draft.cadence === "monthly" ? "/ month" : "/ season"
+                    }.`
+                  : `Matches slip default — leave as-is unless this holder has a special arrangement.`
+              }
+            >
+              <div className="flex items-center gap-2">
+                <span className="text-[16px] text-fg-subtle">$</span>
+                <input
+                  type="number"
+                  min="0"
+                  step="50"
+                  value={draft.amount || ""}
+                  onChange={(e) =>
+                    setDraft((d) => ({ ...d, amount: Number(e.target.value) || 0 }))
+                  }
+                  className="h-10 w-full rounded-[8px] border border-hairline bg-surface-2 px-3 text-[18px] tabular text-fg focus:border-hairline-strong focus:outline-none"
+                />
+                <span className="text-[12px] text-fg-tertiary whitespace-nowrap">
+                  {draft.cadence === "annual"
+                    ? "/ year"
+                    : draft.cadence === "monthly"
+                    ? "/ month"
+                    : "/ season"}
+                </span>
+                {draft.amount !== slipDefaultForCadence(draft.cadence) && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setDraft((d) => ({ ...d, amount: slipDefaultForCadence(d.cadence) }))
+                    }
+                    className="text-[11px] text-primary hover:underline whitespace-nowrap"
+                  >
+                    Reset to default
+                  </button>
+                )}
+              </div>
+            </FieldLabel>
           </div>
         )}
 
@@ -637,14 +798,14 @@ export function AssignSlipClient({ slip }: { slip: SlipMeta }) {
               />
             )}
             <ReviewBlock
-              label="Rate"
-              value={
-                selectedRate
-                  ? `${selectedRate.name} · ${formatMoney(
-                      selectedRate.amount
-                    )}/${selectedRate.cadence}`
-                  : "—"
-              }
+              label="Pricing"
+              value={`${formatMoney(draft.amount)} / ${
+                draft.cadence === "annual" ? "year" : draft.cadence === "monthly" ? "month" : "season"
+              }${
+                draft.amount !== slipDefaultForCadence(draft.cadence)
+                  ? ` (override — slip default ${formatMoney(slipDefaultForCadence(draft.cadence))})`
+                  : ` · slip default (${slip.slipClass.replace("_", " ")})`
+              }`}
               onEdit={() => setStepIdx(1)}
             />
             {selectedFees.length > 0 && (
@@ -694,7 +855,7 @@ export function AssignSlipClient({ slip }: { slip: SlipMeta }) {
 
 const STEP_TITLES = [
   "Who's holding the slip?",
-  "What rate are they on?",
+  "How are they billed?",
   "Add any extra services",
   "Pick the contract",
   "Review and draft",
@@ -702,7 +863,7 @@ const STEP_TITLES = [
 
 const STEP_SUBTITLES = [
   "Search existing holders or create a new one. You can attach a vessel now or later.",
-  "Pick from the configured Rate cards — term, cadence, and price flow through to the contract.",
+  "The slip has its own default annual rate — pick the cadence and adjust the amount only if this holder has a special arrangement.",
   "Optional add-ons billed alongside the slip (pump-out, hoist, COI processing, etc.).",
   "Choose the legal document, set the effective dates, and upload signed copies if you have them.",
   "Confirm the details — clicking Draft creates a contract in draft status, ready to send for signature.",
@@ -746,16 +907,18 @@ function RailRow({ label, value }: { label: string; value: string }) {
   );
 }
 
-function RateCard({
-  name,
+function CadenceCard({
+  label,
   amount,
-  cadence,
+  per,
+  hint,
   selected,
   onClick,
 }: {
-  name: string;
+  label: string;
   amount: number;
-  cadence: string;
+  per: string;
+  hint?: string;
   selected: boolean;
   onClick: () => void;
 }) {
@@ -764,23 +927,17 @@ function RateCard({
       type="button"
       onClick={onClick}
       className={cn(
-        "flex items-start justify-between gap-3 rounded-[10px] border px-3 py-2.5 text-left transition-colors",
+        "flex flex-col items-start gap-1 rounded-[10px] border px-3 py-2.5 text-left transition-colors",
         selected
           ? "border-primary bg-primary-soft/40 ring-1 ring-primary/30"
           : "border-hairline bg-surface-1 hover:border-hairline-strong hover:bg-surface-2"
       )}
     >
-      <div className="min-w-0 flex-1">
-        <div className="text-[13px] font-medium text-fg">{name}</div>
-        <div className="mt-0.5 text-[11px] capitalize text-fg-tertiary">
-          {cadence}
-        </div>
-      </div>
-      <div className="text-right">
-        <div className="money-display text-[18px] text-fg">
-          {formatMoney(amount)}
-        </div>
-        <div className="text-[10px] text-fg-tertiary">/ {cadence}</div>
+      <div className="text-[12px] font-medium text-fg">{label}</div>
+      <div className="money-display text-[18px] text-fg">{formatMoney(amount)}</div>
+      <div className="text-[10px] text-fg-tertiary">
+        {per}
+        {hint && <span className="ml-1">· {hint}</span>}
       </div>
     </button>
   );

@@ -1,11 +1,12 @@
 "use client";
 
 import * as React from "react";
-import { FileText, Shield, ShieldAlert, ShieldCheck } from "lucide-react";
+import { Copy, FileText, Send, Shield, ShieldAlert, ShieldCheck } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   deleteInsuranceCertificate,
+  requestCoiRenewal,
   upsertInsuranceCertificate,
   useInsuranceForBoater,
 } from "@/lib/client-store";
@@ -137,6 +138,36 @@ function CoiRow({
   onClick: () => void;
 }) {
   const status = coiStatus(cert, isLatest);
+  const [copied, setCopied] = React.useState(false);
+  const [justSent, setJustSent] = React.useState(false);
+
+  // Renewal CTA shows when this is the active row, it's lapsed or
+  // within 60 days of expiry, and there's no successor cert yet.
+  const showRenewalCta =
+    isLatest &&
+    !cert.renewed_by_coi_id &&
+    (status.tone === "danger" || status.tone === "warn");
+  const linkSent = !!cert.upload_token && !!cert.upload_link_sent_at;
+
+  function sendOrResend(e: React.MouseEvent) {
+    e.stopPropagation();
+    requestCoiRenewal(cert.id);
+    setJustSent(true);
+    setTimeout(() => setJustSent(false), 1800);
+  }
+  async function copyLink(e: React.MouseEvent) {
+    e.stopPropagation();
+    if (!cert.upload_token) return;
+    const origin = typeof window !== "undefined" ? window.location.origin : "";
+    try {
+      await navigator.clipboard.writeText(`${origin}/coi-upload/${cert.upload_token}`);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      /* ignore */
+    }
+  }
+
   return (
     <li
       onClick={onClick}
@@ -153,6 +184,11 @@ function CoiRow({
             {status.icon}
             {status.label}
           </Badge>
+          {linkSent && (
+            <Badge tone="info" size="sm">
+              renewal link sent
+            </Badge>
+          )}
         </div>
         <div className="mt-0.5 text-[11px] text-fg-tertiary">
           Liability ${cert.liability_limit.toLocaleString()}
@@ -163,19 +199,59 @@ function CoiRow({
           uploaded by {cert.uploaded_by}
         </div>
       </div>
-      {cert.pdf_url && (
-        <Button variant="ghost" size="sm" asChild>
-          <a
-            href={cert.pdf_url}
-            target="_blank"
-            rel="noreferrer"
-            onClick={(e) => e.stopPropagation()}
+      <div className="flex items-center gap-1.5">
+        {showRenewalCta && (
+          <button
+            type="button"
+            onClick={sendOrResend}
+            className="inline-flex items-center gap-1 rounded-[6px] border border-hairline bg-surface-1 px-2 py-1 text-[11px] text-fg-subtle hover:bg-surface-2 hover:text-fg"
           >
-            <FileText className="size-3.5" />
-            PDF
-          </a>
-        </Button>
-      )}
+            {justSent ? (
+              <>
+                <ShieldCheck className="size-3 text-status-ok" />
+                Sent
+              </>
+            ) : (
+              <>
+                <Send className="size-3" />
+                {linkSent ? "Resend" : "Request renewal"}
+              </>
+            )}
+          </button>
+        )}
+        {linkSent && (
+          <button
+            type="button"
+            onClick={copyLink}
+            className="inline-flex items-center gap-1 rounded-[6px] border border-hairline bg-surface-1 px-2 py-1 text-[11px] text-fg-subtle hover:bg-surface-2 hover:text-fg"
+          >
+            {copied ? (
+              <>
+                <ShieldCheck className="size-3 text-status-ok" />
+                Copied
+              </>
+            ) : (
+              <>
+                <Copy className="size-3" />
+                Copy link
+              </>
+            )}
+          </button>
+        )}
+        {cert.pdf_url && (
+          <Button variant="ghost" size="sm" asChild>
+            <a
+              href={cert.pdf_url}
+              target="_blank"
+              rel="noreferrer"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <FileText className="size-3.5" />
+              PDF
+            </a>
+          </Button>
+        )}
+      </div>
     </li>
   );
 }

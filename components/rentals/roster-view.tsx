@@ -265,7 +265,10 @@ function RosterRow({ row, onAssign }: { row: Row; onAssign: () => void }) {
             "group w-full cursor-pointer text-left hover:bg-surface-2"
           )}
         >
-          <span className="font-mono text-[12px] font-medium text-fg">{slip.id}</span>
+          <span className="flex items-center gap-1.5 font-mono text-[12px] font-medium text-fg">
+            {slip.id}
+            <SlipClassDot slipClass={slip.slip_class} />
+          </span>
           <span className="min-w-0 truncate">
             <span className="inline-flex items-center gap-1 text-fg-tertiary group-hover:text-primary">
               <UserPlus className="size-3" />
@@ -274,7 +277,13 @@ function RosterRow({ row, onAssign }: { row: Row; onAssign: () => void }) {
           </span>
           <span className="text-fg-tertiary">—</span>
           <span className="text-fg-tertiary">—</span>
-          <span className="text-right text-fg-tertiary">—</span>
+          {/* Show the slip's default annual rate so staff can quote a
+              vacancy without opening the slip — pricing rides on the slip. */}
+          <span className="text-right tabular text-[12px] text-fg-subtle">
+            {slip.default_annual_rate
+              ? formatMoney(slip.default_annual_rate)
+              : "—"}
+          </span>
           <span className="text-fg-tertiary">—</span>
           <span className="text-right text-fg-tertiary">—</span>
           <span>{statusBadge}</span>
@@ -289,7 +298,10 @@ function RosterRow({ row, onAssign }: { row: Row; onAssign: () => void }) {
         href={`/holders/${boater.id}`}
         className={cn(gridClass, "cursor-pointer hover:bg-surface-2")}
       >
-        <span className="font-mono text-[12px] font-medium text-fg">{slip.id}</span>
+        <span className="flex items-center gap-1.5 font-mono text-[12px] font-medium text-fg">
+          {slip.id}
+          <SlipClassDot slipClass={slip.slip_class} />
+        </span>
         <span className="min-w-0 truncate">
           <span className="font-medium text-fg">{boater.display_name}</span>
           {boater.tags.includes("board_member") && (
@@ -305,7 +317,30 @@ function RosterRow({ row, onAssign }: { row: Row; onAssign: () => void }) {
           {boater?.billing_cadence ?? "—"}
         </span>
         <span className="text-right tabular text-fg">
-          {contract?.annual_rate ? formatMoney(contract.annual_rate) : "—"}
+          {contract?.annual_rate ? (
+            <>
+              {formatMoney(contract.annual_rate)}
+              {/* Flag override when contract rate diverges materially
+                  from the slip's default — staff sees discounted /
+                  comp'd / grandfathered pricing at a glance. */}
+              {slip.default_annual_rate > 0 &&
+                Math.abs(contract.annual_rate - slip.default_annual_rate) >= 100 && (
+                  <span
+                    className={cn(
+                      "ml-1 inline-block text-[10px]",
+                      contract.annual_rate < slip.default_annual_rate
+                        ? "text-status-warn"
+                        : "text-status-info"
+                    )}
+                    title={`Slip default ${formatMoney(slip.default_annual_rate)}`}
+                  >
+                    {contract.annual_rate < slip.default_annual_rate ? "↓" : "↑"}
+                  </span>
+                )}
+            </>
+          ) : (
+            "—"
+          )}
         </span>
         <span className="text-[12px] text-fg-subtle">
           {contract?.effective_end ?? "—"}
@@ -379,3 +414,29 @@ function shortenDock(name: string): string {
 // Re-export Sparkles to silence unused warning if any
 void Sparkles;
 void Button;
+
+/**
+ * Tiny dot showing slip class (covered/uncovered/t-head/buoy/dry).
+ * Hovering shows the class name. Density-first — a chip would dominate
+ * the 64px slip column.
+ */
+function SlipClassDot({ slipClass }: { slipClass: import("@/lib/types").SlipClass }) {
+  const meta: Record<
+    import("@/lib/types").SlipClass,
+    { color: string; label: string }
+  > = {
+    covered: { color: "bg-status-info", label: "Covered" },
+    uncovered: { color: "bg-fg-tertiary/60", label: "Uncovered" },
+    t_head: { color: "bg-primary", label: "T-head" },
+    buoy: { color: "bg-status-warn", label: "Buoy" },
+    dry_storage: { color: "bg-fg-subtle", label: "Dry storage" },
+  };
+  const m = meta[slipClass];
+  return (
+    <span
+      title={m.label}
+      aria-label={m.label}
+      className={cn("inline-block size-1.5 rounded-full", m.color)}
+    />
+  );
+}

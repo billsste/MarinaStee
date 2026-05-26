@@ -15,11 +15,11 @@ import {
   bulkAddContracts,
   nextInvoiceNumber,
   nextLedgerId,
+  postBillingRunInvoice,
   useContracts,
   useStore,
 } from "@/lib/client-store";
 import type { Contract, LedgerEntry } from "@/lib/types";
-import { addLedgerEntry } from "@/lib/client-store";
 import { cn } from "@/lib/utils";
 
 /*
@@ -107,6 +107,12 @@ export function BillingRuns() {
     if (!canSubmit) return;
     setSubmitting(true);
     setTimeout(() => {
+      // postBillingRunInvoice fans out the full chain per contract:
+      //   1. Post the invoice
+      //   2. If a default card is on file, auto-post a Payment that
+      //      closes the open balance
+      //   3. Dispatch a per-boater comm — "paid" or "ready" copy based
+      //      on whether the auto-charge fired
       for (const c of eligible) {
         const amount = amountFor(c);
         if (amount <= 0) continue;
@@ -115,21 +121,14 @@ export function BillingRuns() {
           billMode === "annual_lump"
             ? `Annual slip fee · ${slip?.id ?? "—"}`
             : `Monthly slip installment · ${slip?.id ?? "—"}`;
-        const inv: LedgerEntry = {
-          id: nextLedgerId(),
+        postBillingRunInvoice({
           boater_id: c.boater_id,
-          type: "invoice",
-          number: nextInvoiceNumber(),
-          date: runDate,
           amount,
-          open_balance: amount,
-          method: "ach",
-          status: "open",
-          gl_account: "Slip Fee Revenue",
-          qb_sync_status: "pending",
-          line_items: [{ description: `Billing run · ${label}`, amount }],
-        };
-        addLedgerEntry(inv);
+          date: runDate,
+          line_item_label: `Billing run · ${label}`,
+          contract_id: c.id,
+          slip_id: c.slip_id,
+        });
       }
       setLastRun({
         when: new Date().toLocaleTimeString(),

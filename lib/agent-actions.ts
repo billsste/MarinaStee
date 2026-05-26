@@ -7,6 +7,7 @@ import {
   formatMoney,
 } from "@/lib/mock-data";
 import {
+  addBoatRental,
   addBoater,
   addCardForBoater,
   addCommunication,
@@ -17,6 +18,11 @@ import {
   addVessel,
   addWorkOrder,
   applyPaymentToInvoices,
+  closeBoatRental,
+  mintBookingPickupToken,
+  mintContractSignatureToken,
+  nextBoatRentalId,
+  nextBoatRentalNumber,
   nextBoaterId,
   nextCardId,
   nextContractId,
@@ -30,11 +36,14 @@ import {
   nextVesselId,
   nextWorkOrderId,
   nextWorkOrderNumber,
+  notifyWaitlistOfSlipOpening,
+  requestCoiRenewal,
 } from "@/lib/client-store";
 import type {
   AgentAction,
 } from "@/lib/simulated-agent";
 import type {
+  BoatRental,
   Boater,
   CardOnFile,
   Communication,
@@ -67,9 +76,19 @@ const ACTION_PERMISSION: Record<AgentAction["kind"], { entity: Entity; action: A
   create_vessel: { entity: "vessel", action: "create" },
   create_contract: { entity: "contract", action: "create" },
   add_card: { entity: "boater", action: "edit" },
+  // Boat Rentals / waitlist / COI map onto existing RBAC entities;
+  // there's no separate "boat_rental" capability so they piggy-back
+  // on the closest functional permission.
+  create_boat_rental: { entity: "reservation", action: "create" },
+  close_boat_rental: { entity: "ledger", action: "create" },
+  send_pickup_link: { entity: "broadcast", action: "create" },
+  notify_waitlist: { entity: "broadcast", action: "create" },
+  request_coi_renewal: { entity: "broadcast", action: "create" },
 };
 
-export type ExecResult = { ok: true } | { ok: false; reason: string };
+export type ExecResult =
+  | { ok: true; createdId?: string }
+  | { ok: false; reason: string };
 
 export function executeAgentAction(action: AgentAction, role?: Role): ExecResult {
   // RBAC: defense-in-depth — even if a tool slips past the prompt-side filter,
@@ -84,11 +103,11 @@ export function executeAgentAction(action: AgentAction, role?: Role): ExecResult
     }
   }
 
-  runAction(action);
-  return { ok: true };
+  const createdId = runAction(action);
+  return { ok: true, createdId };
 }
 
-function runAction(action: AgentAction): void {
+function runAction(action: AgentAction): string | undefined {
   if (action.kind === "charge_to_account") {
     const now = new Date().toISOString();
     const orderId = nextPosOrderId();
@@ -246,7 +265,7 @@ function runAction(action: AgentAction): void {
       notes: action.notes,
     };
     addBoater(boater);
-    return;
+    return id;
   }
 
   if (action.kind === "create_vessel") {
@@ -268,7 +287,7 @@ function runAction(action: AgentAction): void {
       active: true,
     };
     addVessel(vessel);
-    return;
+    return vessel.id;
   }
 
   if (action.kind === "create_contract") {
@@ -297,7 +316,7 @@ function runAction(action: AgentAction): void {
       })),
     };
     addContract(contract);
-    return;
+    return contract.id;
   }
 
   if (action.kind === "add_card") {
@@ -338,4 +357,62 @@ function runAction(action: AgentAction): void {
     return;
   }
 
+  // ── Boat Rentals: create a booking + auto-dispatch the pickup chain
+  if (action.kind === "create_boat_rental") {
+    const now = new Date().toISOString();
+    const id = nextBoatRentalId();
+    const booking: BoatRental = {
+      id,
+      number: nextBoatRentalNumber(),
+      boat_id: action.boat_id,
+      boater_id: action.boater_id,
+      patron_name: action.patron_name,
+      patron_email: action.patron_email,
+      patron_phone: action.patron_phone,
+      start_at: action.start_at,
+      end_at: action.end_at,
+      rate_kind: action.rate_kind,
+      base_amount: 0,                 // agent passes the boat — UI will derive on render
+      deposit_hold: 0,
+      status: "reserved",
+      checkin: {},
+      created_at: now,
+      updated_at: now,
+    };
+    addBoatRental(booking);
+    // Mint pickup token immediately so the customer gets the link from
+    // a single agent command — same shape as the wizard chain.
+    mintBookingPickupToken(id);
+    return id;
+  }
+
+  // ── Boat Rentals: close out — dockhand can fire from /dock or
+  // agent can do it from chat with "close BR-1003, fuel 45%, no damage."
+  if (action.kind === "close_boat_rental") {
+    closeBoatRental(action.rental_id, {
+      fuel_in_pct: action.fuel_in_pct,
+      hours_in: action.hours_in,
+      damage_notes: action.damage_notes,
+      damage_charge: action.damage_charge,
+    });
+    return action.rental_id;
+  }
+
+  // ── Send / resend pickup link for an existing booking
+  if (action.kind === "send_pickup_link") {
+    mintBookingPickupToken(action.rental_id);
+    return action.rental_id;
+  }
+
+  // ── Waitlist broadcast: slip just opened, notify top N
+  if (action.kind === "notify_waitlist") {
+    notifyWaitlistOfSlipOpening(action.slip_id, { topN: action.top_n ?? 5 });
+    return action.slip_id;
+  }
+
+  // ── COI: ask the boater to upload a renewed certificate
+  if (action.kind === "request_coi_renewal") {
+    requestCoiRenewal(action.coi_id);
+    return action.coi_id;
+  }
 }

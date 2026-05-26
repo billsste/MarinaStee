@@ -15,6 +15,7 @@ import {
   Camera,
   ChevronRight,
   ArrowLeft,
+  Sailboat,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -32,25 +33,33 @@ import {
   initialsOf,
   meterAnomaly,
   meterDelta,
+  rentalDurationLabel,
 } from "@/lib/mock-data";
 import {
   addCommunication,
   addLedgerEntry,
   addPosOrder,
+  checkInReservation,
+  checkOutReservation,
+  closeBoatRental,
   nextInvoiceNumber,
   nextLedgerId,
   nextPosOrderId,
   nextPosOrderNumber,
+  useBoatRentals,
+  useRentalBoats,
   useStore,
 } from "@/lib/client-store";
 import type {
+  BoatRental,
   Communication,
   LedgerEntry,
   PosOrder,
+  RentalBoat,
   Reservation,
 } from "@/lib/types";
 
-type View = "home" | "arrivals" | "departures" | "meter" | "fuel" | "done";
+type View = "home" | "arrivals" | "departures" | "meter" | "fuel" | "returns" | "done";
 
 export default function DockPage() {
   const [view, setView] = React.useState<View>("home");
@@ -70,6 +79,7 @@ export default function DockPage() {
         {view === "departures" && <DeparturesView onDone={onDone} />}
         {view === "meter" && <MeterView onDone={onDone} />}
         {view === "fuel" && <FuelView onDone={onDone} />}
+        {view === "returns" && <ReturnsView onDone={onDone} />}
         {view === "done" && <DoneView message={lastAction} onContinue={() => setView("home")} />}
       </main>
     </div>
@@ -128,6 +138,7 @@ function Home({ onSelect }: { onSelect: (v: View) => void }) {
   const anomalies = METER_READINGS.filter(meterAnomaly);
   const gasInv = FUEL_INVENTORY.find((i) => i.fuel_type === "gasoline");
   const dieselInv = FUEL_INVENTORY.find((i) => i.fuel_type === "diesel");
+  const rentalsOnWater = useBoatRentals().filter((r) => r.status === "checked_out");
 
   return (
     <div className="space-y-5 pt-5">
@@ -185,6 +196,13 @@ function Home({ onSelect }: { onSelect: (v: View) => void }) {
           sub={gasInv ? `Gas ${formatMoney(gasInv.current_price_per_gallon)}/gal` : undefined}
           tone="neutral"
           onClick={() => onSelect("fuel")}
+        />
+        <Tile
+          icon={<Sailboat className="size-5" />}
+          label="Rental return"
+          count={rentalsOnWater.length}
+          tone={rentalsOnWater.length > 0 ? "info" : "neutral"}
+          onClick={() => onSelect("returns")}
         />
       </div>
 
@@ -288,7 +306,14 @@ function ArrivalsView({ onDone }: { onDone: (m: string) => void }) {
       cta="Check in"
       onAction={(r) => {
         const b = BOATERS.find((x) => x.id === r.boater_id);
-        onDone(`${b?.first_name ?? "Boater"} checked in to slip ${r.slip_id}.`);
+        // Runs the full chain: posts a transient invoice (if applicable),
+        // dispatches the arrival comm, flips reservation → occupied.
+        const invoiceId = checkInReservation(r.id);
+        onDone(
+          invoiceId
+            ? `${b?.first_name ?? "Boater"} checked in to slip ${r.slip_id}. Stay pre-billed + welcome comm sent.`
+            : `${b?.first_name ?? "Boater"} checked in to slip ${r.slip_id}. Welcome comm sent.`
+        );
       }}
     />
   );
@@ -305,7 +330,15 @@ function DeparturesView({ onDone }: { onDone: (m: string) => void }) {
       cta="Check out"
       onAction={(r) => {
         const b = BOATERS.find((x) => x.id === r.boater_id);
-        onDone(`${b?.first_name ?? "Boater"} checked out from slip ${r.slip_id}. Slip marked vacant.`);
+        // Full chain: auto-charges the card on file (if any), dispatches
+        // the receipt comm, flips → completed, fires waitlist for the
+        // freed slip (transient only).
+        const receiptId = checkOutReservation(r.id);
+        onDone(
+          receiptId
+            ? `${b?.first_name ?? "Boater"} checked out from slip ${r.slip_id}. Card on file charged · receipt sent.`
+            : `${b?.first_name ?? "Boater"} checked out from slip ${r.slip_id}. Final balance pending — no card on file.`
+        );
       }}
     />
   );
@@ -628,6 +661,296 @@ function FuelView({ onDone }: { onDone: (m: string) => void }) {
       >
         Charge to account · {formatMoney(total || 0)}
       </button>
+    </div>
+  );
+}
+
+// ────────────────────────────────────────────────────────────
+// Rental returns — mobile dockhand surface for closing out a
+// checked-out boat rental. Records fuel level + hours + damage,
+// closeBoatRental() computes final charges + posts to ledger +
+// dispatches receipt comm + flips the boat back to available.
+// ────────────────────────────────────────────────────────────
+
+function ReturnsView({ onDone }: { onDone: (m: string) => void }) {
+  const rentals = useBoatRentals();
+  const fleet = useRentalBoats();
+  const onWater = rentals.filter((r) => r.status === "checked_out");
+  const [selectedId, setSelectedId] = React.useState<string>(() => {
+    // Honor ?return=br_xxx deep-link from the booking detail page
+    if (typeof window === "undefined") return "";
+    const url = new URL(window.location.href);
+    const ret = url.searchParams.get("return");
+    return ret && onWater.some((r) => r.id === ret) ? ret : "";
+  });
+
+  if (onWater.length === 0) {
+    return (
+      <div className="space-y-3 pt-4">
+        <h2 className="text-[20px] font-semibold tracking-tight text-fg">Rental returns</h2>
+        <p className="rounded-[10px] border border-dashed border-hairline px-4 py-10 text-center text-[13px] text-fg-tertiary">
+          No boats out right now. When something returns, it&apos;ll show up here.
+        </p>
+      </div>
+    );
+  }
+
+  if (!selectedId) {
+    return (
+      <div className="space-y-3 pt-4">
+        <h2 className="text-[20px] font-semibold tracking-tight text-fg">Pick a returning rental</h2>
+        {onWater.map((r) => {
+          const boat = fleet.find((b) => b.id === r.boat_id);
+          const late =
+            new Date(r.end_at).getTime() < Date.now();
+          return (
+            <button
+              key={r.id}
+              type="button"
+              onClick={() => setSelectedId(r.id)}
+              className="tap-scale flex w-full items-center justify-between rounded-[12px] border border-hairline bg-surface-1 p-3 text-left"
+            >
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <Sailboat className="size-3.5 text-fg-subtle" />
+                  <span className="text-[14px] font-medium text-fg">
+                    {boat?.name ?? "—"}
+                  </span>
+                  {late && <Badge tone="warn" size="sm">LATE</Badge>}
+                </div>
+                <div className="text-[11px] text-fg-subtle">
+                  {r.number} · {r.patron_name ?? (BOATERS.find((b) => b.id === r.boater_id)?.display_name ?? "—")}
+                </div>
+                <div className="text-[11px] text-fg-tertiary">
+                  Due back {new Date(r.end_at).toLocaleString(undefined, {
+                    hour: "numeric",
+                    minute: "2-digit",
+                  })}
+                </div>
+              </div>
+              <ChevronRight className="size-4 text-fg-tertiary" />
+            </button>
+          );
+        })}
+      </div>
+    );
+  }
+
+  const rental = onWater.find((r) => r.id === selectedId);
+  if (!rental) {
+    setSelectedId("");
+    return null;
+  }
+  const boat = fleet.find((b) => b.id === rental.boat_id);
+  if (!boat) return null;
+
+  return (
+    <ReturnForm
+      rental={rental}
+      boat={boat}
+      onCancel={() => setSelectedId("")}
+      onDone={onDone}
+    />
+  );
+}
+
+function ReturnForm({
+  rental,
+  boat,
+  onCancel,
+  onDone,
+}: {
+  rental: BoatRental;
+  boat: RentalBoat;
+  onCancel: () => void;
+  onDone: (m: string) => void;
+}) {
+  const [fuelIn, setFuelIn] = React.useState<string>(
+    String(boat.current_fuel_pct ?? "")
+  );
+  const [hoursIn, setHoursIn] = React.useState<string>(
+    String(boat.hour_meter_reading ?? "")
+  );
+  const [damageNotes, setDamageNotes] = React.useState("");
+  const [damageCharge, setDamageCharge] = React.useState("");
+
+  const fuelInNum = Number(fuelIn);
+  const hoursInNum = Number(hoursIn);
+  const damageNum = Number(damageCharge) || 0;
+
+  // Live preview of charges using the same math the helper will use
+  const consumedPct = Math.max(0, (rental.fuel_out_pct ?? 0) - fuelInNum);
+  const gasPrice = 4.5; // fallback if no inventory hook here
+  const consumedGal = boat.fuel_capacity_gal
+    ? (consumedPct / 100) * boat.fuel_capacity_gal
+    : 0;
+  const fuelCharge =
+    consumedGal * gasPrice + (fuelInNum < 25 ? 25 : 0);
+  const lateMs = Date.now() - new Date(rental.end_at).getTime();
+  const lateFee = lateMs > 0 ? Math.ceil(lateMs / (30 * 60_000)) * 50 : 0;
+  const previewTotal = +(rental.base_amount + fuelCharge + damageNum + lateFee).toFixed(2);
+
+  const canSubmit = fuelIn.length > 0 && !isNaN(fuelInNum) && fuelInNum >= 0 && fuelInNum <= 100;
+
+  function submit() {
+    if (!canSubmit) return;
+    closeBoatRental(rental.id, {
+      fuel_in_pct: fuelInNum,
+      hours_in: hoursInNum,
+      damage_notes: damageNotes.trim() || undefined,
+      damage_charge: damageNum > 0 ? damageNum : undefined,
+    });
+    onDone(
+      `${boat.name} closed · ${rental.number} · ${formatMoney(previewTotal)} charged to card on file.`
+    );
+  }
+
+  return (
+    <div className="space-y-3 pt-4">
+      <button
+        type="button"
+        onClick={onCancel}
+        className="text-[12px] text-fg-subtle hover:text-fg"
+      >
+        ← Pick another
+      </button>
+      <div>
+        <h2 className="text-[20px] font-semibold tracking-tight text-fg">
+          Return {boat.name}
+        </h2>
+        <p className="text-[12px] text-fg-subtle">
+          {rental.number} · {rental.patron_name ?? "—"}
+        </p>
+      </div>
+
+      <div className="rounded-[12px] border border-hairline bg-surface-1 p-3">
+        <label className="block text-[11px] font-medium uppercase tracking-wide text-fg-tertiary">
+          Fuel level on return
+        </label>
+        <div className="mt-1 flex items-baseline gap-2">
+          <input
+            type="number"
+            inputMode="decimal"
+            min="0"
+            max="100"
+            value={fuelIn}
+            onChange={(e) => setFuelIn(e.target.value)}
+            placeholder="0"
+            className="h-14 w-full rounded-[10px] border border-hairline bg-surface-2 px-3 text-[24px] font-semibold tabular-nums text-fg placeholder:text-fg-tertiary focus:border-hairline-strong focus:outline-none"
+          />
+          <span className="text-[16px] text-fg-subtle">%</span>
+        </div>
+        <p className="mt-1 text-[11px] text-fg-tertiary">
+          Out at {rental.fuel_out_pct ?? "—"}% · {boat.fuel_capacity_gal ?? "—"} gal tank
+        </p>
+      </div>
+
+      {boat.hour_meter_reading != null && (
+        <div className="rounded-[12px] border border-hairline bg-surface-1 p-3">
+          <label className="block text-[11px] font-medium uppercase tracking-wide text-fg-tertiary">
+            Engine hours
+          </label>
+          <input
+            type="number"
+            inputMode="decimal"
+            value={hoursIn}
+            onChange={(e) => setHoursIn(e.target.value)}
+            className="mt-1 h-14 w-full rounded-[10px] border border-hairline bg-surface-2 px-3 text-[24px] font-semibold tabular-nums text-fg focus:border-hairline-strong focus:outline-none"
+          />
+          <p className="mt-1 text-[11px] text-fg-tertiary">
+            Out at {rental.hours_out ?? "—"}
+          </p>
+        </div>
+      )}
+
+      <div className="rounded-[12px] border border-hairline bg-surface-1 p-3">
+        <label className="block text-[11px] font-medium uppercase tracking-wide text-fg-tertiary">
+          Damage notes (optional)
+        </label>
+        <textarea
+          rows={2}
+          value={damageNotes}
+          onChange={(e) => setDamageNotes(e.target.value)}
+          placeholder="Scratch on starboard, missing fender, etc."
+          className="mt-1 w-full rounded-[10px] border border-hairline bg-surface-2 px-3 py-2 text-[14px] text-fg placeholder:text-fg-tertiary focus:border-hairline-strong focus:outline-none"
+        />
+        <div className="mt-2 grid grid-cols-2 items-center gap-2">
+          <span className="text-[12px] text-fg-subtle">Damage charge</span>
+          <div className="flex items-center gap-1">
+            <span className="text-[14px] text-fg-subtle">$</span>
+            <input
+              type="number"
+              inputMode="decimal"
+              min="0"
+              step="0.01"
+              value={damageCharge}
+              onChange={(e) => setDamageCharge(e.target.value)}
+              placeholder="0"
+              className="h-10 w-full rounded-[8px] border border-hairline bg-surface-2 px-3 text-right text-[14px] tabular-nums text-fg focus:border-hairline-strong focus:outline-none"
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Live charge preview */}
+      <div className="rounded-[12px] border border-hairline bg-surface-2 p-3 text-[12px]">
+        <div className="text-[10px] uppercase tracking-wide text-fg-tertiary">Charge preview</div>
+        <div className="mt-2 space-y-1">
+          <PreviewLine label="Base rental" amount={rental.base_amount} />
+          {fuelCharge > 0 && (
+            <PreviewLine
+              label={`Fuel${fuelInNum < 25 ? " + refueling fee" : ""}`}
+              amount={fuelCharge}
+            />
+          )}
+          {damageNum > 0 && <PreviewLine label="Damage" amount={damageNum} />}
+          {lateFee > 0 && <PreviewLine label="Late fee" amount={lateFee} warn />}
+        </div>
+        <div className="mt-2 border-t border-hairline pt-2">
+          <div className="flex items-baseline justify-between">
+            <span className="text-[14px] font-medium text-fg">Total</span>
+            <span className="money-display text-[20px] text-fg">
+              {formatMoney(previewTotal)}
+            </span>
+          </div>
+        </div>
+        <p className="mt-2 text-[10px] text-fg-tertiary">
+          Charged to card on file. Deposit hold {formatMoney(rental.deposit_hold)} released.
+        </p>
+      </div>
+
+      <button
+        type="button"
+        disabled={!canSubmit}
+        onClick={submit}
+        className={
+          "tap-scale pill h-14 w-full text-[16px] font-semibold transition-colors " +
+          (canSubmit
+            ? "bg-primary text-on-primary"
+            : "bg-surface-3 text-fg-tertiary")
+        }
+      >
+        Close · {formatMoney(previewTotal)}
+      </button>
+    </div>
+  );
+}
+
+function PreviewLine({
+  label,
+  amount,
+  warn,
+}: {
+  label: string;
+  amount: number;
+  warn?: boolean;
+}) {
+  return (
+    <div className="flex items-baseline justify-between">
+      <span className={warn ? "text-status-warn" : "text-fg-subtle"}>{label}</span>
+      <span className={"tabular " + (warn ? "text-status-warn" : "text-fg")}>
+        {formatMoney(amount)}
+      </span>
     </div>
   );
 }

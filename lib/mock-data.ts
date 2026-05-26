@@ -2,6 +2,7 @@ import type {
   Boater,
   Vessel,
   Slip,
+  SlipClass,
   Reservation,
   LedgerEntry,
   WorkOrder,
@@ -26,6 +27,8 @@ import type {
   WaitlistEntry,
   StaffNote,
   MarinaEvent,
+  RentalBoat,
+  BoatRental,
 } from "@/lib/types";
 
 export const USERS: User[] = [
@@ -44,6 +47,39 @@ export const USERS: User[] = [
 // SLIPS is the lookup namespace for reservation.slip_id (legacy convention,
 // `id` is the user-facing label like "A29"), RENTAL_SPACES is the physical
 // inventory.
+/**
+ * Annual-rate baseline by slip class. The default_annual_rate field on
+ * each Slip is derived from these and scaled by length — covered slips
+ * carry a ~40% premium over uncovered, T-heads roughly 2× uncovered.
+ * Real marinas tune these per market; this is a defensible mid-Michigan
+ * freshwater set.
+ */
+const BASE_ANNUAL_BY_CLASS: Record<SlipClass, number> = {
+  covered: 4200,        // base @ 24'; bumps with length below
+  uncovered: 2800,
+  t_head: 5500,         // premium end-of-dock spots
+  buoy: 1100,
+  dry_storage: 2200,
+};
+
+function annualRateFor(loa: number, slipClass: SlipClass): number {
+  const base = BASE_ANNUAL_BY_CLASS[slipClass];
+  // Linear scale beyond a 24' baseline — $90/ft for uncovered, $130/ft
+  // for covered, $160/ft for T-heads. Round to the nearest $50 so
+  // pricing reads like a published list rather than a calc output.
+  const lengthBump =
+    loa <= 24
+      ? 0
+      : slipClass === "covered"
+      ? (loa - 24) * 130
+      : slipClass === "t_head"
+      ? (loa - 24) * 160
+      : slipClass === "uncovered"
+      ? (loa - 24) * 90
+      : 0;
+  return Math.round((base + lengthBump) / 50) * 50;
+}
+
 function makeSlip(
   dock: string,
   prefix: string,
@@ -52,8 +88,10 @@ function makeSlip(
   beam: number,
   withWater = true,
   category = "BOGGS Cove",
+  slipClass: SlipClass = "uncovered",
 ): Slip {
   const padded = String(num).padStart(2, "0");
+  const annual = annualRateFor(loa, slipClass);
   return {
     id: `${prefix}${padded}`,
     dock,
@@ -63,50 +101,65 @@ function makeSlip(
     max_beam_inches: beam * 12,
     has_power: true,
     has_water: withWater,
+    slip_class: slipClass,
+    default_annual_rate: annual,
+    // 1/12 with a small markup to nudge holders toward annual
+    default_monthly_rate: Math.round((annual * 1.08) / 12 / 5) * 5,
+    // 6-month seasonal at ~60% of annual
+    default_seasonal_rate: Math.round((annual * 0.6) / 50) * 50,
   };
 }
 
 export const SLIPS: Slip[] = [
-  // Damsite A Dock — 30 slips, 24–34 ft
+  // Damsite A Dock — 30 uncovered slips, 24–34 ft. Standard pricing.
   ...Array.from({ length: 30 }, (_, i) => {
     const num = i + 1;
     const loa = num % 4 === 0 ? 34 : num % 3 === 0 ? 32 : num % 2 === 0 ? 30 : 28;
-    return makeSlip("Damsite A Dock", "A", num, loa, 12);
+    return makeSlip("Damsite A Dock", "A", num, loa, 12, true, "BOGGS Cove", "uncovered");
   }),
-  // Damsite B Dock — 18 slips, 32–40 ft
+  // Damsite B Dock — 18 COVERED slips, 32–40 ft. Premium pricing.
   ...Array.from({ length: 18 }, (_, i) => {
     const num = i + 1;
     const loa = num % 3 === 0 ? 40 : num % 2 === 0 ? 36 : 32;
-    return makeSlip("Damsite B Dock", "B", num, loa, 14);
+    return makeSlip("Damsite B Dock", "B", num, loa, 14, true, "BOGGS Cove", "covered");
   }),
-  // Damsite C Dock — 14 slips, 26–32 ft (one without water for variety)
+  // Damsite C Dock — 14 uncovered, 26–32 ft (one without water for variety)
   ...Array.from({ length: 14 }, (_, i) => {
     const num = i + 1;
     const loa = num % 4 === 0 ? 32 : num % 2 === 0 ? 28 : 26;
-    return makeSlip("Damsite C Dock", "C", num, loa, 10, num !== 4);
+    return makeSlip("Damsite C Dock", "C", num, loa, 10, num !== 4, "BOGGS Cove", "uncovered");
   }),
-  // Damsite D Dock — 10 slips, large 38–44 ft
+  // Damsite D Dock — 10 large slips. First two are T-heads (premium
+  // end-of-dock), rest are covered. The mix that real marinas list.
   ...Array.from({ length: 10 }, (_, i) => {
     const num = i + 1;
     const loa = num % 3 === 0 ? 44 : num % 2 === 0 ? 42 : 38;
-    return makeSlip("Damsite D Dock", "D", num, loa, 16);
+    const cls: SlipClass = num <= 2 ? "t_head" : "covered";
+    return makeSlip("Damsite D Dock", "D", num, loa, 16, true, "BOGGS Cove", cls);
   }),
-  // Damsite E Dock — 8 small slips, 22–26 ft
+  // Damsite E Dock — 8 small uncovered slips, 22–26 ft. Entry-tier.
   ...Array.from({ length: 8 }, (_, i) => {
     const num = i + 1;
-    return makeSlip("Damsite E Dock", "E", num, 24, 9);
+    return makeSlip("Damsite E Dock", "E", num, 24, 9, true, "BOGGS Cove", "uncovered");
   }),
-  // Transient — 4 dedicated dock-walker slips
-  ...Array.from({ length: 4 }, (_, i) => ({
-    id: `T0${i + 1}`,
-    dock: "Transient Dock",
-    invoice_category: "BOGGS Cove",
-    number: `T-0${i + 1}`,
-    max_loa_inches: 45 * 12,
-    max_beam_inches: 14 * 12,
-    has_power: true,
-    has_water: true,
-  })),
+  // Transient — 4 dedicated dock-walker slips. Annual rate is set but
+  // they're typically billed nightly via the /dock check-in chain.
+  ...Array.from({ length: 4 }, (_, i) => {
+    const num = i + 1;
+    const padded = `0${num}`;
+    return {
+      id: `T${padded}`,
+      dock: "Transient Dock",
+      invoice_category: "BOGGS Cove",
+      number: `T-${padded}`,
+      max_loa_inches: 45 * 12,
+      max_beam_inches: 14 * 12,
+      has_power: true,
+      has_water: true,
+      slip_class: "uncovered" as const,
+      default_annual_rate: annualRateFor(45, "uncovered"),
+    };
+  }),
 ];
 
 export const CONTRACT_TEMPLATES: ContractTemplate[] = [
@@ -1470,6 +1523,301 @@ export const WAITLIST: WaitlistEntry[] = [
   },
 ];
 
+// ============================================================
+// Boat Rentals — fleet + sample bookings
+// ============================================================
+
+// Date helpers — anchor on "now" so the seeded fleet/bookings
+// always look fresh relative to whenever the demo is run.
+const _now = new Date();
+function isoOffsetHours(h: number) {
+  return new Date(_now.getTime() + h * 3_600_000).toISOString();
+}
+function isoOffsetDays(d: number) {
+  return new Date(_now.getTime() + d * 86_400_000).toISOString();
+}
+
+export const RENTAL_BOATS: RentalBoat[] = [
+  {
+    id: "rb_pontoon_1",
+    name: "Pontoon 1 — Sunseeker",
+    type: "pontoon",
+    capacity: 10,
+    hourly_rate: 95,
+    half_day_rate: 325,
+    full_day_rate: 525,
+    deposit_amount: 500,
+    fuel_capacity_gal: 30,
+    current_fuel_pct: 92,
+    hour_meter_reading: 487,
+    home_dock: "Dock C — Slip C12",
+    status: "rented",
+    notes: "2024 Sun Tracker Party Barge, 90hp Mercury. Bimini top.",
+    active: true,
+    created_at: "2026-04-01T08:00:00Z",
+    updated_at: isoOffsetDays(-1),
+  },
+  {
+    id: "rb_pontoon_2",
+    name: "Pontoon 2 — Lakeside",
+    type: "pontoon",
+    capacity: 10,
+    hourly_rate: 95,
+    half_day_rate: 325,
+    full_day_rate: 525,
+    deposit_amount: 500,
+    fuel_capacity_gal: 30,
+    current_fuel_pct: 78,
+    hour_meter_reading: 392,
+    home_dock: "Dock C — Slip C13",
+    status: "available",
+    active: true,
+    created_at: "2026-04-01T08:00:00Z",
+    updated_at: isoOffsetDays(-3),
+  },
+  {
+    id: "rb_skiff_1",
+    name: "Skiff 14 — Lund Fury",
+    type: "fishing_skiff",
+    capacity: 4,
+    hourly_rate: 65,
+    half_day_rate: 220,
+    full_day_rate: 365,
+    deposit_amount: 300,
+    fuel_capacity_gal: 12,
+    current_fuel_pct: 85,
+    hour_meter_reading: 612,
+    home_dock: "Dock C — Slip C18",
+    status: "available",
+    notes: "Includes 4 rod holders + fishfinder.",
+    active: true,
+    created_at: "2026-04-01T08:00:00Z",
+    updated_at: isoOffsetDays(-7),
+  },
+  {
+    id: "rb_jetski_1",
+    name: "Jet Ski A — Yamaha VX",
+    type: "jet_ski",
+    capacity: 3,
+    hourly_rate: 125,
+    half_day_rate: 400,
+    deposit_amount: 750,
+    fuel_capacity_gal: 18,
+    current_fuel_pct: 100,
+    hour_meter_reading: 218,
+    home_dock: "PWC Float — North end",
+    status: "available",
+    active: true,
+    created_at: "2026-04-01T08:00:00Z",
+    updated_at: isoOffsetDays(-5),
+  },
+  {
+    id: "rb_jetski_2",
+    name: "Jet Ski B — Yamaha VX",
+    type: "jet_ski",
+    capacity: 3,
+    hourly_rate: 125,
+    half_day_rate: 400,
+    deposit_amount: 750,
+    fuel_capacity_gal: 18,
+    current_fuel_pct: 22,
+    hour_meter_reading: 241,
+    home_dock: "PWC Float — North end",
+    status: "maintenance",
+    notes: "Impeller scheduled — Tuesday.",
+    active: true,
+    created_at: "2026-04-01T08:00:00Z",
+    updated_at: isoOffsetDays(-2),
+  },
+  {
+    id: "rb_kayak_yellow",
+    name: "Yellow Kayak (single)",
+    type: "kayak",
+    capacity: 1,
+    hourly_rate: 25,
+    full_day_rate: 65,
+    deposit_amount: 50,
+    home_dock: "Beach launch",
+    status: "available",
+    active: true,
+    created_at: "2026-04-01T08:00:00Z",
+    updated_at: isoOffsetDays(-10),
+  },
+  {
+    id: "rb_kayak_red",
+    name: "Red Kayak (single)",
+    type: "kayak",
+    capacity: 1,
+    hourly_rate: 25,
+    full_day_rate: 65,
+    deposit_amount: 50,
+    home_dock: "Beach launch",
+    status: "available",
+    active: true,
+    created_at: "2026-04-01T08:00:00Z",
+    updated_at: isoOffsetDays(-10),
+  },
+  {
+    id: "rb_sup_1",
+    name: "Tandem Paddleboard",
+    type: "paddleboard",
+    capacity: 2,
+    hourly_rate: 35,
+    full_day_rate: 85,
+    deposit_amount: 75,
+    home_dock: "Beach launch",
+    status: "available",
+    active: true,
+    created_at: "2026-04-01T08:00:00Z",
+    updated_at: isoOffsetDays(-10),
+  },
+];
+
+// Sample bookings spread across all status states so the
+// progress rail + landing-page filters have something to show.
+export const BOAT_RENTALS: BoatRental[] = [
+  {
+    // Status: reserved — invite sent, customer hasn't opened it yet
+    id: "br_1001",
+    number: "BR-1001",
+    boat_id: "rb_pontoon_2",
+    patron_name: "Marcus & Tara Whitfield",
+    patron_email: "marcus.whitfield@example.com",
+    patron_phone: "(231) 555-0142",
+    start_at: isoOffsetDays(2).replace(/T.*/, "T14:00:00Z"),
+    end_at: isoOffsetDays(2).replace(/T.*/, "T20:00:00Z"),
+    rate_kind: "half_day",
+    base_amount: 325,
+    deposit_hold: 500,
+    pickup_token: "pickup_demo_whitfield",
+    status: "reserved",
+    checkin: {
+      link_sent_at: isoOffsetHours(-2),
+    },
+    created_at: isoOffsetHours(-2),
+    updated_at: isoOffsetHours(-2),
+  },
+  {
+    // Status: confirmed — agreement signed + deposit on file, pickup tomorrow
+    id: "br_1002",
+    number: "BR-1002",
+    boat_id: "rb_kayak_yellow",
+    patron_name: "Jordan Reyes",
+    patron_email: "jreyes@example.com",
+    patron_phone: "(231) 555-0177",
+    patron_id_last4: "8392",
+    start_at: isoOffsetDays(1).replace(/T.*/, "T09:00:00Z"),
+    end_at: isoOffsetDays(1).replace(/T.*/, "T13:00:00Z"),
+    rate_kind: "hourly",
+    base_amount: 100,
+    deposit_hold: 50,
+    pickup_token: "pickup_demo_reyes",
+    signer_name: "Jordan Reyes",
+    deposit_card_id: "card_walk_in_reyes",
+    status: "confirmed",
+    checkin: {
+      link_sent_at: isoOffsetHours(-26),
+      link_viewed_at: isoOffsetHours(-25),
+      agreement_signed_at: isoOffsetHours(-24),
+      deposit_authorized_at: isoOffsetHours(-24),
+    },
+    created_at: isoOffsetHours(-26),
+    updated_at: isoOffsetHours(-24),
+  },
+  {
+    // Status: checked_out — on the water right now
+    id: "br_1003",
+    number: "BR-1003",
+    boat_id: "rb_pontoon_1",
+    boater_id: "b_emmons",            // existing annual holder renting for the day
+    start_at: isoOffsetHours(-2),
+    end_at: isoOffsetHours(6),
+    rate_kind: "full_day",
+    base_amount: 525,
+    deposit_hold: 500,
+    pickup_token: "pickup_demo_emmons",
+    signer_name: "Robert Emmons",
+    deposit_card_id: "card_emmons_visa",
+    fuel_out_pct: 92,
+    hours_out: 487,
+    status: "checked_out",
+    checkin: {
+      link_sent_at: isoOffsetHours(-26),
+      link_viewed_at: isoOffsetHours(-23),
+      agreement_signed_at: isoOffsetHours(-22),
+      deposit_authorized_at: isoOffsetHours(-22),
+      checked_out_at: isoOffsetHours(-2),
+    },
+    created_at: isoOffsetHours(-26),
+    updated_at: isoOffsetHours(-2),
+  },
+  {
+    // Status: returned — boat back, charges being finalized
+    id: "br_1004",
+    number: "BR-1004",
+    boat_id: "rb_sup_1",
+    patron_name: "Aiyana Cooper",
+    patron_email: "aiyana@example.com",
+    patron_phone: "(231) 555-0124",
+    start_at: isoOffsetDays(-1).replace(/T.*/, "T10:00:00Z"),
+    end_at: isoOffsetDays(-1).replace(/T.*/, "T13:00:00Z"),
+    rate_kind: "hourly",
+    base_amount: 105,
+    deposit_hold: 75,
+    pickup_token: "pickup_demo_cooper",
+    signer_name: "Aiyana Cooper",
+    deposit_card_id: "card_walk_in_cooper",
+    status: "returned",
+    checkin: {
+      link_sent_at: isoOffsetDays(-2),
+      link_viewed_at: isoOffsetDays(-2),
+      agreement_signed_at: isoOffsetDays(-2),
+      deposit_authorized_at: isoOffsetDays(-2),
+      checked_out_at: isoOffsetDays(-1).replace(/T.*/, "T10:00:00Z"),
+      returned_at: isoOffsetDays(-1).replace(/T.*/, "T13:12:00Z"),
+    },
+    created_at: isoOffsetDays(-2),
+    updated_at: isoOffsetDays(-1),
+  },
+  {
+    // Status: closed — final invoice posted last week
+    id: "br_1005",
+    number: "BR-1005",
+    boat_id: "rb_skiff_1",
+    patron_name: "Daniel Hertzog",
+    patron_email: "dhertzog@example.com",
+    patron_phone: "(231) 555-0166",
+    patron_id_last4: "1107",
+    start_at: isoOffsetDays(-7).replace(/T.*/, "T06:00:00Z"),
+    end_at: isoOffsetDays(-7).replace(/T.*/, "T14:00:00Z"),
+    rate_kind: "full_day",
+    base_amount: 365,
+    deposit_hold: 300,
+    pickup_token: "pickup_demo_hertzog",
+    signer_name: "Daniel Hertzog",
+    deposit_card_id: "card_walk_in_hertzog",
+    fuel_out_pct: 85,
+    fuel_in_pct: 31,
+    hours_out: 608,
+    hours_in: 612,
+    fuel_charge: 28.40,
+    damage_charge: 0,
+    final_total: 393.40,
+    status: "closed",
+    related_ledger_entry_id: "le_br_1005",
+    checkin: {
+      link_sent_at: isoOffsetDays(-9),
+      link_viewed_at: isoOffsetDays(-9),
+      agreement_signed_at: isoOffsetDays(-8),
+      deposit_authorized_at: isoOffsetDays(-8),
+      checked_out_at: isoOffsetDays(-7).replace(/T.*/, "T06:00:00Z"),
+      returned_at: isoOffsetDays(-7).replace(/T.*/, "T14:08:00Z"),
+    },
+    created_at: isoOffsetDays(-9),
+    updated_at: isoOffsetDays(-7),
+  },
+];
+
 // ----- helpers -----
 
 export function getBoater(id: string) {
@@ -1500,6 +1848,46 @@ export function getContractsForBoater(boaterId: string) {
   return CONTRACTS.filter((c) => c.boater_id === boaterId);
 }
 
+export function getRentalBoat(id: string | undefined) {
+  if (!id) return undefined;
+  return RENTAL_BOATS.find((b) => b.id === id);
+}
+
+export function getBoatRental(id: string | undefined) {
+  if (!id) return undefined;
+  return BOAT_RENTALS.find((r) => r.id === id);
+}
+
+export function getBoatRentalByToken(token: string) {
+  return BOAT_RENTALS.find((r) => r.pickup_token === token);
+}
+
+export function getBoatRentalsForBoater(boaterId: string) {
+  return BOAT_RENTALS.filter((r) => r.boater_id === boaterId);
+}
+
+export function getActiveBoatRentalForBoat(boatId: string) {
+  return BOAT_RENTALS.find(
+    (r) =>
+      r.boat_id === boatId &&
+      (r.status === "reserved" ||
+        r.status === "confirmed" ||
+        r.status === "checked_out")
+  );
+}
+
+/**
+ * Currency display for booked / final rental amount.
+ * Half-day = 4hr block; full-day = 8hr block.
+ */
+export function rentalDurationLabel(r: BoatRental) {
+  if (r.rate_kind === "half_day") return "Half day (4h)";
+  if (r.rate_kind === "full_day") return "Full day (8h)";
+  const ms = new Date(r.end_at).getTime() - new Date(r.start_at).getTime();
+  const hours = Math.max(1, Math.round(ms / 3_600_000));
+  return `${hours}h`;
+}
+
 export function getCardsForBoater(boaterId: string) {
   return CARDS_ON_FILE[boaterId] ?? [];
 }
@@ -1519,6 +1907,10 @@ export function getQuote(id: string | undefined) {
 
 export function getQuoteByToken(token: string) {
   return QUOTES.find((q) => q.signature_token === token);
+}
+
+export function getContractByToken(token: string) {
+  return CONTRACTS.find((c) => c.signature_token === token);
 }
 
 export function getLedgerEntry(id: string) {

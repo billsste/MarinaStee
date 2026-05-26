@@ -1,13 +1,15 @@
 "use client";
 
 import * as React from "react";
-import { Pencil } from "lucide-react";
+import { AlertTriangle, Pencil, ShieldAlert } from "lucide-react";
 import { EmptyState } from "@/components/page-shell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { RecordEditDialog, type FieldSpec } from "@/components/record-edit-dialog";
 import { formatInches, getSlip } from "@/lib/mock-data";
 import {
+  useContractsForBoater,
+  useInsuranceForBoater,
   useReservationsForBoater,
   useVesselsForBoater,
   upsertVessel,
@@ -71,8 +73,54 @@ export function VesselsTab({
   // Fall back to server-rendered props on first paint.
   const liveVessels = useVesselsForBoater(boaterId);
   const liveReservations = useReservationsForBoater(boaterId);
+  const liveContracts = useContractsForBoater(boaterId);
+  const liveCois = useInsuranceForBoater(boaterId);
   const allVessels = liveVessels.length > 0 ? liveVessels : vessels;
   const allRes = liveReservations.length > 0 ? liveReservations : reservations;
+
+  // ── Vessel-swap cross-domain validation
+  //
+  // When a holder edits their vessel (or adds a new one) we check
+  // whether it still fits the slip on their active contract + whether
+  // a current COI exists on file for THIS specific vessel. Surfaced
+  // as warning chips on each vessel card.
+  const activeContract = liveContracts.find((c) => c.status === "active");
+  const contractSlip = activeContract?.slip_id
+    ? getSlip(activeContract.slip_id)
+    : undefined;
+  function vesselIssues(v: Vessel): string[] {
+    const out: string[] = [];
+    if (contractSlip && v.active) {
+      if (v.loa_inches && v.loa_inches > contractSlip.max_loa_inches) {
+        const overBy = v.loa_inches - contractSlip.max_loa_inches;
+        out.push(
+          `LOA exceeds slip ${contractSlip.id} max (${formatInches(v.loa_inches)} vs. ${formatInches(contractSlip.max_loa_inches)} — over by ${formatInches(overBy)})`
+        );
+      }
+      if (v.beam_inches && v.beam_inches > contractSlip.max_beam_inches) {
+        out.push(
+          `Beam exceeds slip ${contractSlip.id} max (${formatInches(v.beam_inches)} vs. ${formatInches(contractSlip.max_beam_inches)})`
+        );
+      }
+    }
+    // COI vessel coverage: is there a non-superseded cert on file for
+    // this exact vessel that hasn't lapsed?
+    const vesselCois = liveCois
+      .filter((c) => c.vessel_id === v.id)
+      .sort((a, b) => (a.effective_end < b.effective_end ? 1 : -1));
+    const activeCoi = vesselCois.find(
+      (c) => !c.renewed_by_coi_id && new Date(c.effective_end).getTime() >= Date.now()
+    );
+    if (v.active && !activeCoi) {
+      const lapsed = vesselCois[0];
+      if (lapsed) {
+        out.push(`No active COI — ${lapsed.carrier} expired ${lapsed.effective_end}`);
+      } else {
+        out.push(`No COI on file for this vessel`);
+      }
+    }
+    return out;
+  }
   const [addOpen, setAddOpen] = React.useState(false);
   const [editVessel, setEditVessel] = React.useState<Vessel | undefined>();
   const [editOpen, setEditOpen] = React.useState(false);
@@ -129,6 +177,7 @@ export function VesselsTab({
 
       {allVessels.map((v) => {
         const photos = v.photos ?? (v.photo_url ? [v.photo_url] : []);
+        const issues = vesselIssues(v);
         return (
           <div
             key={v.id}
@@ -149,8 +198,34 @@ export function VesselsTab({
                 {v.active && <Badge tone="ok">Active</Badge>}
                 {v.vessel_type && <Badge tone="neutral">{v.vessel_type}</Badge>}
                 {v.fuel_type && <Badge tone="outline">{v.fuel_type}</Badge>}
+                {issues.length > 0 && (
+                  <Badge tone="warn">
+                    {issues.length} alert{issues.length === 1 ? "" : "s"}
+                  </Badge>
+                )}
               </div>
             </div>
+
+            {issues.length > 0 && (
+              <ul
+                onClick={(e) => e.stopPropagation()}
+                className="mt-3 space-y-1 rounded-[10px] border border-status-warn/30 bg-status-warn/[0.05] p-3"
+              >
+                {issues.map((msg, idx) => (
+                  <li
+                    key={idx}
+                    className="flex items-start gap-2 text-[12px] leading-relaxed text-fg"
+                  >
+                    {msg.toLowerCase().includes("coi") ? (
+                      <ShieldAlert className="mt-0.5 size-3.5 shrink-0 text-status-warn" />
+                    ) : (
+                      <AlertTriangle className="mt-0.5 size-3.5 shrink-0 text-status-warn" />
+                    )}
+                    <span>{msg}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
 
             {photos.length > 0 && (
               <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">

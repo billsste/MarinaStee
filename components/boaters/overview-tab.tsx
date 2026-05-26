@@ -10,28 +10,46 @@ import {
   Wrench,
   MessageSquare,
   Pencil,
+  Check,
+  Copy,
+  Send,
+  ExternalLink,
+  Eye,
+  CreditCard,
+  Signature,
+  Link as LinkIcon,
+  Sailboat,
 } from "lucide-react";
+import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
 import { RecordEditDialog, type FieldSpec } from "@/components/record-edit-dialog";
 import {
   formatInches,
   formatMoney,
   getSlip,
+  rentalDurationLabel,
 } from "@/lib/mock-data";
 import {
+  addCommunication,
+  mintContractSignatureToken,
   upsertBoater,
   upsertContract,
+  useBoatRentalsForBoater,
   useCommunicationsForBoater,
   useContractsForBoater,
   useLedgerForBoater,
+  useRentalBoats,
   useReservationsForBoater,
 } from "@/lib/client-store";
 import { StaffNotesCard } from "@/components/notes/staff-notes-card";
 import type {
+  BoatRental,
   Boater,
   Communication,
   Contract,
   LedgerEntry,
+  RentalBoat,
   Reservation,
   Vessel,
   WorkOrder,
@@ -58,12 +76,31 @@ export function OverviewTab({
   const comms = useCommunicationsForBoater(boater.id);
   const boaterContracts = useContractsForBoater(boater.id);
   const boaterReservations = useReservationsForBoater(boater.id);
+  const boaterRentals = useBoatRentalsForBoater(boater.id);
+  const rentalFleet = useRentalBoats();
+  // Active rentals are anything not closed/cancelled — appears at the
+  // top so staff can see "is this customer currently on the water?" at
+  // a glance. Past closed rentals fall to a compact history strip.
+  const activeRentals = boaterRentals.filter(
+    (r) => r.status !== "closed" && r.status !== "cancelled" && r.status !== "no_show"
+  );
+  const closedRentals = boaterRentals
+    .filter((r) => r.status === "closed")
+    .sort((a, b) => b.updated_at.localeCompare(a.updated_at));
 
   // For annual/seasonal holders, pin contract + tenure context above the slip
   const isAnnual = boater.billing_cadence === "annual" || boater.billing_cadence === "monthly";
   const isSeasonal = boater.billing_cadence === "seasonal";
   const showContractPanel = isAnnual || isSeasonal;
   const activeContract = boaterContracts.find((c) => c.status === "active");
+  // Onboarding-in-flight: any contract that's been sent/signed but isn't
+  // active yet. Drives the live progress rail so staff sees what step
+  // the holder is on.
+  const onboardingContract = boaterContracts.find(
+    (c) =>
+      c.signature_token !== undefined &&
+      (c.status === "sent" || c.status === "partially_signed" || c.status === "executed")
+  );
   const successorContract = activeContract
     ? boaterContracts.find(
         (c) =>
@@ -147,6 +184,16 @@ export function OverviewTab({
     <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
       {/* Identity rail — narrower left column on desktop */}
       <div className="space-y-4 lg:col-span-5">
+        {onboardingContract && (
+          <OnboardingProgressPanel contract={onboardingContract} boater={boater} />
+        )}
+        {(activeRentals.length > 0 || closedRentals.length > 0) && (
+          <BoatRentalsStrip
+            active={activeRentals}
+            closed={closedRentals.slice(0, 3)}
+            fleet={rentalFleet}
+          />
+        )}
         <Panel title="Contact" onEdit={() => setEditContactOpen(true)}>
           <div className="space-y-1">
             <ContactRow icon={<Mail className="size-3.5" />} label="Email" value={boater.primary_contact.email} />
@@ -188,18 +235,26 @@ export function OverviewTab({
             onEdit={() => setEditContractOpen(true)}
           >
             <div className="flex flex-wrap items-baseline gap-2">
-              <span className="font-mono text-[15px] font-medium text-fg">
+              <Link
+                href={`/slips/contracts/${activeContract.id}`}
+                className="font-mono text-[15px] font-medium text-primary hover:underline"
+              >
                 {activeContract.number}
-              </span>
+              </Link>
               <Badge tone="ok" size="sm">{activeContract.status}</Badge>
               {successorContract && (
-                <Badge tone="primary" size="sm">
-                  {successorContract.status === "draft"
-                    ? "Renewal drafted"
-                    : successorContract.status === "sent"
-                    ? "Renewal sent"
-                    : "Renewed"}
-                </Badge>
+                <Link
+                  href={`/slips/contracts/${successorContract.id}`}
+                  className="inline-flex"
+                >
+                  <Badge tone="primary" size="sm">
+                    {successorContract.status === "draft"
+                      ? "Renewal drafted"
+                      : successorContract.status === "sent"
+                      ? "Renewal sent"
+                      : "Renewed"}
+                  </Badge>
+                </Link>
               )}
             </div>
             <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-[12px]">
@@ -501,6 +556,357 @@ function ContactRow({
 
 function EmptyInline({ text }: { text: string }) {
   return <p className="text-[13px] text-fg-subtle">{text}</p>;
+}
+
+/*
+ * OnboardingProgressPanel — live rail for in-flight slip-holder onboarding.
+ *
+ * Slip-assignment wizard mints a signature_token + dispatches a Communication;
+ * Contract.onboarding.{link_sent_at,link_viewed_at,signed_at,card_added_at}
+ * fill in as the holder advances through /onboard/[token]. This panel mirrors
+ * the staff side: status badge, 4-step checklist with timestamps, and the
+ * three actions every marina staffer asks for — copy the link, resend the
+ * invite, or "open as boater" to see exactly what they see.
+ *
+ * Replaces the old workflow of "draft a contract → wait → ask the boater to
+ * mail back a signed PDF + a check / call in their card." Self-service +
+ * fully observable.
+ */
+function OnboardingProgressPanel({
+  contract,
+  boater,
+}: {
+  contract: Contract;
+  boater: Boater;
+}) {
+  const [copied, setCopied] = React.useState(false);
+  const [resentAt, setResentAt] = React.useState<string | null>(null);
+
+  const onb = contract.onboarding ?? {};
+  const steps: { key: keyof NonNullable<Contract["onboarding"]>; label: string; icon: React.ReactNode; ts?: string }[] = [
+    { key: "link_sent_at", label: "Invite sent", icon: <Send className="size-3" />, ts: onb.link_sent_at },
+    { key: "link_viewed_at", label: "Boater opened link", icon: <Eye className="size-3" />, ts: onb.link_viewed_at },
+    { key: "signed_at", label: "Contract signed", icon: <Signature className="size-3" />, ts: onb.signed_at },
+    { key: "card_added_at", label: "Payment method added", icon: <CreditCard className="size-3" />, ts: onb.card_added_at },
+  ];
+  const completed = steps.filter((s) => !!s.ts).length;
+  const pct = Math.round((completed / steps.length) * 100);
+
+  // Headline status: what's the staff member waiting on?
+  let waitingOn: { label: string; tone: "info" | "warn" | "ok" } = {
+    label: "Awaiting boater",
+    tone: "info",
+  };
+  if (!onb.link_viewed_at && onb.link_sent_at) waitingOn = { label: "Awaiting boater", tone: "info" };
+  if (onb.link_viewed_at && !onb.signed_at) waitingOn = { label: "Reading agreement", tone: "info" };
+  if (onb.signed_at && !onb.card_added_at) waitingOn = { label: "Awaiting payment method", tone: "warn" };
+  if (onb.signed_at && onb.card_added_at) waitingOn = { label: "Ready to activate", tone: "ok" };
+
+  // Build the public URL — fall back to a relative path on SSR.
+  const origin = typeof window !== "undefined" ? window.location.origin : "";
+  const token = contract.signature_token ?? "";
+  const onboardUrl = token ? `${origin}/onboard/${token}` : "";
+
+  async function copyLink() {
+    if (!onboardUrl) return;
+    try {
+      await navigator.clipboard.writeText(onboardUrl);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      /* clipboard blocked — ignore */
+    }
+  }
+
+  function resend() {
+    // Idempotent — mintContractSignatureToken returns the existing token if
+    // there is one. Re-stamps onboarding.link_sent_at so the rail updates.
+    const t = mintContractSignatureToken(contract.id);
+    if (!t) return;
+    const url = `${origin}/onboard/${t}`;
+    const channel = boater.communication_prefs.preferred_channel;
+    const commType: Communication["type"] = channel;
+    const recipient =
+      commType === "email"
+        ? (boater.primary_contact.email ?? "")
+        : (boater.primary_contact.phone ?? "");
+    addCommunication({
+      id: `cm_resend_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      boater_id: boater.id,
+      type: commType,
+      direction: "outbound",
+      sender_label: "Marina Stee",
+      sender_is_system: true,
+      recipient,
+      subject: `Reminder: complete your onboarding for contract ${contract.number}`,
+      body_preview: `Sign and add a payment method here: ${url}`,
+      full_body:
+        `Hi ${boater.first_name},\n\n` +
+        `Just a friendly reminder to complete your slip onboarding for contract ${contract.number}. ` +
+        `It only takes a couple of minutes:\n\n${url}\n\n` +
+        `Reply to this message if you'd like a hand.`,
+      sent_at: new Date().toISOString(),
+      status: "delivered",
+      related_entity: { type: "contract", id: contract.id },
+    });
+    setResentAt(new Date().toISOString());
+    setTimeout(() => setResentAt(null), 2500);
+  }
+
+  return (
+    <div className="rounded-[12px] border border-primary/30 bg-primary-soft/30">
+      <div className="flex items-center justify-between border-b border-primary/20 px-4 py-2.5">
+        <div className="flex items-center gap-2">
+          <h3 className="text-[13px] font-medium text-fg">Onboarding in flight</h3>
+          <Badge tone={waitingOn.tone} size="sm">
+            {waitingOn.label}
+          </Badge>
+        </div>
+        <span className="text-[11px] tabular text-fg-subtle">
+          {completed} of {steps.length}
+        </span>
+      </div>
+
+      <div className="space-y-3 p-4">
+        {/* Progress bar */}
+        <div className="h-1.5 overflow-hidden rounded-full bg-surface-3">
+          <div
+            className="h-full rounded-full bg-primary transition-[width] duration-300"
+            style={{ width: `${pct}%` }}
+          />
+        </div>
+
+        {/* Step list */}
+        <ul className="space-y-1.5">
+          {steps.map((s) => {
+            const done = !!s.ts;
+            return (
+              <li key={s.key} className="flex items-center gap-2.5 text-[12px]">
+                <span
+                  className={cn(
+                    "flex size-5 shrink-0 items-center justify-center rounded-full border",
+                    done
+                      ? "border-status-ok bg-status-ok/10 text-status-ok"
+                      : "border-hairline bg-surface-2 text-fg-tertiary"
+                  )}
+                >
+                  {done ? <Check className="size-3" /> : s.icon}
+                </span>
+                <span
+                  className={cn(
+                    "flex-1",
+                    done ? "text-fg" : "text-fg-subtle"
+                  )}
+                >
+                  {s.label}
+                </span>
+                {done && s.ts && (
+                  <span className="text-[10px] tabular text-fg-tertiary">
+                    {new Date(s.ts).toLocaleString(undefined, {
+                      month: "short",
+                      day: "numeric",
+                      hour: "numeric",
+                      minute: "2-digit",
+                    })}
+                  </span>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+
+        {/* Contract reference */}
+        <Link
+          href={`/slips/contracts/${contract.id}`}
+          className="block rounded-[8px] border border-hairline bg-surface-1 px-2.5 py-1.5 text-[11px] transition-colors hover:border-hairline-strong hover:bg-surface-2"
+        >
+          <span className="text-fg-tertiary">Contract </span>
+          <span className="font-mono text-primary hover:underline">{contract.number}</span>
+          {contract.annual_rate && (
+            <>
+              <span className="text-fg-tertiary"> · </span>
+              <span className="tabular text-fg">{formatMoney(contract.annual_rate)}</span>
+              <span className="text-fg-tertiary">/{contract.billing_cadence}</span>
+            </>
+          )}
+        </Link>
+
+        {/* Action row */}
+        {onboardUrl && (
+          <div className="flex flex-wrap items-center gap-1.5 pt-1">
+            <button
+              type="button"
+              onClick={copyLink}
+              className="inline-flex items-center gap-1 rounded-[6px] border border-hairline bg-surface-1 px-2 py-1 text-[11px] text-fg-subtle hover:bg-surface-2 hover:text-fg"
+            >
+              {copied ? (
+                <>
+                  <Check className="size-3 text-status-ok" />
+                  Copied
+                </>
+              ) : (
+                <>
+                  <Copy className="size-3" />
+                  Copy link
+                </>
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={resend}
+              className="inline-flex items-center gap-1 rounded-[6px] border border-hairline bg-surface-1 px-2 py-1 text-[11px] text-fg-subtle hover:bg-surface-2 hover:text-fg"
+            >
+              {resentAt ? (
+                <>
+                  <Check className="size-3 text-status-ok" />
+                  Sent
+                </>
+              ) : (
+                <>
+                  <Send className="size-3" />
+                  Resend
+                </>
+              )}
+            </button>
+            <a
+              href={onboardUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 rounded-[6px] border border-hairline bg-surface-1 px-2 py-1 text-[11px] text-fg-subtle hover:bg-surface-2 hover:text-fg"
+            >
+              <ExternalLink className="size-3" />
+              Open as boater
+            </a>
+            <span className="ml-auto inline-flex items-center gap-1 text-[10px] text-fg-tertiary">
+              <LinkIcon className="size-3" />
+              <span className="hidden truncate sm:inline">{onboardUrl.replace(/^https?:\/\//, "")}</span>
+            </span>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/*
+ * Boat Rentals strip — surfaces this holder's marina-owned-fleet
+ * rentals on their detail page. Active rentals up top with a "currently
+ * on the water" cue + per-status badge; recent closed history below.
+ *
+ * Connects the Boat Rentals domain back into the holder's Overview so
+ * staff sees the full picture: contract + slip + active rental in one
+ * place.
+ */
+function BoatRentalsStrip({
+  active,
+  closed,
+  fleet,
+}: {
+  active: BoatRental[];
+  closed: BoatRental[];
+  fleet: RentalBoat[];
+}) {
+  return (
+    <div className="rounded-[12px] border border-hairline bg-surface-1">
+      <div className="flex items-center justify-between border-b border-hairline px-4 py-2.5">
+        <h3 className="inline-flex items-center gap-1.5 text-[13px] font-medium text-fg">
+          <Sailboat className="size-3.5 text-fg-subtle" />
+          Boat rentals
+        </h3>
+        {active.length > 0 && (
+          <Badge tone="info" size="sm">
+            {active.filter((r) => r.status === "checked_out").length > 0
+              ? "On the water"
+              : `${active.length} in flight`}
+          </Badge>
+        )}
+      </div>
+      <div className="divide-y divide-hairline">
+        {active.map((r) => {
+          const boat = fleet.find((b) => b.id === r.boat_id);
+          return (
+            <Link
+              key={r.id}
+              href={`/boat-rentals/${r.id}`}
+              className="block cursor-pointer px-4 py-2.5 transition-colors hover:bg-surface-2"
+            >
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-[12px] font-medium text-primary">
+                      {r.number}
+                    </span>
+                    <span className="text-[13px] text-fg">{boat?.name ?? "—"}</span>
+                  </div>
+                  <div className="text-[11px] text-fg-tertiary">
+                    {new Date(r.start_at).toLocaleString(undefined, {
+                      month: "short",
+                      day: "numeric",
+                      hour: "numeric",
+                      minute: "2-digit",
+                    })}{" "}
+                    →{" "}
+                    {new Date(r.end_at).toLocaleString(undefined, {
+                      hour: "numeric",
+                      minute: "2-digit",
+                    })}{" "}
+                    · {rentalDurationLabel(r)}
+                  </div>
+                </div>
+                <div className="text-right">
+                  <div className="tabular text-[12px] text-fg">
+                    {formatMoney(r.final_total ?? r.base_amount)}
+                  </div>
+                  <Badge
+                    tone={
+                      r.status === "checked_out"
+                        ? "info"
+                        : r.status === "confirmed"
+                        ? "ok"
+                        : r.status === "returned"
+                        ? "warn"
+                        : "neutral"
+                    }
+                    size="sm"
+                  >
+                    {r.status === "checked_out" ? "on water" : r.status}
+                  </Badge>
+                </div>
+              </div>
+            </Link>
+          );
+        })}
+        {closed.length > 0 && (
+          <>
+            <div className="bg-surface-2 px-4 py-1 text-[10px] uppercase tracking-wide text-fg-tertiary">
+              Recent
+            </div>
+            {closed.map((r) => {
+              const boat = fleet.find((b) => b.id === r.boat_id);
+              return (
+                <Link
+                  key={r.id}
+                  href={`/boat-rentals/${r.id}`}
+                  className="block cursor-pointer px-4 py-2 transition-colors hover:bg-surface-2"
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <span className="font-mono text-[11px] text-primary">{r.number}</span>
+                      <span className="text-[11px] text-fg-tertiary"> · </span>
+                      <span className="text-[12px] text-fg">{boat?.name ?? "—"}</span>
+                    </div>
+                    <span className="tabular text-[11px] text-fg-subtle">
+                      {formatMoney(r.final_total ?? r.base_amount)}
+                    </span>
+                  </div>
+                </Link>
+              );
+            })}
+          </>
+        )}
+      </div>
+    </div>
+  );
 }
 
 function TimelineItem({ a }: { a: Activity }) {
