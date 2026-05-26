@@ -8,6 +8,7 @@ import {
   COMMUNICATIONS,
   CONTRACT_TEMPLATES,
   CONTRACTS,
+  FUEL_INVENTORY,
   INSURANCE_CERTIFICATES,
   LEDGER,
   MARINA_EVENTS,
@@ -15,6 +16,8 @@ import {
   POS_LOCATIONS,
   POS_ORDERS,
   RATES,
+  RENTAL_GROUPS,
+  RENTAL_SPACES,
   RESERVATIONS,
   STAFF_NOTES,
   VESSELS,
@@ -28,6 +31,7 @@ import type {
   Communication,
   Contract,
   ContractTemplate,
+  FuelInventory,
   InsuranceCertificate,
   LedgerEntry,
   MarinaEvent,
@@ -35,6 +39,8 @@ import type {
   PosOrder,
   QbSyncStatus,
   Rate,
+  RentalGroup,
+  RentalSpace,
   Reservation,
   StaffNote,
   Vessel,
@@ -96,6 +102,9 @@ type State = {
   fees: AdditionalFee[];
   templates: ContractTemplate[];
   meters: MeterReading[];
+  rentalGroups: RentalGroup[];
+  rentalSpaces: RentalSpace[];
+  fuelInventory: FuelInventory[];
 };
 
 let state: State = {
@@ -119,6 +128,9 @@ let state: State = {
   fees: [...ADDITIONAL_FEES],
   templates: [...CONTRACT_TEMPLATES],
   meters: [...METER_READINGS],
+  rentalGroups: [...RENTAL_GROUPS],
+  rentalSpaces: [...RENTAL_SPACES],
+  fuelInventory: [...FUEL_INVENTORY],
 };
 
 const subscribers = new Set<() => void>();
@@ -317,8 +329,35 @@ export function addBoater(b: Boater) {
   notify();
 }
 
+export function upsertBoater(b: Boater) {
+  const exists = state.boaters.some((x) => x.id === b.id);
+  state = {
+    ...state,
+    boaters: exists
+      ? state.boaters.map((x) => (x.id === b.id ? b : x))
+      : [b, ...state.boaters],
+  };
+  notify();
+}
+
 export function addVessel(v: Vessel) {
   state = { ...state, vessels: [v, ...state.vessels] };
+  notify();
+}
+
+export function upsertVessel(v: Vessel) {
+  const exists = state.vessels.some((x) => x.id === v.id);
+  state = {
+    ...state,
+    vessels: exists
+      ? state.vessels.map((x) => (x.id === v.id ? v : x))
+      : [v, ...state.vessels],
+  };
+  notify();
+}
+
+export function deleteVessel(id: string) {
+  state = { ...state, vessels: state.vessels.filter((v) => v.id !== id) };
   notify();
 }
 
@@ -412,6 +451,62 @@ export function upsertFee(f: AdditionalFee) {
 }
 export function deleteFee(id: string) {
   state = { ...state, fees: state.fees.filter((f) => f.id !== id) };
+  notify();
+}
+
+// ── Rental Groups CRUD ───────────────────────────────────────
+export function upsertRentalGroup(g: RentalGroup) {
+  const exists = state.rentalGroups.some((x) => x.id === g.id);
+  state = {
+    ...state,
+    rentalGroups: exists
+      ? state.rentalGroups.map((x) => (x.id === g.id ? g : x))
+      : [...state.rentalGroups, g],
+  };
+  notify();
+}
+export function deleteRentalGroup(id: string) {
+  // Delete the group AND any spaces that belonged to it. Contracts/
+  // reservations holding orphan slip_ids stay so audit history isn't lost.
+  state = {
+    ...state,
+    rentalGroups: state.rentalGroups.filter((g) => g.id !== id),
+    rentalSpaces: state.rentalSpaces.filter((s) => s.group_id !== id),
+  };
+  notify();
+}
+
+// ── Rental Spaces CRUD ───────────────────────────────────────
+export function upsertRentalSpace(s: RentalSpace) {
+  const exists = state.rentalSpaces.some((x) => x.id === s.id);
+  state = {
+    ...state,
+    rentalSpaces: exists
+      ? state.rentalSpaces.map((x) => (x.id === s.id ? s : x))
+      : [...state.rentalSpaces, s],
+  };
+  notify();
+}
+export function deleteRentalSpace(id: string) {
+  state = { ...state, rentalSpaces: state.rentalSpaces.filter((s) => s.id !== id) };
+  notify();
+}
+export function nextRentalGroupId() {
+  return `rg_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`;
+}
+export function nextRentalSpaceId() {
+  return `rsp_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`;
+}
+
+// ── Fuel inventory CRUD ──────────────────────────────────────
+export function upsertFuelInventory(f: FuelInventory) {
+  const exists = state.fuelInventory.some((x) => x.id === f.id);
+  state = {
+    ...state,
+    fuelInventory: exists
+      ? state.fuelInventory.map((x) => (x.id === f.id ? f : x))
+      : [...state.fuelInventory, f],
+  };
   notify();
 }
 
@@ -524,6 +619,32 @@ export function addCardForBoater(boaterId: string, card: CardOnFile) {
   notify();
 }
 
+export function upsertCardForBoater(boaterId: string, card: CardOnFile) {
+  const existing = state.cardsByBoaterId[boaterId] ?? [];
+  const exists = existing.some((c) => c.id === card.id);
+  // Enforce default mutex — only one card can be the default.
+  const updated = exists
+    ? existing.map((c) => {
+        if (c.id === card.id) return card;
+        return card.is_default ? { ...c, is_default: false } : c;
+      })
+    : (card.is_default ? existing.map((c) => ({ ...c, is_default: false })) : existing).concat(card);
+  state = {
+    ...state,
+    cardsByBoaterId: { ...state.cardsByBoaterId, [boaterId]: updated },
+  };
+  notify();
+}
+
+export function deleteCardForBoater(boaterId: string, cardId: string) {
+  const existing = state.cardsByBoaterId[boaterId] ?? [];
+  state = {
+    ...state,
+    cardsByBoaterId: { ...state.cardsByBoaterId, [boaterId]: existing.filter((c) => c.id !== cardId) },
+  };
+  notify();
+}
+
 // ----- hooks -----
 
 export function useStore(): State {
@@ -607,6 +728,22 @@ export function useContractTemplates(): ContractTemplate[] {
 
 export function useMeters(): MeterReading[] {
   return useStore().meters;
+}
+
+export function useRentalGroups(): RentalGroup[] {
+  return useStore().rentalGroups;
+}
+
+export function useRentalSpaces(): RentalSpace[] {
+  return useStore().rentalSpaces;
+}
+
+export function useRentalSpacesForGroup(groupId: string): RentalSpace[] {
+  return useStore().rentalSpaces.filter((s) => s.group_id === groupId);
+}
+
+export function useFuelInventory(): FuelInventory[] {
+  return useStore().fuelInventory;
 }
 
 export function useStaffNotesForBoater(boaterId: string): StaffNote[] {

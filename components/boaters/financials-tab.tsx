@@ -4,17 +4,40 @@ import * as React from "react";
 import { CreditCard, FileText, RotateCcw } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { RecordEditDialog, type FieldSpec } from "@/components/record-edit-dialog";
 import { formatMoney, getTemplate } from "@/lib/mock-data";
 import {
   useCardsForBoater,
   useContractsForBoater,
   useLedgerForBoater,
+  upsertCardForBoater,
+  deleteCardForBoater,
 } from "@/lib/client-store";
 import { useLedgerDrawer } from "@/components/ledger/ledger-entry-drawer";
 import { EnterPaymentSheet } from "@/components/financials/enter-payment-sheet";
 import { AddCardSheet } from "@/components/financials/add-card-sheet";
 import { NewContractSheet } from "@/components/financials/new-contract-sheet";
 import type { CardOnFile, Contract, LedgerEntry } from "@/lib/types";
+
+const CARD_FIELDS: FieldSpec<CardOnFile>[] = [
+  {
+    key: "brand",
+    label: "Brand",
+    kind: "select",
+    col: 2,
+    options: [
+      { value: "visa", label: "Visa" },
+      { value: "mastercard", label: "Mastercard" },
+      { value: "amex", label: "Amex" },
+      { value: "discover", label: "Discover" },
+    ],
+  },
+  { key: "last4", label: "Last 4", kind: "text", col: 2, required: true },
+  { key: "exp_month", label: "Exp month (1-12)", kind: "number", col: 2 },
+  { key: "exp_year", label: "Exp year (YYYY)", kind: "number", col: 2 },
+  { key: "nickname", label: "Label (Personal / Business)", kind: "text" },
+  { key: "is_default", label: "Default card", kind: "boolean" },
+];
 
 type FilterKey = "all" | "invoices" | "payments" | "refunds";
 
@@ -39,6 +62,24 @@ export function FinancialsTab({
   const [paymentOpen, setPaymentOpen] = React.useState(false);
   const [cardOpen, setCardOpen] = React.useState(false);
   const [contractOpen, setContractOpen] = React.useState(false);
+  const [editCard, setEditCard] = React.useState<CardOnFile | undefined>();
+  const [editCardOpen, setEditCardOpen] = React.useState(false);
+
+  function openEditCard(c: CardOnFile) {
+    setEditCard(c);
+    setEditCardOpen(true);
+  }
+  function handleSaveCard(values: CardOnFile) {
+    upsertCardForBoater(boaterId, {
+      ...values,
+      exp_month: Number(values.exp_month) || 1,
+      exp_year: Number(values.exp_year) || new Date().getFullYear(),
+      is_default: Boolean(values.is_default),
+    });
+  }
+  function handleDeleteCard(c: CardOnFile) {
+    deleteCardForBoater(boaterId, c.id);
+  }
 
   const filtered = ledger
     .filter((l) => {
@@ -86,17 +127,20 @@ export function FinancialsTab({
           ) : (
             <ul className="flex flex-wrap gap-2">
               {allCards.map((c) => (
-                <li
-                  key={c.id}
-                  className="flex items-center gap-3 rounded-[8px] border border-hairline bg-surface-2 px-3 py-2"
-                >
-                  <div className="text-[12px] font-medium uppercase text-fg-subtle">{c.brand}</div>
-                  <div className="font-mono text-[13px] text-fg">•••• {c.last4}</div>
-                  <div className="text-[11px] text-fg-tertiary">
-                    {String(c.exp_month).padStart(2, "0")}/{String(c.exp_year).slice(-2)}
-                  </div>
-                  {c.nickname && <span className="text-[11px] text-fg-tertiary">· {c.nickname}</span>}
-                  {c.is_default && <Badge tone="primary" size="sm">Default</Badge>}
+                <li key={c.id}>
+                  <button
+                    type="button"
+                    onClick={() => openEditCard(c)}
+                    className="flex items-center gap-3 rounded-[8px] border border-hairline bg-surface-2 px-3 py-2 transition-colors hover:border-hairline-strong hover:bg-surface-3"
+                  >
+                    <div className="text-[12px] font-medium uppercase text-fg-subtle">{c.brand}</div>
+                    <div className="font-mono text-[13px] text-fg">•••• {c.last4}</div>
+                    <div className="text-[11px] text-fg-tertiary">
+                      {String(c.exp_month).padStart(2, "0")}/{String(c.exp_year).slice(-2)}
+                    </div>
+                    {c.nickname && <span className="text-[11px] text-fg-tertiary">· {c.nickname}</span>}
+                    {c.is_default && <Badge tone="primary" size="sm">Default</Badge>}
+                  </button>
                 </li>
               ))}
             </ul>
@@ -210,6 +254,18 @@ export function FinancialsTab({
         open={contractOpen}
         onOpenChange={setContractOpen}
         defaultBoaterId={boaterId}
+      />
+
+      <RecordEditDialog<CardOnFile>
+        open={editCardOpen}
+        onOpenChange={setEditCardOpen}
+        title={editCard ? `Edit card — •••• ${editCard.last4}` : "Edit card"}
+        description="Toggling Default automatically removes the default flag from any other card on file."
+        record={editCard}
+        fields={CARD_FIELDS}
+        onSave={handleSaveCard}
+        onDelete={editCard ? handleDeleteCard : undefined}
+        entity="boater"
       />
     </div>
   );

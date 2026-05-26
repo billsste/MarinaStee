@@ -2,10 +2,11 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { Search, Sparkles } from "lucide-react";
+import { Search, Sparkles, UserPlus } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { SpacesToolbar } from "@/components/rentals/spaces-toolbar";
+import { NewContractSheet } from "@/components/financials/new-contract-sheet";
 import {
   BOATERS,
   SLIPS,
@@ -59,6 +60,9 @@ export function RosterView() {
   const [cadence, setCadence] = React.useState<CadenceFilter>("all");
   const [status, setStatus] = React.useState<StatusFilter>("all");
   const [query, setQuery] = React.useState("");
+  // Vacant slips become "assign" actions — clicking opens the contract
+  // dialog pre-seeded with the slip id so staff can claim it in one shot.
+  const [assignSlipId, setAssignSlipId] = React.useState<string | null>(null);
 
   // Build joined rows once per change
   const rows: Row[] = React.useMemo(() => {
@@ -210,7 +214,11 @@ export function RosterView() {
         ) : (
           <ul className="divide-y divide-hairline">
             {filtered.map((r) => (
-              <RosterRow key={r.slip.id} row={r} />
+              <RosterRow
+                key={r.slip.id}
+                row={r}
+                onAssign={() => setAssignSlipId(r.slip.id)}
+              />
             ))}
           </ul>
         )}
@@ -225,13 +233,19 @@ export function RosterView() {
           Try: "Show me everyone expiring in the next 60 days" — or "Draft 2027 renewals for everyone on A Dock".
         </span>
       </div>
+
+      <NewContractSheet
+        open={assignSlipId !== null}
+        onOpenChange={(b) => { if (!b) setAssignSlipId(null); }}
+        defaultSlipId={assignSlipId ?? undefined}
+      />
     </div>
   );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-function RosterRow({ row }: { row: Row }) {
+function RosterRow({ row, onAssign }: { row: Row; onAssign: () => void }) {
   const { slip, contract, boater, vessel, rowStatus, daysUntilExpiry } = row;
   const statusBadge = (() => {
     if (rowStatus === "vacant") return <Badge tone="ok" size="sm">Vacant</Badge>;
@@ -240,26 +254,51 @@ function RosterRow({ row }: { row: Row }) {
     return <Badge tone="neutral" size="sm">Active</Badge>;
   })();
 
+  const gridClass =
+    "grid grid-cols-[64px_minmax(0,1.6fr)_minmax(0,1.5fr)_minmax(0,1.1fr)_88px_minmax(0,1.2fr)_96px_120px] items-center gap-3 px-3 py-2 text-[13px] transition-colors";
+
+  // Vacant slips → "Assign holder" action. Occupied / lapsed / expiring →
+  // navigate to the boater detail.
+  if (!boater) {
+    return (
+      <li>
+        <button
+          type="button"
+          onClick={onAssign}
+          className={cn(
+            gridClass,
+            "group w-full cursor-pointer text-left hover:bg-surface-2"
+          )}
+        >
+          <span className="font-mono text-[12px] font-medium text-fg">{slip.id}</span>
+          <span className="min-w-0 truncate">
+            <span className="inline-flex items-center gap-1 text-fg-tertiary group-hover:text-primary">
+              <UserPlus className="size-3" />
+              <span className="italic">Assign holder</span>
+            </span>
+          </span>
+          <span className="text-fg-tertiary">—</span>
+          <span className="text-fg-tertiary">—</span>
+          <span className="text-right text-fg-tertiary">—</span>
+          <span className="text-fg-tertiary">—</span>
+          <span className="text-right text-fg-tertiary">—</span>
+          <span>{statusBadge}</span>
+        </button>
+      </li>
+    );
+  }
+
   return (
     <li>
       <Link
-        href={boater ? `/boaters/${boater.id}` : "#"}
-        className={cn(
-          "grid grid-cols-[64px_minmax(0,1.6fr)_minmax(0,1.5fr)_minmax(0,1.1fr)_88px_minmax(0,1.2fr)_96px_120px] items-center gap-3 px-3 py-2 text-[13px] transition-colors",
-          boater ? "hover:bg-surface-2" : "cursor-default opacity-80"
-        )}
+        href={`/boaters/${boater.id}`}
+        className={cn(gridClass, "cursor-pointer hover:bg-surface-2")}
       >
         <span className="font-mono text-[12px] font-medium text-fg">{slip.id}</span>
         <span className="min-w-0 truncate">
-          {boater ? (
-            <>
-              <span className="font-medium text-fg">{boater.display_name}</span>
-              {boater.tags.includes("board_member") && (
-                <span className="ml-1.5 text-[10px] text-status-info">★</span>
-              )}
-            </>
-          ) : (
-            <span className="italic text-fg-tertiary">— no holder —</span>
+          <span className="font-medium text-fg">{boater.display_name}</span>
+          {boater.tags.includes("board_member") && (
+            <span className="ml-1.5 text-[10px] text-status-info">★</span>
           )}
         </span>
         <span className="min-w-0 truncate text-fg-subtle">

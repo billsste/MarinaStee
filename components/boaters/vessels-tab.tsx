@@ -1,14 +1,62 @@
 "use client";
 
 import * as React from "react";
+import { Pencil } from "lucide-react";
 import { EmptyState } from "@/components/page-shell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { RecordEditDialog, type FieldSpec } from "@/components/record-edit-dialog";
 import { formatInches, getSlip } from "@/lib/mock-data";
-import { useReservationsForBoater, useVesselsForBoater } from "@/lib/client-store";
+import {
+  useReservationsForBoater,
+  useVesselsForBoater,
+  upsertVessel,
+  deleteVessel,
+} from "@/lib/client-store";
 import { AddVesselSheet } from "./add-vessel-sheet";
 import { InsuranceCard } from "@/components/insurance/insurance-card";
 import type { Reservation, Vessel } from "@/lib/types";
+
+const VESSEL_FIELDS: FieldSpec<Vessel>[] = [
+  { key: "name", label: "Name", kind: "text", required: true, col: 2 },
+  { key: "color", label: "Color", kind: "text", col: 2 },
+  { key: "year", label: "Year", kind: "number", col: 2 },
+  { key: "make", label: "Make", kind: "text", col: 2 },
+  { key: "model", label: "Model", kind: "text", col: 2 },
+  {
+    key: "vessel_type",
+    label: "Type",
+    kind: "select",
+    col: 2,
+    options: [
+      { value: "powerboat", label: "Powerboat" },
+      { value: "sailboat", label: "Sailboat" },
+      { value: "jetski", label: "Jet ski" },
+      { value: "houseboat", label: "Houseboat" },
+      { value: "other", label: "Other" },
+    ],
+  },
+  {
+    key: "fuel_type",
+    label: "Fuel",
+    kind: "select",
+    col: 2,
+    options: [
+      { value: "gasoline", label: "Gasoline" },
+      { value: "diesel", label: "Diesel" },
+      { value: "electric", label: "Electric" },
+      { value: "none", label: "None" },
+    ],
+  },
+  { key: "loa_inches", label: "LOA (inches)", kind: "number", col: 2 },
+  { key: "beam_inches", label: "Beam (inches)", kind: "number", col: 2 },
+  { key: "draft_inches", label: "Draft (inches)", kind: "number", col: 2 },
+  { key: "height_inches", label: "Height (inches)", kind: "number", col: 2 },
+  { key: "power_hp", label: "Power (hp)", kind: "number", col: 2 },
+  { key: "hull_vin", label: "VIN / Hull", kind: "text", col: 2 },
+  { key: "registration", label: "Registration", kind: "text", col: 2 },
+  { key: "active", label: "Active", kind: "boolean" },
+];
 
 export function VesselsTab({
   vessels,
@@ -26,6 +74,30 @@ export function VesselsTab({
   const allVessels = liveVessels.length > 0 ? liveVessels : vessels;
   const allRes = liveReservations.length > 0 ? liveReservations : reservations;
   const [addOpen, setAddOpen] = React.useState(false);
+  const [editVessel, setEditVessel] = React.useState<Vessel | undefined>();
+  const [editOpen, setEditOpen] = React.useState(false);
+
+  function openEditVessel(v: Vessel) {
+    setEditVessel(v);
+    setEditOpen(true);
+  }
+
+  function handleSaveVessel(values: Vessel) {
+    upsertVessel({
+      ...values,
+      year: values.year ? Number(values.year) : undefined,
+      loa_inches: Number(values.loa_inches) || 0,
+      beam_inches: Number(values.beam_inches) || 0,
+      draft_inches: values.draft_inches ? Number(values.draft_inches) : undefined,
+      height_inches: values.height_inches ? Number(values.height_inches) : undefined,
+      power_hp: values.power_hp ? Number(values.power_hp) : undefined,
+      active: values.active !== false,
+    });
+  }
+
+  function handleDeleteVessel(v: Vessel) {
+    deleteVessel(v.id);
+  }
 
   if (allVessels.length === 0) {
     return (
@@ -58,10 +130,17 @@ export function VesselsTab({
       {allVessels.map((v) => {
         const photos = v.photos ?? (v.photo_url ? [v.photo_url] : []);
         return (
-          <div key={v.id} className="rounded-[12px] border border-hairline bg-surface-1 p-5">
+          <div
+            key={v.id}
+            className="group cursor-pointer rounded-[12px] border border-hairline bg-surface-1 p-5 transition-colors hover:border-hairline-strong hover:bg-surface-2/30"
+            onClick={() => openEditVessel(v)}
+          >
             <div className="flex items-start justify-between gap-3">
               <div>
-                <h3 className="text-[16px] font-medium text-fg">{v.name}</h3>
+                <h3 className="flex items-center gap-1.5 text-[16px] font-medium text-fg">
+                  {v.name}
+                  <Pencil className="size-3.5 text-fg-tertiary opacity-0 transition-opacity group-hover:opacity-100" />
+                </h3>
                 <div className="text-[12px] text-fg-subtle">
                   {[v.year, v.make, v.model, v.color].filter(Boolean).join(" ")}
                 </div>
@@ -157,6 +236,18 @@ export function VesselsTab({
       </div>
 
       <AddVesselSheet open={addOpen} onOpenChange={setAddOpen} defaultBoaterId={boaterId} />
+
+      <RecordEditDialog<Vessel>
+        open={editOpen}
+        onOpenChange={setEditOpen}
+        title={editVessel ? `Edit vessel — ${editVessel.name}` : "Edit vessel"}
+        description="Updates the vessel record. Photos and co-owners are managed separately."
+        record={editVessel}
+        fields={VESSEL_FIELDS}
+        onSave={handleSaveVessel}
+        onDelete={editVessel ? handleDeleteVessel : undefined}
+        entity="vessel"
+      />
     </div>
   );
 }

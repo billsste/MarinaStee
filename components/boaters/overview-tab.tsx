@@ -1,5 +1,6 @@
 "use client";
 
+import * as React from "react";
 import {
   Mail,
   Phone,
@@ -8,14 +9,18 @@ import {
   Receipt,
   Wrench,
   MessageSquare,
+  Pencil,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { RecordEditDialog, type FieldSpec } from "@/components/record-edit-dialog";
 import {
   formatInches,
   formatMoney,
   getSlip,
 } from "@/lib/mock-data";
 import {
+  upsertBoater,
+  upsertContract,
   useCommunicationsForBoater,
   useContractsForBoater,
   useLedgerForBoater,
@@ -25,6 +30,7 @@ import { StaffNotesCard } from "@/components/notes/staff-notes-card";
 import type {
   Boater,
   Communication,
+  Contract,
   LedgerEntry,
   Reservation,
   Vessel,
@@ -92,6 +98,47 @@ export function OverviewTab({
     })),
   ].sort((a, b) => (a.ts < b.ts ? 1 : -1));
 
+  // Edit dialogs for the Contact + Contract panels. Vessels link to the
+  // Vessels & Slips tab (which has its own edit affordances).
+  const [editContactOpen, setEditContactOpen] = React.useState(false);
+  const [editContractOpen, setEditContractOpen] = React.useState(false);
+
+  function handleSaveContact(values: BoaterContactForm) {
+    upsertBoater({
+      ...boater,
+      first_name: values.first_name || boater.first_name,
+      last_name: values.last_name || boater.last_name,
+      display_name: `${values.last_name || boater.last_name}, ${values.first_name || boater.first_name}`,
+      billing_cadence: values.billing_cadence || boater.billing_cadence,
+      primary_contact: {
+        ...boater.primary_contact,
+        email: values.email || "",
+        phone: values.phone || "",
+      },
+      address: {
+        ...boater.address,
+        line1: values.address_line1 || boater.address.line1,
+        city: values.address_city || boater.address.city,
+        state: values.address_state || boater.address.state,
+        zip: values.address_zip || boater.address.zip,
+      },
+      communication_prefs: {
+        ...boater.communication_prefs,
+        preferred_channel: values.preferred_channel || boater.communication_prefs.preferred_channel,
+        language: values.language || boater.communication_prefs.language,
+      },
+    });
+  }
+
+  function handleSaveContract(values: Contract) {
+    if (!activeContract) return;
+    upsertContract({
+      ...activeContract,
+      ...values,
+      annual_rate: values.annual_rate ? Number(values.annual_rate) : activeContract.annual_rate,
+    });
+  }
+
   // Open balance + current slip live in the IdentityBar at the top of the page,
   // so they're omitted from Overview to avoid duplication. Overview focuses on
   // identity context (contact, contract, slip detail) on the left + activity
@@ -100,7 +147,7 @@ export function OverviewTab({
     <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
       {/* Identity rail — narrower left column on desktop */}
       <div className="space-y-4 lg:col-span-5">
-        <Panel title="Contact">
+        <Panel title="Contact" onEdit={() => setEditContactOpen(true)}>
           <div className="space-y-1">
             <ContactRow icon={<Mail className="size-3.5" />} label="Email" value={boater.primary_contact.email} />
             <ContactRow icon={<Phone className="size-3.5" />} label="Phone" value={boater.primary_contact.phone} />
@@ -136,7 +183,10 @@ export function OverviewTab({
         </Panel>
 
         {showContractPanel && activeContract && (
-          <Panel title={isSeasonal ? "Seasonal contract" : "Annual contract"}>
+          <Panel
+            title={isSeasonal ? "Seasonal contract" : "Annual contract"}
+            onEdit={() => setEditContractOpen(true)}
+          >
             <div className="flex flex-wrap items-baseline gap-2">
               <span className="font-mono text-[15px] font-medium text-fg">
                 {activeContract.number}
@@ -272,21 +322,155 @@ export function OverviewTab({
 
         <StaffNotesCard boaterId={boater.id} />
       </div>
+
+      <RecordEditDialog<BoaterContactForm>
+        open={editContactOpen}
+        onOpenChange={setEditContactOpen}
+        title={`Edit contact — ${boater.display_name}`}
+        description="Updates the boater's primary contact, address, and communication preferences."
+        record={{
+          id: boater.id,
+          first_name: boater.first_name,
+          last_name: boater.last_name,
+          email: boater.primary_contact.email,
+          phone: boater.primary_contact.phone,
+          address_line1: boater.address.line1,
+          address_city: boater.address.city,
+          address_state: boater.address.state,
+          address_zip: boater.address.zip,
+          preferred_channel: boater.communication_prefs.preferred_channel,
+          language: boater.communication_prefs.language,
+          billing_cadence: boater.billing_cadence,
+        }}
+        fields={CONTACT_FIELDS}
+        onSave={handleSaveContact}
+        entity="boater"
+      />
+
+      {activeContract && (
+        <RecordEditDialog<Contract>
+          open={editContractOpen}
+          onOpenChange={setEditContractOpen}
+          title={`Edit contract — ${activeContract.number}`}
+          description="Adjust term, rate, or cadence. Generates a new version on save."
+          record={activeContract}
+          fields={CONTRACT_FIELDS}
+          onSave={handleSaveContract}
+          entity="contract"
+        />
+      )}
     </div>
   );
 }
 
+// Flat shape used by the Contact dialog. We unpack/re-pack into the
+// nested Boater structure on save.
+type BoaterContactForm = {
+  id: string;
+  first_name: string;
+  last_name: string;
+  email?: string;
+  phone?: string;
+  address_line1: string;
+  address_city: string;
+  address_state: string;
+  address_zip: string;
+  preferred_channel: "email" | "sms" | "voice";
+  language: string;
+  billing_cadence: "annual" | "seasonal" | "monthly" | "transient";
+};
+
+const CONTACT_FIELDS: FieldSpec<BoaterContactForm>[] = [
+  { key: "first_name", label: "First name", kind: "text", col: 2 },
+  { key: "last_name", label: "Last name", kind: "text", col: 2 },
+  { key: "email", label: "Email", kind: "text", col: 2 },
+  { key: "phone", label: "Phone", kind: "text", col: 2 },
+  { key: "address_line1", label: "Address", kind: "text" },
+  { key: "address_city", label: "City", kind: "text", col: 2 },
+  { key: "address_state", label: "State", kind: "text", col: 2 },
+  { key: "address_zip", label: "Zip", kind: "text", col: 2 },
+  {
+    key: "preferred_channel",
+    label: "Prefers",
+    kind: "select",
+    col: 2,
+    options: [
+      { value: "email", label: "Email" },
+      { value: "sms", label: "SMS" },
+      { value: "voice", label: "Voice" },
+    ],
+  },
+  { key: "language", label: "Language (EN/ES/...)", kind: "text", col: 2 },
+  {
+    key: "billing_cadence",
+    label: "Billing cadence",
+    kind: "select",
+    col: 2,
+    options: [
+      { value: "annual", label: "Annual" },
+      { value: "seasonal", label: "Seasonal" },
+      { value: "monthly", label: "Monthly" },
+      { value: "transient", label: "Transient" },
+    ],
+  },
+];
+
+const CONTRACT_FIELDS: FieldSpec<Contract>[] = [
+  { key: "number", label: "Contract #", kind: "text", col: 2 },
+  {
+    key: "status",
+    label: "Status",
+    kind: "select",
+    col: 2,
+    options: [
+      { value: "draft", label: "Draft" },
+      { value: "sent", label: "Sent" },
+      { value: "active", label: "Active" },
+      { value: "expired", label: "Expired" },
+      { value: "cancelled", label: "Cancelled" },
+    ],
+  },
+  { key: "effective_start", label: "Start", kind: "date", col: 2 },
+  { key: "effective_end", label: "End", kind: "date", col: 2 },
+  { key: "annual_rate", label: "Annual rate ($)", kind: "money", col: 2, step: "0.01" },
+  {
+    key: "billing_cadence",
+    label: "Billing cadence",
+    kind: "select",
+    col: 2,
+    options: [
+      { value: "annual", label: "Annual" },
+      { value: "seasonal", label: "Seasonal" },
+      { value: "monthly", label: "Monthly" },
+      { value: "transient", label: "Transient" },
+    ],
+  },
+];
+
 function Panel({
   title,
   children,
+  onEdit,
 }: {
   title: string;
   children: React.ReactNode;
+  onEdit?: () => void;
 }) {
   return (
-    <div className="rounded-[12px] border border-hairline bg-surface-1">
-      <div className="border-b border-hairline px-4 py-2.5">
+    <div className="group rounded-[12px] border border-hairline bg-surface-1">
+      <div className="flex items-center justify-between border-b border-hairline px-4 py-2.5">
         <h3 className="text-[13px] font-medium text-fg">{title}</h3>
+        {onEdit && (
+          <button
+            type="button"
+            onClick={onEdit}
+            aria-label={`Edit ${title}`}
+            className="inline-flex items-center gap-1 rounded-[6px] border border-hairline bg-surface-1 px-1.5 py-0.5 text-[10px] text-fg-subtle opacity-0 transition-opacity hover:bg-surface-2 group-hover:opacity-100"
+          >
+            <Pencil className="size-3" />
+            Edit
+          </button>
+        )}
       </div>
       <div className="p-4">{children}</div>
     </div>

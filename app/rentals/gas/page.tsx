@@ -1,16 +1,13 @@
-import { Fuel, TrendingUp, Truck, AlertTriangle } from "lucide-react";
+import { Fuel, TrendingUp, Truck } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { RentalsAsk } from "@/components/rentals/rentals-ask";
+import { FuelTanks } from "@/components/rentals/fuel-tanks";
 import {
   FUEL_DELIVERIES,
-  FUEL_INVENTORY,
   FUEL_SALES,
   formatMoney,
-  fuelMargin,
-  fuelPct,
 } from "@/lib/mock-data";
-import type { FuelInventory } from "@/lib/types";
 
 export const metadata = { title: "Gas Tracking — Marina Stee Rentals" };
 
@@ -32,11 +29,7 @@ export default function GasPage() {
         ]}
       />
 
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-        {FUEL_INVENTORY.map((inv) => (
-          <TankCard key={inv.id} inv={inv} />
-        ))}
-      </div>
+      <FuelTanks />
 
       <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
         <KpiCard label="Gallons sold today" value={`${todayGallons.toFixed(1)}`} sub="Across both fuels" icon={<TrendingUp className="size-4" />} />
@@ -100,69 +93,6 @@ export default function GasPage() {
               </li>
             ))}
           </ul>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function TankCard({ inv }: { inv: FuelInventory }) {
-  const pct = fuelPct(inv);
-  const margin = fuelMargin(inv);
-  const lowFuel = pct <= inv.reorder_threshold_pct;
-  const barTone = lowFuel ? "bg-status-danger" : pct < 50 ? "bg-status-warn" : "bg-status-ok";
-
-  return (
-    <div className="rounded-[12px] border border-hairline bg-surface-1 p-5">
-      <div className="mb-3 flex items-start justify-between">
-        <div>
-          <h3 className="text-[15px] font-medium capitalize text-fg">{inv.fuel_type}</h3>
-          <p className="text-[11px] text-fg-tertiary">
-            Last updated {new Date(inv.last_updated_at).toLocaleString()}
-          </p>
-        </div>
-        {lowFuel && (
-          <Badge tone="danger">
-            <AlertTriangle className="size-3" />
-            Reorder
-          </Badge>
-        )}
-      </div>
-
-      <div className="grid grid-cols-3 gap-3">
-        <div>
-          <div className="text-[10px] uppercase tracking-wide text-fg-tertiary">Price / gal</div>
-          <div className="money-display text-[22px] text-fg">
-            {formatMoney(inv.current_price_per_gallon)}
-          </div>
-        </div>
-        <div>
-          <div className="text-[10px] uppercase tracking-wide text-fg-tertiary">Cost / gal</div>
-          <div className="money-display text-[22px] text-fg-subtle">
-            {formatMoney(inv.cost_per_gallon)}
-          </div>
-        </div>
-        <div>
-          <div className="text-[10px] uppercase tracking-wide text-fg-tertiary">Margin</div>
-          <div className="money-display text-[22px] text-status-ok">
-            {formatMoney(margin)}
-          </div>
-        </div>
-      </div>
-
-      <div className="mt-4">
-        <div className="mb-1 flex items-center justify-between text-[11px] text-fg-subtle">
-          <span>Tank level</span>
-          <span>
-            {inv.current_level_gallons.toLocaleString()} / {inv.tank_capacity_gallons.toLocaleString()} gal
-          </span>
-        </div>
-        <div className="h-2 overflow-hidden rounded-full bg-surface-3">
-          <div className={"h-full transition-all " + barTone} style={{ width: `${pct}%` }} />
-        </div>
-        <div className="mt-1 flex justify-between text-[10px] text-fg-tertiary">
-          <span>{Math.round(pct)}%</span>
-          <span>Reorder at {inv.reorder_threshold_pct}%</span>
         </div>
       </div>
     </div>

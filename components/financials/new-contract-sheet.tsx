@@ -11,10 +11,12 @@ export function NewContractSheet({
   open,
   onOpenChange,
   defaultBoaterId,
+  defaultSlipId,
 }: {
   open: boolean;
   onOpenChange: (b: boolean) => void;
   defaultBoaterId?: string;
+  defaultSlipId?: string;
 }) {
   const liveBoaters = useBoaters();
   const boaters = liveBoaters.length > 0 ? liveBoaters : BOATERS;
@@ -36,7 +38,7 @@ export function NewContractSheet({
       const firstTpl = CONTRACT_TEMPLATES[0];
       setTemplateId(firstTpl?.id ?? "");
       setVesselId("");
-      setSlipId("");
+      setSlipId(defaultSlipId ?? "");
       const today = new Date().toISOString().slice(0, 10);
       setStart(today);
       const monthsAhead = firstTpl?.default_term_months ?? 12;
@@ -47,7 +49,7 @@ export function NewContractSheet({
       setAnnualRate(firstTpl?.default_annual_rate?.toString() ?? "");
       setCadence(firstTpl?.default_billing_cadence ?? "monthly");
     }
-  }, [open, defaultBoaterId]);
+  }, [open, defaultBoaterId, defaultSlipId]);
 
   // When template changes, reset rate + cadence + suggested end date
   React.useEffect(() => {

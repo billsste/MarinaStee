@@ -39,7 +39,10 @@ export type Entity =
   | "settings"      // marina identity, staff list, integrations
   | "broadcast"     // mass-send messages
   | "event"         // marina events on the calendar
-  | "waitlist";
+  | "waitlist"
+  | "rental_group"  // docks / jet-ski racks / buoy fields / dry storage
+  | "rental_space"  // individual slip / berth / bay
+  | "gas";          // fuel dock readings + pricing
 
 export type Action = "view" | "create" | "edit" | "delete";
 
@@ -63,6 +66,9 @@ const PERMISSIONS: Record<Role, Partial<Record<Entity, Action[]>>> = {
     broadcast: ["view", "create", "edit", "delete"],
     event: ["view", "create", "edit", "delete"],
     waitlist: ["view", "create", "edit", "delete"],
+    rental_group: ["view", "create", "edit", "delete"],
+    rental_space: ["view", "create", "edit", "delete"],
+    gas: ["view", "create", "edit", "delete"],
   },
   manager: {
     rate: ["view", "create", "edit", "delete"],
@@ -81,6 +87,9 @@ const PERMISSIONS: Record<Role, Partial<Record<Entity, Action[]>>> = {
     broadcast: ["view", "create", "edit"],
     event: ["view", "create", "edit", "delete"],
     waitlist: ["view", "create", "edit", "delete"],
+    rental_group: ["view", "create", "edit", "delete"],
+    rental_space: ["view", "create", "edit", "delete"],
+    gas: ["view", "create", "edit"],
   },
   accounting: {
     // Financial domain — full access. Slip/dock ops — read-only.
@@ -100,6 +109,9 @@ const PERMISSIONS: Record<Role, Partial<Record<Entity, Action[]>>> = {
     broadcast: ["view", "create"], // payment reminders etc.
     event: ["view"],
     waitlist: ["view"],
+    rental_group: ["view"],
+    rental_space: ["view"],
+    gas: ["view"],
   },
   dockhand: {
     // Daily ops — make stuff happen on the docks. No money / no contracts.
@@ -119,6 +131,9 @@ const PERMISSIONS: Record<Role, Partial<Record<Entity, Action[]>>> = {
     broadcast: ["view"],
     event: ["view"],
     waitlist: ["view", "create"],
+    rental_group: ["view"],
+    rental_space: ["view", "edit"],
+    gas: ["view", "edit"],
   },
   read_only: {
     rate: ["view"],
@@ -137,6 +152,9 @@ const PERMISSIONS: Record<Role, Partial<Record<Entity, Action[]>>> = {
     broadcast: ["view"],
     event: ["view"],
     waitlist: ["view"],
+    rental_group: ["view"],
+    rental_space: ["view"],
+    gas: ["view"],
   },
 };
 
