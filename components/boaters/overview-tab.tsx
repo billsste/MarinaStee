@@ -39,6 +39,7 @@ import {
   useCommunicationsForBoater,
   useContractsForBoater,
   useLedgerForBoater,
+  usePicklistLabelMap,
   useRentalBoats,
   useReservationsForBoater,
 } from "@/lib/client-store";
@@ -78,6 +79,7 @@ export function OverviewTab({
   const boaterReservations = useReservationsForBoater(boater.id);
   const boaterRentals = useBoatRentalsForBoater(boater.id);
   const rentalFleet = useRentalBoats();
+  const contactRoleLabels = usePicklistLabelMap("contact_role");
   // Active rentals are anything not closed/cancelled — appears at the
   // top so staff can see "is this customer currently on the water?" at
   // a glance. Past closed rentals fall to a compact history strip.
@@ -213,7 +215,7 @@ export function OverviewTab({
                 {boater.additional_contacts.map((c) => (
                   <li key={c.id} className="text-[12px] text-fg-muted">
                     <span className="text-fg">{c.name}</span>
-                    <span className="text-fg-tertiary"> · {c.role}</span>
+                    <span className="text-fg-tertiary"> · {contactRoleLabels.get(c.role) ?? c.role}</span>
                     <span className="text-fg-tertiary"> · {c.phone ?? c.email}</span>
                   </li>
                 ))}

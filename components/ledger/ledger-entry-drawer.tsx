@@ -25,7 +25,7 @@ import {
   WORK_ORDERS,
   formatMoney,
 } from "@/lib/mock-data";
-import { useStore } from "@/lib/client-store";
+import { usePicklistLabel, useStore } from "@/lib/client-store";
 import { EnterPaymentSheet } from "@/components/financials/enter-payment-sheet";
 import type { LedgerEntry, LedgerEntryType, PosOrder } from "@/lib/types";
 
@@ -298,7 +298,7 @@ function Body({
             <div className="rounded-[8px] border border-hairline bg-surface-2 px-3 py-2 text-[13px]">
               <div className="text-fg">
                 <span className="text-fg-tertiary">Reason:</span>{" "}
-                <span className="capitalize">{entry.refund_reason.replace("_", " ")}</span>
+                <RefundReasonLabel value={entry.refund_reason} />
               </div>
               {entry.refund_notes && (
                 <p className="mt-1 text-[12px] text-fg-subtle">{entry.refund_notes}</p>
@@ -378,6 +378,13 @@ function Field({
       </span>
     </div>
   );
+}
+
+// Small helper — must live in a component so the picklist hook can run.
+function RefundReasonLabel({ value }: { value: string }) {
+  const label = usePicklistLabel("refund_reason", value);
+  // Fall back to humanized raw code if the value isn't in the picklist.
+  return <span className="capitalize">{label !== value ? label : value.replace("_", " ")}</span>;
 }
 
 // Re-export icon for unused-warning suppression

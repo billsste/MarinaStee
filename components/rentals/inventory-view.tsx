@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { RecordEditDialog, type FieldSpec } from "@/components/record-edit-dialog";
 import {
+  usePicklistLabelMap,
   useRentalGroups,
   useRentalSpaces,
   upsertRentalGroup,
@@ -60,13 +61,8 @@ const SPACE_FIELDS: FieldSpec<RentalSpace>[] = [
     label: "Type",
     kind: "select",
     col: 2,
-    options: [
-      { value: "Standard", label: "Standard" },
-      { value: "Jet Ski", label: "Jet Ski" },
-      { value: "Buoy", label: "Buoy" },
-      { value: "Dry Storage", label: "Dry Storage" },
-      { value: "Mooring", label: "Mooring" },
-    ],
+    // Managed in Settings → Customization. Super-user can add/rename.
+    picklist: "occupancy_type",
   },
   { key: "length_inches", label: "Length (inches)", kind: "number", col: 2 },
   { key: "beam_inches", label: "Beam (inches)", kind: "number", col: 2 },
@@ -92,6 +88,7 @@ const SPACE_FIELDS: FieldSpec<RentalSpace>[] = [
 export function InventoryView() {
   const groups = useRentalGroups();
   const spaces = useRentalSpaces();
+  const occupancyTypeLabels = usePicklistLabelMap("occupancy_type");
 
   const [editGroup, setEditGroup] = React.useState<RentalGroup | undefined>();
   const [groupOpen, setGroupOpen] = React.useState(false);
@@ -232,7 +229,7 @@ export function InventoryView() {
                         className="cursor-pointer border-b border-hairline last:border-b-0 transition-colors hover:bg-surface-2"
                       >
                         <Td className="font-mono text-[12px] font-medium text-fg">{s.number}</Td>
-                        <Td className="text-fg-subtle">{s.occupancy_type}</Td>
+                        <Td className="text-fg-subtle">{occupancyTypeLabels.get(s.occupancy_type) ?? s.occupancy_type}</Td>
                         <Td>{s.length_inches ? formatInches(s.length_inches) : "—"}</Td>
                         <Td>{s.beam_inches ? formatInches(s.beam_inches) : "—"}</Td>
                         <Td>

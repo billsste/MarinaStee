@@ -16,6 +16,9 @@ import {
   ExternalLink,
   AlertCircle,
   Sparkles,
+  Paperclip,
+  ScrollText,
+  Signature as SignatureIcon,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -128,9 +131,11 @@ export function ContractDetail({
       </header>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
-        {/* Left rail — Next step + Comms history */}
+        {/* Left rail — Next step + Document + Comms history */}
         <div className="space-y-4 lg:col-span-7">
           <NextStepCard contract={contract} boater={boater} slip={slip} />
+
+          <DocumentSection contract={contract} template={template} />
 
           {/* Linked invoices */}
           {linkedInvoices.length > 0 && (
@@ -285,6 +290,224 @@ export function ContractDetail({
       </div>
     </div>
   );
+}
+
+// ── Document section ─────────────────────────────────────────────
+//
+// The actual contract artifact. Three layers:
+//   1. Blank template — the marina's standard lease that this
+//      contract is based on (always present once a template exists).
+//   2. Signed contract — produced after the boater signs via
+//      /onboard/[token]; combines the template + signature image +
+//      audit trail (signer name, timestamp, IP).
+//   3. Attachments — supporting docs (addenda, signed copies the
+//      holder mailed back, COI snapshots).
+
+function DocumentSection({
+  contract,
+  template,
+}: {
+  contract: Contract;
+  template: ContractTemplate | null;
+}) {
+  const signed = !!contract.signed_at;
+  const hasSignaturePng = !!contract.signature_data_url;
+  const hasSignedPdf = !!contract.signed_pdf_url;
+  const attachments = contract.attachments ?? [];
+
+  return (
+    <section className="rounded-[12px] border border-hairline bg-surface-1">
+      <div className="flex items-center justify-between border-b border-hairline px-4 py-2.5">
+        <h2 className="inline-flex items-center gap-2 text-[13px] font-medium text-fg">
+          <ScrollText className="size-3.5 text-fg-subtle" />
+          Contract document
+        </h2>
+        {signed && <Badge tone="ok" size="sm">Signed</Badge>}
+      </div>
+
+      <div className="space-y-3 p-4">
+        {/* Layer 1: blank template */}
+        <DocRow
+          icon={<FileText className="size-4 text-fg-subtle" />}
+          title={
+            template
+              ? `${template.name} · v${template.version}`
+              : "Template missing"
+          }
+          subtitle="Blank template — what this contract is based on"
+          href={template?.source_file_url}
+          downloadName={template?.source_file_name}
+          mimeBadge={template?.source_file_type?.toUpperCase()}
+        />
+
+        {/* Layer 2: signed contract */}
+        {signed ? (
+          <div className="rounded-[10px] border border-status-ok/30 bg-status-ok/[0.04] p-3">
+            <div className="flex items-start gap-2">
+              <SignatureIcon className="mt-0.5 size-4 text-status-ok" />
+              <div className="min-w-0 flex-1">
+                <div className="text-[13px] font-medium text-fg">
+                  Signed contract
+                </div>
+                <div className="mt-0.5 text-[12px] text-fg-subtle">
+                  {contract.signer_name ?? "—"} ·{" "}
+                  {contract.signed_at
+                    ? new Date(contract.signed_at).toLocaleString()
+                    : "—"}
+                  {contract.signer_ip && (
+                    <span className="text-fg-tertiary"> · {contract.signer_ip}</span>
+                  )}
+                </div>
+                {hasSignaturePng && contract.signature_data_url && (
+                  <div className="mt-2 inline-block rounded-[6px] border border-hairline bg-surface-1 p-1.5">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={contract.signature_data_url}
+                      alt={`Signature — ${contract.signer_name ?? "holder"}`}
+                      className="max-h-16 object-contain"
+                    />
+                  </div>
+                )}
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  {hasSignedPdf ? (
+                    <a
+                      href={contract.signed_pdf_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 rounded-[6px] border border-hairline bg-surface-1 px-2 py-1 text-[11px] text-fg-subtle hover:bg-surface-2 hover:text-fg"
+                    >
+                      <ExternalLink className="size-3" />
+                      View signed PDF
+                    </a>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 rounded-[6px] border border-dashed border-hairline px-2 py-1 text-[11px] text-fg-tertiary italic">
+                      Merged PDF will generate once the backend lands
+                    </span>
+                  )}
+                  <span className="text-[10px] text-fg-tertiary">
+                    Audit token{" "}
+                    <span className="font-mono">
+                      {contract.signature_token ?? "—"}
+                    </span>
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="rounded-[10px] border border-dashed border-hairline bg-surface-2 px-3 py-2.5 text-[12px] text-fg-tertiary">
+            <div className="flex items-center gap-2 text-fg-subtle">
+              <SignatureIcon className="size-3.5" />
+              <span>Signed contract</span>
+            </div>
+            <p className="mt-0.5 text-[11px]">
+              Not signed yet. Once the holder completes /onboard, the
+              signature image + audit details land here.
+            </p>
+          </div>
+        )}
+
+        {/* Layer 3: attachments */}
+        {attachments.length > 0 && (
+          <div>
+            <div className="mb-1.5 text-[11px] uppercase tracking-wide text-fg-tertiary">
+              Attachments ({attachments.length})
+            </div>
+            <ul className="space-y-1.5">
+              {attachments.map((a) => (
+                <li key={a.id}>
+                  <DocRow
+                    icon={<Paperclip className="size-3.5 text-fg-subtle" />}
+                    title={a.name}
+                    subtitle={`${a.type.replace("_", " ")} · uploaded ${new Date(a.uploaded_at).toLocaleDateString()}`}
+                    href={a.url}
+                    downloadName={a.name}
+                    mimeBadge={mimeShorthand(a.mime_type)}
+                    sizeBytes={a.size_bytes}
+                    dense
+                  />
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function DocRow({
+  icon,
+  title,
+  subtitle,
+  href,
+  downloadName,
+  mimeBadge,
+  sizeBytes,
+  dense,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  subtitle?: string;
+  href?: string;
+  downloadName?: string;
+  mimeBadge?: string;
+  sizeBytes?: number;
+  dense?: boolean;
+}) {
+  const inner = (
+    <div className={cn("flex items-start gap-2", dense ? "py-1" : "")}>
+      <span className="mt-0.5">{icon}</span>
+      <div className="min-w-0 flex-1">
+        <div className={cn("font-medium text-fg", dense ? "text-[12px]" : "text-[13px]")}>
+          {title}
+        </div>
+        {subtitle && (
+          <div className="text-[11px] text-fg-tertiary">
+            {subtitle}
+            {sizeBytes && ` · ${formatBytes(sizeBytes)}`}
+          </div>
+        )}
+      </div>
+      {mimeBadge && (
+        <Badge tone="outline" size="sm">
+          {mimeBadge}
+        </Badge>
+      )}
+      {href && <ExternalLink className="size-3.5 shrink-0 text-fg-tertiary" />}
+    </div>
+  );
+  if (!href) {
+    return (
+      <div className="rounded-[8px] border border-dashed border-hairline px-3 py-2">
+        {inner}
+      </div>
+    );
+  }
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      download={downloadName}
+      className="block rounded-[8px] border border-hairline bg-surface-2 px-3 py-2 transition-colors hover:border-hairline-strong hover:bg-surface-3"
+    >
+      {inner}
+    </a>
+  );
+}
+
+function mimeShorthand(mime: string): string {
+  if (mime.includes("pdf")) return "PDF";
+  if (mime.includes("wordprocessing")) return "DOCX";
+  if (mime.includes("image")) return mime.split("/")[1]?.toUpperCase() ?? "IMG";
+  return mime.split("/")[1]?.toUpperCase() ?? "FILE";
+}
+
+function formatBytes(n: number): string {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(0)} KB`;
+  return `${(n / 1024 / 1024).toFixed(1)} MB`;
 }
 
 // ── Next step (status-aware) ─────────────────────────────────────

@@ -14,6 +14,7 @@ import {
   LEDGER,
   MARINA_EVENTS,
   METER_READINGS,
+  PICKLISTS,
   POS_LOCATIONS,
   POS_ORDERS,
   QUOTES,
@@ -22,7 +23,9 @@ import {
   RENTAL_GROUPS,
   RENTAL_SPACES,
   RESERVATIONS,
+  SEED_TENANT_ID,
   STAFF_NOTES,
+  TENANTS,
   VESSELS,
   WAITLIST,
   WORK_ORDERS,
@@ -40,6 +43,9 @@ import type {
   LedgerEntry,
   MarinaEvent,
   MeterReading,
+  Picklist,
+  PicklistFieldKey,
+  PicklistValue,
   PosOrder,
   QbSyncStatus,
   Rate,
@@ -48,6 +54,7 @@ import type {
   RentalSpace,
   Reservation,
   StaffNote,
+  Tenant,
   Vessel,
   WaitlistEntry,
   WaitlistStatus,
@@ -113,6 +120,10 @@ type State = {
   // Boat Rentals (own fleet — pontoons, kayaks, jet skis, ...)
   rentalBoats: RentalBoat[];
   boatRentals: BoatRental[];
+  // Multi-tenant scaffolding
+  tenants: Tenant[];
+  currentTenantId: string;
+  picklists: Picklist[];
 };
 
 let state: State = {
@@ -141,6 +152,9 @@ let state: State = {
   fuelInventory: [...FUEL_INVENTORY],
   rentalBoats: [...RENTAL_BOATS],
   boatRentals: [...BOAT_RENTALS],
+  tenants: [...TENANTS],
+  currentTenantId: SEED_TENANT_ID,
+  picklists: [...PICKLISTS],
 };
 
 const subscribers = new Set<() => void>();
@@ -2116,6 +2130,252 @@ export function closeBoatRental(
   };
   notify();
   return invoiceId;
+}
+
+// ── Tenants + Picklists ───────────────────────────────────────
+//
+// Multi-tenant scaffolding. For the prototype there is a single seeded
+// tenant; every picklist read/write goes through the active tenant id.
+// When the backend lands, the active tenant comes from the session and
+// these helpers stay shape-compatible.
+
+export function useCurrentTenant(): Tenant {
+  const s = useStore();
+  return s.tenants.find((t) => t.id === s.currentTenantId) ?? s.tenants[0];
+}
+
+/**
+ * Read all picklists for the current tenant (for the Settings manager).
+ */
+export function usePicklists(): Picklist[] {
+  const s = useStore();
+  return s.picklists.filter((p) => p.tenant_id === s.currentTenantId);
+}
+
+/**
+ * Read a single picklist by field_key, scoped to the current tenant.
+ * Returns undefined if no picklist exists for the key (consumer should
+ * fall back to nothing).
+ */
+export function usePicklist(key: PicklistFieldKey): Picklist | undefined {
+  const s = useStore();
+  return s.picklists.find(
+    (p) => p.tenant_id === s.currentTenantId && p.field_key === key
+  );
+}
+
+/**
+ * Active (non-archived) values for a picklist, sorted. Use this in
+ * dropdowns where the user is choosing a NEW value.
+ */
+export function usePicklistValues(key: PicklistFieldKey): PicklistValue[] {
+  const pl = usePicklist(key);
+  if (!pl) return [];
+  return pl.values
+    .filter((v) => !v.archived)
+    .sort((a, b) => a.sort_order - b.sort_order);
+}
+
+/**
+ * Look up the display label for a value code — falls back to the raw
+ * code if the picklist (or value) doesn't exist. Archived values still
+ * resolve so historical records stay readable.
+ */
+export function usePicklistLabel(
+  key: PicklistFieldKey,
+  value: string | null | undefined
+): string {
+  const pl = usePicklist(key);
+  if (!value) return "—";
+  if (!pl) return value;
+  const v = pl.values.find((x) => x.value === value);
+  if (!v) return value;
+  return v.archived ? `${v.label} (archived)` : v.label;
+}
+
+/**
+ * Bulk label lookup — returns a {value → display-label} map for the
+ * whole picklist (active + archived). Use this in renderers that
+ * iterate over records and need to label many values at once without
+ * calling the hook per row. Archived values get a "(archived)" suffix.
+ */
+export function usePicklistLabelMap(
+  key: PicklistFieldKey
+): Map<string, string> {
+  const pl = usePicklist(key);
+  const m = new Map<string, string>();
+  if (!pl) return m;
+  for (const v of pl.values) {
+    m.set(v.value, v.archived ? `${v.label} (archived)` : v.label);
+  }
+  return m;
+}
+
+/**
+ * How many records currently reference each value in the named
+ * picklist? Used by the Customization manager to warn before archive
+ * ("Archive 'Pontoon' — 14 vessels currently use this value").
+ *
+ * Returns a Map<value, count> keyed by picklist value code. Sources
+ * are hard-coded per field because every picklist points at a
+ * different entity collection.
+ */
+export function usePicklistUsage(
+  key: PicklistFieldKey
+): Map<string, number> {
+  const s = useStore();
+  const counts = new Map<string, number>();
+  const inc = (v: string | undefined) => {
+    if (!v) return;
+    counts.set(v, (counts.get(v) ?? 0) + 1);
+  };
+  switch (key) {
+    case "vessel_type":
+      for (const x of s.vessels) inc(x.vessel_type);
+      break;
+    case "occupancy_type":
+      for (const x of s.rentalSpaces) inc(x.occupancy_type);
+      for (const x of s.rates) inc(x.occupancy_type);
+      break;
+    case "slip_class":
+      // SLIPS is a static seed (not in store); count via rentalSpaces fallback.
+      // In production every slip would belong to a tenant collection.
+      break;
+    case "activity_type":
+      for (const x of s.workOrders) inc(x.activity_type);
+      break;
+    case "event_type":
+      for (const x of s.events) inc(x.event_type);
+      break;
+    case "rental_boat_type":
+      for (const x of s.rentalBoats) inc(x.type);
+      break;
+    case "contact_role":
+      for (const b of s.boaters) {
+        inc(b.primary_contact.role);
+        for (const c of b.additional_contacts) inc(c.role);
+      }
+      break;
+    case "refund_reason":
+      for (const l of s.ledger) inc(l.refund_reason);
+      break;
+  }
+  return counts;
+}
+
+// ── Picklist mutations (super-user) ──────────────────────────
+
+function nextPicklistValueId(tenantId: string) {
+  return `pv_${tenantId.slice(-6)}_${Date.now().toString(36)}_${Math.random()
+    .toString(36)
+    .slice(2, 6)}`;
+}
+
+export function addPicklistValue(
+  fieldKey: PicklistFieldKey,
+  label: string
+): void {
+  const tenantId = state.currentTenantId;
+  const trimmed = label.trim();
+  if (!trimmed) return;
+  // Derive a stable code from the label — lowercase, snake_case. Staff
+  // can rename the label later without invalidating the stored value.
+  const baseValue = trimmed
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+  state = {
+    ...state,
+    picklists: state.picklists.map((p) => {
+      if (p.tenant_id !== tenantId || p.field_key !== fieldKey) return p;
+      // Avoid collisions on the value code by appending a counter.
+      let v = baseValue;
+      let counter = 2;
+      while (p.values.some((x) => x.value === v)) {
+        v = `${baseValue}_${counter}`;
+        counter += 1;
+      }
+      const maxSort = p.values.reduce(
+        (m, x) => Math.max(m, x.sort_order),
+        -1
+      );
+      const newValue: PicklistValue = {
+        id: nextPicklistValueId(tenantId),
+        value: v,
+        label: trimmed,
+        sort_order: maxSort + 1,
+        archived: false,
+      };
+      return { ...p, values: [...p.values, newValue] };
+    }),
+  };
+  notify();
+}
+
+export function updatePicklistValue(
+  fieldKey: PicklistFieldKey,
+  valueId: string,
+  patch: Partial<Pick<PicklistValue, "label" | "archived" | "sort_order">>
+): void {
+  const tenantId = state.currentTenantId;
+  state = {
+    ...state,
+    picklists: state.picklists.map((p) => {
+      if (p.tenant_id !== tenantId || p.field_key !== fieldKey) return p;
+      return {
+        ...p,
+        values: p.values.map((v) => (v.id === valueId ? { ...v, ...patch } : v)),
+      };
+    }),
+  };
+  notify();
+}
+
+export function archivePicklistValue(
+  fieldKey: PicklistFieldKey,
+  valueId: string
+): void {
+  updatePicklistValue(fieldKey, valueId, { archived: true });
+}
+
+export function restorePicklistValue(
+  fieldKey: PicklistFieldKey,
+  valueId: string
+): void {
+  updatePicklistValue(fieldKey, valueId, { archived: false });
+}
+
+/**
+ * Move a value up or down in the sort order. Simpler than full
+ * drag-reorder; covers the demo use case.
+ */
+export function movePicklistValue(
+  fieldKey: PicklistFieldKey,
+  valueId: string,
+  direction: "up" | "down"
+): void {
+  const tenantId = state.currentTenantId;
+  state = {
+    ...state,
+    picklists: state.picklists.map((p) => {
+      if (p.tenant_id !== tenantId || p.field_key !== fieldKey) return p;
+      const sorted = [...p.values].sort((a, b) => a.sort_order - b.sort_order);
+      const idx = sorted.findIndex((v) => v.id === valueId);
+      if (idx < 0) return p;
+      const target = direction === "up" ? idx - 1 : idx + 1;
+      if (target < 0 || target >= sorted.length) return p;
+      // Swap sort_order between the two adjacent values.
+      const a = sorted[idx];
+      const b = sorted[target];
+      const newValues = p.values.map((v) => {
+        if (v.id === a.id) return { ...v, sort_order: b.sort_order };
+        if (v.id === b.id) return { ...v, sort_order: a.sort_order };
+        return v;
+      });
+      return { ...p, values: newValues };
+    }),
+  };
+  notify();
 }
 
 // ── hooks (Boat Rentals) ─────────────────────────────────────

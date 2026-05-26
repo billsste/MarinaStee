@@ -10,6 +10,7 @@ import { formatInches, getSlip } from "@/lib/mock-data";
 import {
   useContractsForBoater,
   useInsuranceForBoater,
+  usePicklistLabelMap,
   useReservationsForBoater,
   useVesselsForBoater,
   upsertVessel,
@@ -30,13 +31,9 @@ const VESSEL_FIELDS: FieldSpec<Vessel>[] = [
     label: "Type",
     kind: "select",
     col: 2,
-    options: [
-      { value: "powerboat", label: "Powerboat" },
-      { value: "sailboat", label: "Sailboat" },
-      { value: "jetski", label: "Jet ski" },
-      { value: "houseboat", label: "Houseboat" },
-      { value: "other", label: "Other" },
-    ],
+    // Managed in Settings → Customization. Super-user can add/rename
+    // (e.g., add "Catamaran" or "Tender") without code changes.
+    picklist: "vessel_type",
   },
   {
     key: "fuel_type",
@@ -75,6 +72,7 @@ export function VesselsTab({
   const liveReservations = useReservationsForBoater(boaterId);
   const liveContracts = useContractsForBoater(boaterId);
   const liveCois = useInsuranceForBoater(boaterId);
+  const vesselTypeLabels = usePicklistLabelMap("vessel_type");
   const allVessels = liveVessels.length > 0 ? liveVessels : vessels;
   const allRes = liveReservations.length > 0 ? liveReservations : reservations;
 
@@ -196,7 +194,11 @@ export function VesselsTab({
               </div>
               <div className="flex items-center gap-1.5">
                 {v.active && <Badge tone="ok">Active</Badge>}
-                {v.vessel_type && <Badge tone="neutral">{v.vessel_type}</Badge>}
+                {v.vessel_type && (
+                  <Badge tone="neutral">
+                    {vesselTypeLabels.get(v.vessel_type) ?? v.vessel_type}
+                  </Badge>
+                )}
                 {v.fuel_type && <Badge tone="outline">{v.fuel_type}</Badge>}
                 {issues.length > 0 && (
                   <Badge tone="warn">

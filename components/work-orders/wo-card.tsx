@@ -20,6 +20,7 @@ import {
 import type { LucideIcon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import { usePicklistLabel } from "@/lib/client-store";
 import {
   BOATERS,
   USERS,
@@ -81,6 +82,9 @@ export function WoCard({
   const assignee = USERS.find((u) => u.id === wo.assignee_user_id);
   const quote = getQuoteForWorkOrder(wo.id);
   const Icon = ACTIVITY_ICON[wo.activity_type ?? "other"];
+  // Prefer the tenant picklist label; falls back to the hard-coded
+  // ACTIVITY_LABEL map for legacy / system values not in the picklist.
+  const activityLabel = usePicklistLabel("activity_type", wo.activity_type);
   const duration = fmtDuration(wo.billable_minutes);
 
   return (
@@ -98,7 +102,9 @@ export function WoCard({
       <div className="mb-2 flex flex-wrap items-center gap-1">
         <Badge tone="outline" size="sm">
           <Icon className="size-3" strokeWidth={2} />
-          {ACTIVITY_LABEL[wo.activity_type ?? "other"]}
+          {activityLabel === "—"
+            ? ACTIVITY_LABEL[wo.activity_type ?? "other"]
+            : activityLabel}
         </Badge>
         {quote?.signed_at && (
           <Badge tone="ok" size="sm">

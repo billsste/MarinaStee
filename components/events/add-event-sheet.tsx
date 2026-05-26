@@ -10,7 +10,7 @@ import {
   Textarea,
 } from "@/components/create-sheet";
 import { Button } from "@/components/ui/button";
-import { addMarinaEvent, nextEventId } from "@/lib/client-store";
+import { addMarinaEvent, nextEventId, usePicklistValues } from "@/lib/client-store";
 import type { MarinaEventType } from "@/lib/types";
 
 /*
@@ -27,6 +27,7 @@ export function AddEventSheet({
   defaultDate?: string; // pre-fill start/end if user clicked a day
 }) {
   const [title, setTitle] = React.useState("");
+  const eventTypeOptions = usePicklistValues("event_type");
   const [eventType, setEventType] = React.useState<MarinaEventType>("social");
   const [description, setDescription] = React.useState("");
   const [location, setLocation] = React.useState("");
@@ -107,13 +108,12 @@ export function AddEventSheet({
         <div className="grid grid-cols-2 gap-3">
           <Field label="Type">
             <Select value={eventType} onChange={(v) => setEventType(v as MarinaEventType)}>
-              <option value="social">Social / raft-up</option>
-              <option value="tournament">Tournament</option>
-              <option value="regatta">Regatta</option>
-              <option value="fireworks">Fireworks</option>
-              <option value="season">Season opening / closing</option>
-              <option value="maintenance">Maintenance / closure</option>
-              <option value="other">Other</option>
+              {/* Managed in Settings → Customization. */}
+              {eventTypeOptions.map((o) => (
+                <option key={o.id} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
             </Select>
           </Field>
           <Field label="Location">

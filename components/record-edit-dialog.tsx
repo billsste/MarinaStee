@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Field, NumberInput, Select, TextInput, Textarea } from "@/components/create-sheet";
 import { cn } from "@/lib/utils";
 import { useCurrentUser, can, ROLE_META, type Entity } from "@/lib/auth";
+import { usePicklistValues, usePicklistLabel } from "@/lib/client-store";
+import type { PicklistFieldKey } from "@/lib/types";
 
 /*
  * Universal centered edit modal for ANY row of data.
@@ -33,8 +35,12 @@ export type FieldSpec<T> = {
   required?: boolean;
   hint?: string;
   placeholder?: string;
-  /** For select kind: ordered list of options */
+  /** For select kind: ordered list of options. Prefer `picklist` for
+   *  fields managed by the super-user in Settings → Customization. */
   options?: Array<{ value: string; label: string }>;
+  /** For select kind: read options from the tenant's picklist for this
+   *  field key at render time. Wins over `options` when set. */
+  picklist?: PicklistFieldKey;
   /** Half-width side-by-side when paired (display hint only) */
   col?: 1 | 2;
   /** Step for number/money */
@@ -259,18 +265,7 @@ function FieldRenderer<T>({
   const v = (value as string | number | boolean | undefined) ?? "";
 
   if (field.kind === "select") {
-    return (
-      <Field label={field.label} required={field.required} hint={field.hint}>
-        <Select value={String(v)} onChange={onChange} disabled={disabled}>
-          {!field.required && <option value="">—</option>}
-          {field.options?.map((o) => (
-            <option key={o.value} value={o.value}>
-              {o.label}
-            </option>
-          ))}
-        </Select>
-      </Field>
-    );
+    return <SelectField field={field} value={v} onChange={onChange} disabled={disabled} />;
   }
 
   if (field.kind === "textarea") {
@@ -402,6 +397,70 @@ function FieldRenderer<T>({
         disabled={disabled}
         readOnly={disabled}
       />
+    </Field>
+  );
+}
+
+/**
+ * Select field renderer — extracted so the picklist-backed branch
+ * can call hooks. When `field.picklist` is set, options come from the
+ * tenant's managed picklist (super-user editable in Settings →
+ * Customization). The currently-selected value is always rendered
+ * even if it was archived since the record was last edited; the
+ * label gets an "(archived)" suffix so staff knows.
+ */
+function SelectField<T>({
+  field,
+  value,
+  onChange,
+  disabled,
+}: {
+  field: FieldSpec<T>;
+  value: string | number | boolean;
+  onChange: (v: unknown) => void;
+  disabled?: boolean;
+}) {
+  // Picklist path (preferred for new fields)
+  const picklistKey = field.picklist;
+  const picklistOptions = usePicklistValues(picklistKey as PicklistFieldKey);
+  const currentLabel = usePicklistLabel(
+    picklistKey as PicklistFieldKey,
+    value as string | undefined
+  );
+  if (picklistKey) {
+    const current = String(value ?? "");
+    // If the current value isn't in the active list (archived), tack
+    // it onto the rendered options so the dropdown shows it.
+    const showStale =
+      current &&
+      !picklistOptions.some((o) => o.value === current);
+    return (
+      <Field label={field.label} required={field.required} hint={field.hint}>
+        <Select value={current} onChange={onChange} disabled={disabled}>
+          {!field.required && <option value="">—</option>}
+          {picklistOptions.map((o) => (
+            <option key={o.id} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+          {showStale && (
+            <option value={current}>{currentLabel}</option>
+          )}
+        </Select>
+      </Field>
+    );
+  }
+  // Legacy path — hard-coded options array
+  return (
+    <Field label={field.label} required={field.required} hint={field.hint}>
+      <Select value={String(value ?? "")} onChange={onChange} disabled={disabled}>
+        {!field.required && <option value="">—</option>}
+        {field.options?.map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
+          </option>
+        ))}
+      </Select>
     </Field>
   );
 }

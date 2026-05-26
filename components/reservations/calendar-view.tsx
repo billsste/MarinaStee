@@ -20,6 +20,7 @@ import { BOATERS, getSlip } from "@/lib/mock-data";
 import {
   toggleEventRsvp,
   useMarinaEvents,
+  usePicklistLabel,
   useReservations,
 } from "@/lib/client-store";
 import { cn } from "@/lib/utils";
@@ -425,6 +426,7 @@ function EventDetailDialog({
   event: MarinaEvent | null;
   onClose: () => void;
 }) {
+  const eventTypeLabel = usePicklistLabel("event_type", event?.event_type);
   if (!event) return null;
   const Icon = EVENT_ICON[event.event_type];
   const sameDay = event.start_date === event.end_date;
@@ -470,7 +472,9 @@ function EventDetailDialog({
 
           <div className="space-y-3 p-5">
             <div className="flex flex-wrap items-center gap-1.5">
-              <Badge tone="outline" size="sm">{event.event_type}</Badge>
+              <Badge tone="outline" size="sm" className="capitalize">
+                {eventTypeLabel !== "—" ? eventTypeLabel : event.event_type}
+              </Badge>
               {event.public_to_boaters && <Badge tone="primary" size="sm">Visible to boaters</Badge>}
               {event.capacity && (
                 <Badge

@@ -13,7 +13,7 @@ import {
   VESSELS,
   formatMoney,
 } from "@/lib/mock-data";
-import { useContracts, useReservations } from "@/lib/client-store";
+import { useContracts, usePicklistLabel, useReservations } from "@/lib/client-store";
 import { cn } from "@/lib/utils";
 import type { Boater, Contract, Reservation, Slip, Vessel } from "@/lib/types";
 
@@ -421,22 +421,22 @@ void Button;
  * the 64px slip column.
  */
 function SlipClassDot({ slipClass }: { slipClass: import("@/lib/types").SlipClass }) {
-  const meta: Record<
-    import("@/lib/types").SlipClass,
-    { color: string; label: string }
-  > = {
-    covered: { color: "bg-status-info", label: "Covered" },
-    uncovered: { color: "bg-fg-tertiary/60", label: "Uncovered" },
-    t_head: { color: "bg-primary", label: "T-head" },
-    buoy: { color: "bg-status-warn", label: "Buoy" },
-    dry_storage: { color: "bg-fg-subtle", label: "Dry storage" },
+  // Color stays hard-coded (visual semantics tied to the canonical
+  // class taxonomy); label resolves from the tenant picklist so a
+  // super-user renaming "Covered" → "Indoor" updates the tooltip too.
+  const colors: Record<import("@/lib/types").SlipClass, string> = {
+    covered: "bg-status-info",
+    uncovered: "bg-fg-tertiary/60",
+    t_head: "bg-primary",
+    buoy: "bg-status-warn",
+    dry_storage: "bg-fg-subtle",
   };
-  const m = meta[slipClass];
+  const label = usePicklistLabel("slip_class", slipClass);
   return (
     <span
-      title={m.label}
-      aria-label={m.label}
-      className={cn("inline-block size-1.5 rounded-full", m.color)}
+      title={label}
+      aria-label={label}
+      className={cn("inline-block size-1.5 rounded-full", colors[slipClass])}
     />
   );
 }

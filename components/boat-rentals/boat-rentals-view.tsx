@@ -17,7 +17,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { formatMoney, rentalDurationLabel } from "@/lib/mock-data";
-import { useBoatRentals, useRentalBoats } from "@/lib/client-store";
+import { useBoatRentals, usePicklistLabelMap, useRentalBoats } from "@/lib/client-store";
 import type { BoatRental, BoatRentalStatus, RentalBoat } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -30,6 +30,7 @@ import { cn } from "@/lib/utils";
  */
 export function BoatRentalsView() {
   const fleet = useRentalBoats();
+  const rentalBoatTypeLabels = usePicklistLabelMap("rental_boat_type");
   const bookings = useBoatRentals();
 
   // ── Today's window — anything starting OR ending today
@@ -159,7 +160,7 @@ export function BoatRentalsView() {
                   r.boat_id === boat.id &&
                   (r.status === "reserved" || r.status === "confirmed" || r.status === "checked_out")
               );
-              return <BoatCard key={boat.id} boat={boat} activeBooking={activeBooking} />;
+              return <BoatCard key={boat.id} boat={boat} activeBooking={activeBooking} typeLabels={rentalBoatTypeLabels} />;
             })}
         </div>
       </section>
@@ -282,9 +283,11 @@ function TodayPanel({
 function BoatCard({
   boat,
   activeBooking,
+  typeLabels,
 }: {
   boat: RentalBoat;
   activeBooking?: BoatRental;
+  typeLabels: Map<string, string>;
 }) {
   const statusTone =
     boat.status === "available"
@@ -308,7 +311,7 @@ function BoatCard({
       <div className="p-3">
         <div className="flex items-baseline justify-between gap-2">
           <span className="text-[11px] capitalize text-fg-tertiary">
-            {boat.type.replace("_", " ")} · {boat.capacity} pax
+            {typeLabels.get(boat.type) ?? boat.type.replace("_", " ")} · {boat.capacity} pax
           </span>
           {boat.hour_meter_reading != null && (
             <span className="text-[11px] tabular text-fg-tertiary">

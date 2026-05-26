@@ -3,6 +3,68 @@
 
 export type StatusKey = "ok" | "warn" | "danger" | "info" | "neutral";
 
+// ============================================================
+// Multi-tenant foundation
+// ============================================================
+//
+// Marina Stee is a multi-tenant SaaS — each tenant is one marina.
+// Every customizable artifact (picklists, future custom fields, future
+// layout configs) is scoped to a tenant. Core entities (Boater, Slip,
+// Contract, etc.) are conceptually tenant-scoped too; in the prototype
+// they aren't tagged individually because there's only one seeded
+// tenant. When the backend lands, every WHERE clause + insert gets a
+// `tenant_id` filter sourced from the authenticated session.
+
+export interface Tenant {
+  id: string;
+  name: string;          // "Marina Stee — Damsite Cove"
+  slug: string;          // url-safe key
+  created_at: string;
+}
+
+// ── Picklists ────────────────────────────────────────────────
+//
+// Per-tenant managed dropdown values. Each picklist owns the set of
+// values that appear in dropdowns wired to a specific `field_key`
+// (e.g., "vessel_type", "activity_type"). Archiving (not deleting)
+// keeps historical records readable when the dropdown evolves.
+
+/**
+ * The 7 currently-configurable picklist field keys. Adding a new
+ * picklist key here is the only code change needed — the Settings →
+ * Customization UI auto-discovers any picklist the store carries.
+ */
+export type PicklistFieldKey =
+  | "occupancy_type"        // RentalSpace inventory + Rate cards (legacy slip classification)
+  | "slip_class"            // Slip pricing tier (covered/uncovered/T-head/buoy/dry)
+  | "vessel_type"
+  | "activity_type"
+  | "event_type"
+  | "rental_boat_type"
+  | "contact_role"
+  | "refund_reason";
+
+export interface PicklistValue {
+  id: string;                // ten_xxx_pv_xxx
+  value: string;             // stable code stored on records ("powerboat")
+  label: string;             // display label, super-user editable ("Powerboat")
+  sort_order: number;        // 0..N, drag-to-reorder
+  archived: boolean;         // hidden from new-selection dropdowns, still rendered on existing records
+}
+
+export interface Picklist {
+  id: string;                // ten_xxx_pl_xxx
+  tenant_id: string;
+  field_key: PicklistFieldKey;
+  label: string;             // human label, e.g. "Vessel type"
+  description?: string;      // shown on the Customization editor
+  /** Whether super-user can reorder, add, archive. Always true for
+   *  now — kept on the model so locked system picklists (status state
+   *  machines) can be modeled later under the same UI. */
+  editable: boolean;
+  values: PicklistValue[];
+}
+
 export type BillingCadence = "annual" | "seasonal" | "monthly" | "transient";
 
 export type CommunicationChannel = "email" | "sms" | "voice";

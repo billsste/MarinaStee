@@ -1,8 +1,11 @@
 import type {
   Boater,
   Vessel,
+  Picklist,
+  PicklistValue,
   Slip,
   SlipClass,
+  Tenant,
   Reservation,
   LedgerEntry,
   WorkOrder,
@@ -30,6 +33,182 @@ import type {
   RentalBoat,
   BoatRental,
 } from "@/lib/types";
+
+// ============================================================
+// Tenants + Picklists
+// ============================================================
+//
+// Single seeded tenant for the prototype. When the backend lands the
+// active tenant comes from the authenticated session; for now every
+// store read defaults to this id.
+
+export const SEED_TENANT_ID = "ten_marina_stee_demo";
+
+export const TENANTS: Tenant[] = [
+  {
+    id: SEED_TENANT_ID,
+    name: "Marina Stee — Damsite Cove",
+    slug: "marina-stee",
+    created_at: "2026-01-01T00:00:00Z",
+  },
+];
+
+/**
+ * Helper: build a picklist value with sensible defaults.
+ */
+function pv(
+  tenantId: string,
+  value: string,
+  label: string,
+  sort: number
+): PicklistValue {
+  return {
+    id: `pv_${tenantId.slice(-6)}_${value}`,
+    value,
+    label,
+    sort_order: sort,
+    archived: false,
+  };
+}
+
+/**
+ * Seed picklists for every editable field across the app. Values
+ * match the current hard-coded enums so the migration is a no-op for
+ * existing records; super-user can then rename/add/archive freely.
+ */
+export const PICKLISTS: Picklist[] = [
+  {
+    id: `pl_${SEED_TENANT_ID.slice(-6)}_occupancy_type`,
+    tenant_id: SEED_TENANT_ID,
+    field_key: "occupancy_type",
+    label: "Occupancy type",
+    description:
+      "Inventory-side classification used on RentalSpace and Rate cards. Common values: Standard, Jet Ski, Buoy, Dry Storage, Mooring.",
+    editable: true,
+    values: [
+      pv(SEED_TENANT_ID, "Standard", "Standard", 0),
+      pv(SEED_TENANT_ID, "Jet Ski", "Jet Ski", 1),
+      pv(SEED_TENANT_ID, "Buoy", "Buoy", 2),
+      pv(SEED_TENANT_ID, "Dry Storage", "Dry Storage", 3),
+      pv(SEED_TENANT_ID, "Mooring", "Mooring", 4),
+    ],
+  },
+  {
+    id: `pl_${SEED_TENANT_ID.slice(-6)}_slip_class`,
+    tenant_id: SEED_TENANT_ID,
+    field_key: "slip_class",
+    label: "Slip class",
+    description:
+      "Pricing tier on each Slip — drives the default annual rate. Each marina prices these differently.",
+    editable: true,
+    values: [
+      pv(SEED_TENANT_ID, "covered", "Covered", 0),
+      pv(SEED_TENANT_ID, "uncovered", "Uncovered", 1),
+      pv(SEED_TENANT_ID, "t_head", "T-head", 2),
+      pv(SEED_TENANT_ID, "buoy", "Buoy", 3),
+      pv(SEED_TENANT_ID, "dry_storage", "Dry storage", 4),
+    ],
+  },
+  {
+    id: `pl_${SEED_TENANT_ID.slice(-6)}_vessel_type`,
+    tenant_id: SEED_TENANT_ID,
+    field_key: "vessel_type",
+    label: "Vessel type",
+    description: "Powerboat / sailboat / PWC / etc. Used on Vessel records.",
+    editable: true,
+    values: [
+      pv(SEED_TENANT_ID, "powerboat", "Powerboat", 0),
+      pv(SEED_TENANT_ID, "sailboat", "Sailboat", 1),
+      pv(SEED_TENANT_ID, "pontoon", "Pontoon", 2),
+      pv(SEED_TENANT_ID, "houseboat", "Houseboat", 3),
+      pv(SEED_TENANT_ID, "pwc", "PWC / Jet Ski", 4),
+      pv(SEED_TENANT_ID, "other", "Other", 5),
+    ],
+  },
+  {
+    id: `pl_${SEED_TENANT_ID.slice(-6)}_activity_type`,
+    tenant_id: SEED_TENANT_ID,
+    field_key: "activity_type",
+    label: "Work order activity",
+    description:
+      "Your service catalog. Filters work-order kanban + drives default tags on quotes.",
+    editable: true,
+    values: [
+      pv(SEED_TENANT_ID, "winterization", "Winterization", 0),
+      pv(SEED_TENANT_ID, "bottom_paint", "Bottom paint", 1),
+      pv(SEED_TENANT_ID, "service", "Service / repair", 2),
+      pv(SEED_TENANT_ID, "inspection", "Inspection", 3),
+      pv(SEED_TENANT_ID, "haul_out", "Haul-out", 4),
+      pv(SEED_TENANT_ID, "pump_out", "Pump-out", 5),
+      pv(SEED_TENANT_ID, "task", "Staff task", 6),
+      pv(SEED_TENANT_ID, "other", "Other", 7),
+    ],
+  },
+  {
+    id: `pl_${SEED_TENANT_ID.slice(-6)}_event_type`,
+    tenant_id: SEED_TENANT_ID,
+    field_key: "event_type",
+    label: "Marina event type",
+    description: "Tournaments, social events, season opening, etc.",
+    editable: true,
+    values: [
+      pv(SEED_TENANT_ID, "social", "Social / dock party", 0),
+      pv(SEED_TENANT_ID, "tournament", "Tournament", 1),
+      pv(SEED_TENANT_ID, "regatta", "Regatta", 2),
+      pv(SEED_TENANT_ID, "fireworks", "Fireworks", 3),
+      pv(SEED_TENANT_ID, "season", "Season open / close", 4),
+      pv(SEED_TENANT_ID, "maintenance", "Maintenance window", 5),
+      pv(SEED_TENANT_ID, "other", "Other", 6),
+    ],
+  },
+  {
+    id: `pl_${SEED_TENANT_ID.slice(-6)}_rental_boat_type`,
+    tenant_id: SEED_TENANT_ID,
+    field_key: "rental_boat_type",
+    label: "Boat rental type",
+    description:
+      "The classes of boat in your own-fleet rental program (pontoon, kayak, etc.).",
+    editable: true,
+    values: [
+      pv(SEED_TENANT_ID, "pontoon", "Pontoon", 0),
+      pv(SEED_TENANT_ID, "kayak", "Kayak", 1),
+      pv(SEED_TENANT_ID, "paddleboard", "Paddleboard", 2),
+      pv(SEED_TENANT_ID, "jet_ski", "Jet ski", 3),
+      pv(SEED_TENANT_ID, "fishing_skiff", "Fishing skiff", 4),
+      pv(SEED_TENANT_ID, "wakeboat", "Wakeboat", 5),
+    ],
+  },
+  {
+    id: `pl_${SEED_TENANT_ID.slice(-6)}_contact_role`,
+    tenant_id: SEED_TENANT_ID,
+    field_key: "contact_role",
+    label: "Contact role",
+    description: "How additional contacts on a Holder are categorized.",
+    editable: true,
+    values: [
+      pv(SEED_TENANT_ID, "self", "Self", 0),
+      pv(SEED_TENANT_ID, "spouse", "Spouse", 1),
+      pv(SEED_TENANT_ID, "captain", "Captain", 2),
+      pv(SEED_TENANT_ID, "manager", "Manager", 3),
+      pv(SEED_TENANT_ID, "other", "Other", 4),
+    ],
+  },
+  {
+    id: `pl_${SEED_TENANT_ID.slice(-6)}_refund_reason`,
+    tenant_id: SEED_TENANT_ID,
+    field_key: "refund_reason",
+    label: "Refund reason",
+    description: "Audit category for ledger refunds. Required on every refund.",
+    editable: true,
+    values: [
+      pv(SEED_TENANT_ID, "duplicate", "Duplicate charge", 0),
+      pv(SEED_TENANT_ID, "request", "Customer request", 1),
+      pv(SEED_TENANT_ID, "dispute", "Dispute / chargeback", 2),
+      pv(SEED_TENANT_ID, "service_issue", "Service issue", 3),
+      pv(SEED_TENANT_ID, "other", "Other", 4),
+    ],
+  },
+];
 
 export const USERS: User[] = [
   { id: "u_steven", name: "Bills, Steven", role: "manager" },

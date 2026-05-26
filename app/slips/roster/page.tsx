@@ -25,15 +25,18 @@ export default function SpacesPage() {
         ]}
       />
 
+      {/* "Status" = list table (one row per slip with current holder +
+          expiry signal). "Layout" = the physical dock map. Avoiding
+          "Roster" since these are slips, not people. */}
       <Tabs defaultValue="roster" className="w-full">
         <TabsList>
           <TabsTrigger value="roster">
             <ClipboardList className="size-3.5" />
-            Roster
+            Status
           </TabsTrigger>
           <TabsTrigger value="inventory">
             <LayoutGrid className="size-3.5" />
-            Inventory
+            Layout
           </TabsTrigger>
         </TabsList>
 

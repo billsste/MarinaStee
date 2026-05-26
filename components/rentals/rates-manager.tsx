@@ -36,7 +36,8 @@ const RATE_FIELDS: FieldSpec<Rate>[] = [
     kind: "select",
     required: true,
     col: 2,
-    options: ALL_OCCUPANCY.map((o) => ({ value: o, label: o })),
+    // Managed in Settings → Customization.
+    picklist: "occupancy_type",
   },
   {
     key: "cadence",

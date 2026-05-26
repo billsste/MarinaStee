@@ -11,6 +11,7 @@ import {
   VESSELS,
 } from "@/lib/mock-data";
 import { executeAgentAction } from "@/lib/agent-actions";
+import { usePicklistValues } from "@/lib/client-store";
 
 export function NewWorkOrderSheet({
   open,
@@ -23,6 +24,11 @@ export function NewWorkOrderSheet({
 }) {
   const [subject, setSubject] = React.useState("");
   const [boaterId, setBoaterId] = React.useState(defaultBoaterId ?? "");
+  // Activity type values come from the tenant picklist (super-user
+  // managed). The TS union below is still authoritative for the agent
+  // tool schema — adding a brand-new picklist code path-as-data here
+  // would be Phase 2 (custom fields).
+  const activityTypeOptions = usePicklistValues("activity_type");
   const [activityType, setActivityType] = React.useState<
     "winterization" | "bottom_paint" | "service" | "inspection" | "haul_out" | "pump_out" | "task" | "other"
   >("service");
@@ -127,14 +133,12 @@ export function NewWorkOrderSheet({
               value={activityType}
               onChange={(v) => setActivityType(v as typeof activityType)}
             >
-              <option value="service">Service</option>
-              <option value="task">Task (staff to-do)</option>
-              <option value="pump_out">Pump-out</option>
-              <option value="winterization">Winterization</option>
-              <option value="bottom_paint">Bottom paint</option>
-              <option value="inspection">Inspection</option>
-              <option value="haul_out">Haul-out</option>
-              <option value="other">Other</option>
+              {/* Managed in Settings → Customization. */}
+              {activityTypeOptions.map((o) => (
+                <option key={o.id} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
             </Select>
           </Field>
         </div>

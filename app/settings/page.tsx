@@ -1,3 +1,4 @@
+import Link from "next/link";
 import {
   Building2,
   Users,
@@ -9,12 +10,14 @@ import {
   AlertCircle,
   CloudUpload,
   RefreshCw,
+  Tag,
+  ChevronRight,
 } from "lucide-react";
 import { PageShell } from "@/components/page-shell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { RentalsAsk } from "@/components/rentals/rentals-ask";
-import { USERS } from "@/lib/mock-data";
+import { USERS, PICKLISTS } from "@/lib/mock-data";
 
 export const metadata = { title: "Settings — Marina Stee" };
 
@@ -33,6 +36,31 @@ export default function SettingsPage() {
           "Mute SMS reminders before 8am",
         ]}
       />
+
+      {/* Customization callout — pinned at the top because it's the
+          fastest way to make the tool fit each marina's vocabulary
+          without code changes. */}
+      <Link
+        href="/settings/customization"
+        className="mt-5 flex items-center justify-between gap-4 rounded-[12px] border border-primary/30 bg-primary-soft/30 px-4 py-3 transition-colors hover:bg-primary-soft/50"
+      >
+        <div className="flex items-center gap-3">
+          <div className="flex size-9 items-center justify-center rounded-[8px] bg-primary text-on-primary">
+            <Tag className="size-4" />
+          </div>
+          <div>
+            <div className="text-[14px] font-medium text-fg">Customization</div>
+            <p className="text-[12px] text-fg-subtle">
+              Tune dropdown values — slip classes, vessel types, work-order
+              activities, and more — for your marina.{" "}
+              <span className="text-fg-tertiary">
+                {PICKLISTS.length} picklists configurable today.
+              </span>
+            </p>
+          </div>
+        </div>
+        <ChevronRight className="size-4 text-fg-subtle" />
+      </Link>
 
       <div className="mt-5 grid grid-cols-1 gap-4 lg:grid-cols-2">
         <SettingsCard
