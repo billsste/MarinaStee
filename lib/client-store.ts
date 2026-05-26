@@ -11,6 +11,7 @@ import {
   INSURANCE_CERTIFICATES,
   LEDGER,
   MARINA_EVENTS,
+  METER_READINGS,
   POS_LOCATIONS,
   POS_ORDERS,
   RATES,
@@ -30,6 +31,7 @@ import type {
   InsuranceCertificate,
   LedgerEntry,
   MarinaEvent,
+  MeterReading,
   PosOrder,
   QbSyncStatus,
   Rate,
@@ -93,6 +95,7 @@ type State = {
   rates: Rate[];
   fees: AdditionalFee[];
   templates: ContractTemplate[];
+  meters: MeterReading[];
 };
 
 let state: State = {
@@ -115,6 +118,7 @@ let state: State = {
   rates: [...RATES],
   fees: [...ADDITIONAL_FEES],
   templates: [...CONTRACT_TEMPLATES],
+  meters: [...METER_READINGS],
 };
 
 const subscribers = new Set<() => void>();
@@ -369,6 +373,20 @@ export function deleteTemplate(id: string) {
   notify();
 }
 
+// ── Meters CRUD ──────────────────────────────────────────────
+export function upsertMeter(m: MeterReading) {
+  const exists = state.meters.some((x) => x.id === m.id);
+  state = {
+    ...state,
+    meters: exists ? state.meters.map((x) => (x.id === m.id ? m : x)) : [m, ...state.meters],
+  };
+  notify();
+}
+export function deleteMeter(id: string) {
+  state = { ...state, meters: state.meters.filter((m) => m.id !== id) };
+  notify();
+}
+
 // ── Rates CRUD ───────────────────────────────────────────────
 export function upsertRate(r: Rate) {
   const exists = state.rates.some((x) => x.id === r.id);
@@ -587,6 +605,10 @@ export function useContractTemplates(): ContractTemplate[] {
   return useStore().templates;
 }
 
+export function useMeters(): MeterReading[] {
+  return useStore().meters;
+}
+
 export function useStaffNotesForBoater(boaterId: string): StaffNote[] {
   const s = useStore();
   return s.staffNotes.filter((n) => n.boater_id === boaterId);
@@ -685,4 +707,8 @@ export function nextFeeId() {
 
 export function nextTemplateId() {
   return `tpl_runtime_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+}
+
+export function nextMeterId() {
+  return `m_runtime_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
 }

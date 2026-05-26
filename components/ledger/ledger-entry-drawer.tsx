@@ -11,6 +11,8 @@ import {
   FileText,
   Wrench,
   Anchor,
+  Mail,
+  Printer,
   ShoppingBag,
   User as UserIcon,
 } from "lucide-react";
@@ -24,6 +26,7 @@ import {
   formatMoney,
 } from "@/lib/mock-data";
 import { useStore } from "@/lib/client-store";
+import { EnterPaymentSheet } from "@/components/financials/enter-payment-sheet";
 import type { LedgerEntry, LedgerEntryType, PosOrder } from "@/lib/types";
 
 type DrawerCtx = {
@@ -120,6 +123,24 @@ function Body({
 }) {
   const Icon = TYPE_ICON[entry.type];
   const boater = BOATERS.find((b) => b.id === entry.boater_id);
+  const [paymentOpen, setPaymentOpen] = React.useState(false);
+
+  function handlePrint() {
+    // Browser's native print — uses the page's print stylesheet. Production
+    // would render a server-generated PDF instead, this is a demo affordance.
+    window.print();
+  }
+
+  function handleEmail() {
+    if (!boater?.primary_contact.email) return;
+    const subj = encodeURIComponent(
+      `${entry.type === "invoice" ? "Invoice" : "Receipt"} ${entry.number ?? entry.id.slice(-6)} — Marina Stee`
+    );
+    const body = encodeURIComponent(
+      `Hi ${boater.first_name},\n\nA copy of your ${entry.type} (${entry.number ?? entry.id.slice(-6)}) for ${formatMoney(entry.amount)} dated ${entry.date} is attached.\n\nMarina Stee`
+    );
+    window.location.href = `mailto:${boater.primary_contact.email}?subject=${subj}&body=${body}`;
+  }
   const wo = entry.linked_work_order_id
     ? WORK_ORDERS.find((w) => w.id === entry.linked_work_order_id)
     : undefined;
@@ -289,18 +310,35 @@ function Body({
 
       <footer className="sticky bottom-0 border-t border-hairline bg-surface-1 px-5 py-3">
         <div className="flex items-center justify-end gap-2">
-          {entry.type === "invoice" && entry.open_balance > 0 && (
-            <Button variant="primary" size="md">Take payment</Button>
+          {boater?.primary_contact.email && (
+            <Button variant="ghost" size="md" onClick={handleEmail}>
+              <Mail className="size-3.5" />
+              Email
+            </Button>
           )}
+          <Button variant="ghost" size="md" onClick={handlePrint}>
+            <Printer className="size-3.5" />
+            Print
+          </Button>
           {entry.type === "payment" && entry.status !== "refunded" && (
             <Button variant="secondary" size="md">
               <RotateCcw className="size-3.5" />
               Refund
             </Button>
           )}
-          <Button variant="ghost" size="md">Print</Button>
+          {entry.type === "invoice" && entry.open_balance > 0 && (
+            <Button variant="primary" size="md" onClick={() => setPaymentOpen(true)}>
+              Take payment
+            </Button>
+          )}
         </div>
       </footer>
+
+      <EnterPaymentSheet
+        open={paymentOpen}
+        onOpenChange={setPaymentOpen}
+        defaultBoaterId={entry.boater_id}
+      />
     </>
   );
 }
