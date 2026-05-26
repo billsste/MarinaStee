@@ -1,5 +1,6 @@
 "use client";
 
+import { can, ROLE_META, type Action, type Entity, type Role } from "@/lib/auth";
 import {
   BOATERS,
   POS_LOCATIONS,
@@ -49,9 +50,45 @@ import type {
  * Client-only action executor. Lives in its own file so the server-rendered
  * /api/agent route can import the simulated agent (which is server-safe)
  * without dragging in client-store + React hooks.
+ *
+ * RBAC: when called with a role, the executor first checks the role's
+ * permissions for the entity affected by the action. If denied, no mutation
+ * happens and a friendly reason is returned for the UI to surface in the
+ * action card (instead of silently failing).
  */
 
-export function executeAgentAction(action: AgentAction): void {
+const ACTION_PERMISSION: Record<AgentAction["kind"], { entity: Entity; action: Action }> = {
+  charge_to_account: { entity: "ledger", action: "create" },
+  send_message: { entity: "broadcast", action: "create" },
+  create_work_order: { entity: "work_order", action: "create" },
+  create_reservation: { entity: "reservation", action: "create" },
+  record_payment: { entity: "ledger", action: "create" },
+  create_boater: { entity: "boater", action: "create" },
+  create_vessel: { entity: "vessel", action: "create" },
+  create_contract: { entity: "contract", action: "create" },
+  add_card: { entity: "boater", action: "edit" },
+};
+
+export type ExecResult = { ok: true } | { ok: false; reason: string };
+
+export function executeAgentAction(action: AgentAction, role?: Role): ExecResult {
+  // RBAC: defense-in-depth — even if a tool slips past the prompt-side filter,
+  // the executor refuses the mutation.
+  if (role) {
+    const perm = ACTION_PERMISSION[action.kind];
+    if (perm && !can(role, perm.action, perm.entity)) {
+      return {
+        ok: false,
+        reason: `${ROLE_META[role].label} can't ${perm.action} ${perm.entity.replace("_", " ")}s. Switch role in the top bar.`,
+      };
+    }
+  }
+
+  runAction(action);
+  return { ok: true };
+}
+
+function runAction(action: AgentAction): void {
   if (action.kind === "charge_to_account") {
     const now = new Date().toISOString();
     const orderId = nextPosOrderId();

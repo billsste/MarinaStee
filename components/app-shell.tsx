@@ -4,6 +4,7 @@ import * as React from "react";
 import { usePathname } from "next/navigation";
 import { Sidebar } from "@/components/sidebar";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { CurrentUserSwitcher } from "@/components/current-user-switcher";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { LedgerDrawerProvider } from "@/components/ledger/ledger-entry-drawer";
 
@@ -32,7 +33,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 <span className="text-fg-tertiary">/</span>
                 <Breadcrumb pathname={pathname} />
               </div>
-              <ThemeToggle />
+              <div className="flex items-center gap-2">
+                <CurrentUserSwitcher />
+                <ThemeToggle />
+              </div>
             </header>
 
             <main className="relative flex-1 overflow-y-auto">

@@ -11,6 +11,7 @@ import {
   upsertRate,
   useRates,
 } from "@/lib/client-store";
+import { useCan } from "@/lib/auth";
 import { formatMoney } from "@/lib/mock-data";
 import type { OccupancyType, Rate, RateCadence } from "@/lib/types";
 
@@ -51,6 +52,7 @@ const RATE_FIELDS: FieldSpec<Rate>[] = [
 
 export function RatesManager() {
   const rates = useRates();
+  const canCreate = useCan("create", "rate");
   const [open, setOpen] = React.useState(false);
   const [editing, setEditing] = React.useState<Rate | undefined>(undefined);
   const [defaultOccupancy, setDefaultOccupancy] = React.useState<OccupancyType | null>(null);
@@ -101,10 +103,12 @@ export function RatesManager() {
         <p className="text-[12px] text-fg-tertiary">
           Click any rate to edit it. Use <span className="font-medium text-fg-subtle">+ Add rate</span> on a card to create a new one for that occupancy type.
         </p>
-        <Button variant="primary" size="sm" onClick={() => openAdd()}>
-          <Plus className="size-3.5" />
-          New rate
-        </Button>
+        {canCreate && (
+          <Button variant="primary" size="sm" onClick={() => openAdd()}>
+            <Plus className="size-3.5" />
+            New rate
+          </Button>
+        )}
       </div>
 
       <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
@@ -116,10 +120,12 @@ export function RatesManager() {
             <div key={type} className="rounded-[12px] border border-hairline bg-surface-1">
               <div className="flex items-center justify-between border-b border-hairline px-4 py-2.5">
                 <h3 className="text-[14px] font-medium text-fg">{type}</h3>
-                <Button variant="ghost" size="sm" onClick={() => openAdd(type)}>
-                  <Plus className="size-3" />
-                  Add rate
-                </Button>
+                {canCreate && (
+                  <Button variant="ghost" size="sm" onClick={() => openAdd(type)}>
+                    <Plus className="size-3" />
+                    Add rate
+                  </Button>
+                )}
               </div>
               {list.length === 0 ? (
                 <div className="px-4 py-6 text-center text-[12px] text-fg-tertiary">
@@ -168,6 +174,7 @@ export function RatesManager() {
         fields={RATE_FIELDS}
         onSave={handleSave}
         onDelete={editing ? handleDelete : undefined}
+        entity="rate"
       />
     </>
   );

@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 import { useStore } from "@/lib/client-store";
 import type { AgentAction } from "@/lib/simulated-agent";
 import { executeAgentAction } from "@/lib/agent-actions";
+import { useCurrentUser } from "@/lib/auth";
 import { streamAgent } from "@/lib/agent-fetch";
 
 type Message =
@@ -17,7 +18,7 @@ type Message =
       id: string;
       text: string;     // built up as chunks stream in
       streaming: boolean;
-      actions: { action: AgentAction; executed?: boolean; dismissed?: boolean }[];
+      actions: { action: AgentAction; executed?: boolean; dismissed?: boolean; refusedReason?: string }[];
       toolSteps: { name: string; result: unknown }[];
     };
 
@@ -33,6 +34,7 @@ export function AgentChat({
   compact?: boolean;
 }) {
   const { ledger } = useStore();
+  const currentUser = useCurrentUser();
   const [messages, setMessages] = React.useState<Message[]>([]);
   const [input, setInput] = React.useState("");
   const initialFired = React.useRef(false);
@@ -114,14 +116,18 @@ export function AgentChat({
   function approveAction(messageId: string, index: number) {
     const m = messages.find((x) => x.kind === "agent" && x.id === messageId);
     if (!m || m.kind !== "agent" || !m.actions[index]) return;
-    executeAgentAction(m.actions[index].action);
+    const result = executeAgentAction(m.actions[index].action, currentUser.role);
     setMessages((prev) =>
       prev.map((x) =>
         x.kind === "agent" && x.id === messageId
           ? {
               ...x,
               actions: x.actions.map((a, i) =>
-                i === index ? { ...a, executed: true } : a
+                i === index
+                  ? result.ok
+                    ? { ...a, executed: true }
+                    : { ...a, refusedReason: result.reason }
+                  : a
               ),
             }
           : x
@@ -269,6 +275,7 @@ function AgentBubble({
             key={i}
             action={a.action}
             executed={!!a.executed}
+            refusedReason={a.refusedReason}
             onApprove={() => onApprove(i)}
             onDismiss={() => onDismiss(i)}
           />
@@ -299,11 +306,13 @@ function summarizeResult(r: unknown): string {
 function ActionCard({
   action,
   executed,
+  refusedReason,
   onApprove,
   onDismiss,
 }: {
   action: AgentAction;
   executed: boolean;
+  refusedReason?: string;
   onApprove: () => void;
   onDismiss: () => void;
 }) {
@@ -367,12 +376,22 @@ function ActionCard({
           {action.is_default && " · default"}
         </p>
       )}
+      {refusedReason && (
+        <div className="mt-2 rounded-[8px] border border-status-warn/30 bg-status-warn/10 px-2.5 py-1.5 text-[12px] text-status-warn">
+          {refusedReason}
+        </div>
+      )}
       <div className="mt-3 flex items-center gap-2">
         {executed ? (
           <Badge tone="ok">
             <CheckCheck className="size-3" />
             Executed
           </Badge>
+        ) : refusedReason ? (
+          <Button variant="ghost" size="sm" onClick={onDismiss}>
+            <X className="size-3.5" />
+            Dismiss
+          </Button>
         ) : (
           <>
             <Button variant="primary" size="sm" onClick={onApprove}>

@@ -121,6 +121,7 @@ export function InsuranceCard({
         fields={COI_FIELDS}
         onSave={(values) => upsertInsuranceCertificate(values as InsuranceCertificate)}
         onDelete={editing ? (c) => deleteInsuranceCertificate(c.id) : undefined}
+        entity="insurance"
       />
     </div>
   );

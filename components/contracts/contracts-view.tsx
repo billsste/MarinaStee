@@ -225,6 +225,7 @@ export function ContractsView() {
         description="Existing reservations + ledger entries stay linked. Status changes (e.g. terminated) propagate to Notifications."
         record={editingContract}
         fields={contractFields}
+        entity="contract"
         onSave={(values) => {
           const final: Contract = {
             ...values,
@@ -246,6 +247,7 @@ export function ContractsView() {
         description="Templates seed new contract drafts. Changing a template doesn't affect already-signed contracts."
         record={editingTemplate}
         fields={TEMPLATE_FIELDS}
+        entity="template"
         onSave={(values) => {
           const final: ContractTemplate = {
             ...values,

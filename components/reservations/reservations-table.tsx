@@ -154,6 +154,7 @@ export function ReservationsTable() {
         fields={RESERVATION_FIELDS}
         onSave={(values) => upsertReservation(values as Reservation)}
         onDelete={editing ? (r) => deleteReservation(r.id) : undefined}
+        entity="reservation"
       />
     </>
   );

@@ -2,10 +2,11 @@
 
 import * as React from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
-import { Trash2, X } from "lucide-react";
+import { Lock, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Field, NumberInput, Select, TextInput, Textarea } from "@/components/create-sheet";
 import { cn } from "@/lib/utils";
+import { useCurrentUser, can, ROLE_META, type Entity } from "@/lib/auth";
 
 /*
  * Universal centered edit modal for ANY row of data.
@@ -52,6 +53,7 @@ export function RecordEditDialog<T>({
   onSave,
   onDelete,
   submitLabel,
+  entity,
 }: {
   open: boolean;
   onOpenChange: (b: boolean) => void;
@@ -65,7 +67,17 @@ export function RecordEditDialog<T>({
   /** Optional delete handler — only shown in Edit mode. */
   onDelete?: (record: T) => void;
   submitLabel?: string;
+  /**
+   * If provided, the dialog gates Save/Delete by the current user's role
+   * via can(role, action, entity). Without `entity` the dialog runs ungated
+   * (kept for back-compat with non-RBAC callsites).
+   */
+  entity?: Entity;
 }) {
+  const user = useCurrentUser();
+  const isEdit = Boolean(record);
+  const canEdit = entity ? can(user.role, isEdit ? "edit" : "create", entity) : true;
+  const canDelete = entity ? can(user.role, "delete", entity) : true;
   // Local field state — seeded from record or empty strings on open.
   const [values, setValues] = React.useState<Record<string, unknown>>({});
   const [deleteConfirming, setDeleteConfirming] = React.useState(false);
@@ -119,8 +131,6 @@ export function RecordEditDialog<T>({
     return true;
   }
 
-  const isEdit = Boolean(record);
-
   return (
     <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
       <DialogPrimitive.Portal>
@@ -153,6 +163,12 @@ export function RecordEditDialog<T>({
           </header>
 
           <div className="max-h-[60vh] space-y-3 overflow-y-auto p-5">
+            {entity && !canEdit && (
+              <div className="flex items-center gap-2 rounded-[10px] border border-status-warn/30 bg-status-warn/10 px-3 py-2 text-[12px] text-status-warn">
+                <Lock className="size-3.5 shrink-0" />
+                Read-only — {ROLE_META[user.role].label} can&rsquo;t {isEdit ? "edit" : "create"} {entity.replace("_", " ")}s. Switch role from the top bar.
+              </div>
+            )}
             {paired(fields).map((row, idx) => (
               <div
                 key={idx}
@@ -167,6 +183,7 @@ export function RecordEditDialog<T>({
                     field={f}
                     value={values[f.key]}
                     onChange={(v) => setField(f.key, v)}
+                    disabled={!canEdit}
                   />
                 ))}
               </div>
@@ -175,7 +192,7 @@ export function RecordEditDialog<T>({
 
           <footer className="flex items-center justify-between gap-2 border-t border-hairline bg-surface-2/40 px-5 py-3">
             <div>
-              {isEdit && onDelete && (
+              {isEdit && onDelete && canDelete && (
                 deleteConfirming ? (
                   <div className="flex items-center gap-2">
                     <span className="text-[12px] text-status-danger">Sure?</span>
@@ -209,11 +226,13 @@ export function RecordEditDialog<T>({
             </div>
             <div className="flex items-center gap-2">
               <Button variant="ghost" size="md" onClick={() => onOpenChange(false)}>
-                Cancel
+                {canEdit ? "Cancel" : "Close"}
               </Button>
-              <Button variant="primary" size="md" onClick={submit} disabled={!canSave()}>
-                {submitLabel ?? (isEdit ? "Save changes" : "Add")}
-              </Button>
+              {canEdit && (
+                <Button variant="primary" size="md" onClick={submit} disabled={!canSave()}>
+                  {submitLabel ?? (isEdit ? "Save changes" : "Add")}
+                </Button>
+              )}
             </div>
           </footer>
         </DialogPrimitive.Content>
@@ -228,17 +247,19 @@ function FieldRenderer<T>({
   field,
   value,
   onChange,
+  disabled,
 }: {
   field: FieldSpec<T>;
   value: unknown;
   onChange: (v: unknown) => void;
+  disabled?: boolean;
 }) {
   const v = (value as string | number | boolean | undefined) ?? "";
 
   if (field.kind === "select") {
     return (
       <Field label={field.label} required={field.required} hint={field.hint}>
-        <Select value={String(v)} onChange={onChange}>
+        <Select value={String(v)} onChange={onChange} disabled={disabled}>
           {!field.required && <option value="">—</option>}
           {field.options?.map((o) => (
             <option key={o.value} value={o.value}>
@@ -258,6 +279,8 @@ function FieldRenderer<T>({
           onChange={(e) => onChange(e.target.value)}
           placeholder={field.placeholder}
           rows={4}
+          disabled={disabled}
+          readOnly={disabled}
         />
       </Field>
     );
@@ -273,6 +296,8 @@ function FieldRenderer<T>({
           step={field.step ?? (field.kind === "money" ? "1" : undefined)}
           min={field.min}
           max={field.max}
+          disabled={disabled}
+          readOnly={disabled}
         />
       </Field>
     );
@@ -281,7 +306,13 @@ function FieldRenderer<T>({
   if (field.kind === "date") {
     return (
       <Field label={field.label} required={field.required} hint={field.hint}>
-        <TextInput type="date" value={String(v)} onChange={(e) => onChange(e.target.value)} />
+        <TextInput
+          type="date"
+          value={String(v)}
+          onChange={(e) => onChange(e.target.value)}
+          disabled={disabled}
+          readOnly={disabled}
+        />
       </Field>
     );
   }
@@ -295,6 +326,7 @@ function FieldRenderer<T>({
             checked={Boolean(v)}
             onChange={(e) => onChange(e.target.checked)}
             className="size-3.5"
+            disabled={disabled}
           />
           {field.placeholder ?? "Enabled"}
         </label>
@@ -310,6 +342,8 @@ function FieldRenderer<T>({
         value={String(v)}
         onChange={(e) => onChange(e.target.value)}
         placeholder={field.placeholder}
+        disabled={disabled}
+        readOnly={disabled}
       />
     </Field>
   );

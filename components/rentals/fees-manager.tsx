@@ -11,6 +11,7 @@ import {
   upsertFee,
   useFees,
 } from "@/lib/client-store";
+import { useCan } from "@/lib/auth";
 import { formatMoney } from "@/lib/mock-data";
 import type { AdditionalFee, FeeBillingMode } from "@/lib/types";
 
@@ -75,6 +76,7 @@ const FEE_FIELDS: FieldSpec<AdditionalFee>[] = [
 
 export function FeesManager() {
   const fees = useFees();
+  const canCreate = useCan("create", "fee");
   const [open, setOpen] = React.useState(false);
   const [editing, setEditing] = React.useState<AdditionalFee | undefined>(undefined);
 
@@ -104,10 +106,12 @@ export function FeesManager() {
         <p className="text-[12px] text-fg-tertiary">
           Click a fee to edit. Use <span className="font-medium text-fg-subtle">+ New fee</span> to add to the catalog.
         </p>
-        <Button variant="primary" size="sm" onClick={openAdd}>
-          <Plus className="size-3.5" />
-          New fee
-        </Button>
+        {canCreate && (
+          <Button variant="primary" size="sm" onClick={openAdd}>
+            <Plus className="size-3.5" />
+            New fee
+          </Button>
+        )}
       </div>
 
       <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
@@ -162,6 +166,7 @@ export function FeesManager() {
         fields={FEE_FIELDS}
         onSave={handleSave}
         onDelete={editing ? handleDelete : undefined}
+        entity="fee"
       />
     </>
   );
