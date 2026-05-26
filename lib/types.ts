@@ -385,6 +385,19 @@ export interface ContractTemplate {
   body_preview: string;
   required_signers: ("boater" | "manager" | "witness")[];
   auto_renew: boolean;
+  /**
+   * Uploaded source document (PDF or DOCX). Base64 data URL in the
+   * prototype; an S3-backed URL once the backend lands.
+   */
+  source_file_url?: string;
+  source_file_name?: string;
+  source_file_type?: "pdf" | "docx";
+  /**
+   * Merge fields extracted from the uploaded document, surfaced so staff
+   * can confirm tokens before sending. Example: ["boater.legal_name",
+   * "slip.number", "contract.annual_rate"].
+   */
+  detected_merge_fields?: string[];
 }
 
 export type ContractStatus =

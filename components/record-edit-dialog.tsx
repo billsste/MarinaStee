@@ -23,7 +23,7 @@ import { useCurrentUser, can, ROLE_META, type Entity } from "@/lib/auth";
  *    via a pop up box"
  */
 
-export type FieldKind = "text" | "number" | "money" | "date" | "select" | "textarea" | "boolean";
+export type FieldKind = "text" | "number" | "money" | "date" | "select" | "textarea" | "boolean" | "file";
 
 export type FieldSpec<T> = {
   /** Property name on the record */
@@ -41,6 +41,8 @@ export type FieldSpec<T> = {
   step?: string;
   min?: number | string;
   max?: number | string;
+  /** MIME types / extensions for the file kind */
+  accept?: string;
 };
 
 export function RecordEditDialog<T>({
@@ -313,6 +315,61 @@ function FieldRenderer<T>({
           disabled={disabled}
           readOnly={disabled}
         />
+      </Field>
+    );
+  }
+
+  if (field.kind === "file") {
+    // File upload — read as base64 data URL, store in the form value.
+    // For PDFs we render a small inline preview iframe.
+    const dataUrl = typeof v === "string" ? v : "";
+    const isPdf = dataUrl.startsWith("data:application/pdf");
+    return (
+      <Field label={field.label} required={field.required} hint={field.hint}>
+        <div className="space-y-2">
+          <input
+            type="file"
+            accept={field.accept ?? "application/pdf,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"}
+            disabled={disabled}
+            onChange={async (e) => {
+              const f = e.target.files?.[0];
+              if (!f) return;
+              const reader = new FileReader();
+              reader.onload = () => {
+                const result = reader.result;
+                if (typeof result === "string") onChange(result);
+              };
+              reader.readAsDataURL(f);
+            }}
+            className="block w-full text-[12px] text-fg-subtle file:mr-2 file:rounded-[6px] file:border file:border-hairline file:bg-surface-2 file:px-2 file:py-1 file:text-[12px] file:font-medium file:text-fg hover:file:bg-surface-3"
+          />
+          {dataUrl && (
+            <div className="rounded-[8px] border border-hairline bg-surface-2 p-2">
+              <div className="mb-1 flex items-center justify-between text-[11px] text-fg-tertiary">
+                <span>Uploaded — {Math.round(dataUrl.length / 1024)} KB</span>
+                <button
+                  type="button"
+                  onClick={() => onChange("")}
+                  className="text-status-danger hover:underline"
+                >
+                  Clear
+                </button>
+              </div>
+              {isPdf && (
+                <iframe
+                  src={dataUrl}
+                  className="h-48 w-full rounded-[6px] border border-hairline bg-surface-1"
+                  title="Document preview"
+                />
+              )}
+              {!isPdf && (
+                <div className="text-[11px] italic text-fg-tertiary">
+                  DOCX preview is not rendered inline. Saved with the template.
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       </Field>
     );
   }

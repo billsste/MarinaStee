@@ -100,7 +100,14 @@ const TEMPLATE_FIELDS: FieldSpec<ContractTemplate>[] = [
   },
   { key: "default_annual_rate", label: "Default annual rate ($)", kind: "money", step: "1" },
   { key: "auto_renew", label: "Auto-renew", kind: "boolean", placeholder: "Auto-renew at term end" },
-  { key: "body_preview", label: "Body preview", kind: "textarea", placeholder: "Opening paragraph — used in agent drafting." },
+  {
+    key: "source_file_url",
+    label: "Upload contract (PDF or DOCX)",
+    kind: "file",
+    accept: "application/pdf,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    hint: "Drop in your lawyer-drafted contract. The agent uses this when drafting send-for-signature packages.",
+  },
+  { key: "body_preview", label: "Body preview / opening clause", kind: "textarea", placeholder: "Used in agent drafting when no source file is uploaded." },
 ];
 
 export function ContractsView() {
@@ -300,6 +307,11 @@ function TemplateCard({ t, onClick }: { t: ContractTemplate; onClick: () => void
         </div>
         <div className="flex items-center gap-1.5">
           <Badge tone="outline" size="sm">v{t.version}</Badge>
+          {t.source_file_url && (
+            <Badge tone="primary" size="sm" title={t.source_file_name ?? "Source contract uploaded"}>
+              PDF/DOCX
+            </Badge>
+          )}
           {t.auto_renew && (
             <Badge tone="primary" size="sm">
               <RefreshCw className="size-3" />

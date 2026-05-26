@@ -3,10 +3,24 @@
 import * as React from "react";
 import { Badge } from "@/components/ui/badge";
 import {
-  RENTAL_GROUPS,
-  RENTAL_SPACES,
-} from "@/lib/mock-data";
-import type { RentalSpace, SpaceStatus } from "@/lib/types";
+  useRentalGroups,
+  useRentalSpaces,
+} from "@/lib/client-store";
+import { cn } from "@/lib/utils";
+import type { RentalGroup, RentalSpace, SpaceStatus } from "@/lib/types";
+
+/*
+ * Dock map renderer.
+ *
+ * Slip-type groups render as a two-sided finger pier: port row above the
+ * pier line, starboard row below. Numbering convention assumes odd
+ * numbers are port, even are starboard — which matches most US marinas.
+ * Groups that don't have a clear odd/even split fall back to a sequential
+ * top-row/bottom-row split.
+ *
+ * Non-slip groups (buoy fields, jet-ski racks, dry storage) render as
+ * a uniform grid — their layout is closer to inventory than to a dock.
+ */
 
 const STATUS_BG: Record<SpaceStatus, string> = {
   vacant: "bg-status-ok/15 text-status-ok border-status-ok/30 hover:bg-status-ok/25",
@@ -22,11 +36,15 @@ const STATUS_LABEL: Record<SpaceStatus, string> = {
   out_of_service: "Out of service",
 };
 
+const FINGER_PIER_TYPES = new Set(["slips", "mooring"]);
+
 export function DockMap() {
+  const allGroups = useRentalGroups();
+  const allSpaces = useRentalSpaces();
   const [filter, setFilter] = React.useState<"all" | SpaceStatus>("all");
   const [groupFilter, setGroupFilter] = React.useState<string | "all">("all");
 
-  const groups = RENTAL_GROUPS.filter((g) => groupFilter === "all" || g.id === groupFilter);
+  const groups = allGroups.filter((g) => groupFilter === "all" || g.id === groupFilter);
 
   return (
     <div className="space-y-4">
@@ -44,7 +62,7 @@ export function DockMap() {
           aria-label="Filter by group"
         >
           <option value="all">All groups</option>
-          {RENTAL_GROUPS.map((g) => (
+          {allGroups.map((g) => (
             <option key={g.id} value={g.id}>
               {g.name}
             </option>
@@ -54,27 +72,30 @@ export function DockMap() {
 
       <div className="space-y-4">
         {groups.map((g) => {
-          const spaces = RENTAL_SPACES.filter((s) => s.group_id === g.id).filter(
-            (s) => filter === "all" || s.status === filter
-          );
+          const spaces = allSpaces
+            .filter((s) => s.group_id === g.id)
+            .filter((s) => filter === "all" || s.status === filter);
           if (spaces.length === 0 && filter !== "all") return null;
-          const occPct = g.total_spaces ? (g.occupied_spaces / g.total_spaces) * 100 : 0;
+          const total = allSpaces.filter((s) => s.group_id === g.id).length;
+          const occupied = allSpaces.filter((s) => s.group_id === g.id && s.status === "occupied").length;
+          const occPct = total ? (occupied / total) * 100 : 0;
+          const usePier = FINGER_PIER_TYPES.has(g.type);
           return (
             <div key={g.id} className="rounded-[12px] border border-hairline bg-surface-1 p-4">
               <div className="mb-3 flex items-end justify-between gap-3">
                 <div>
                   <h3 className="text-[14px] font-medium text-fg">{g.name}</h3>
                   <p className="text-[11px] text-fg-tertiary">
-                    {g.occupied_spaces} / {g.total_spaces} occupied · check-in {g.check_in_time}
+                    {occupied} / {total} occupied · check-in {g.check_in_time}
                   </p>
                 </div>
                 <OccupancyGauge pct={occPct} />
               </div>
 
               {spaces.length === 0 ? (
-                <p className="px-1 py-4 text-[12px] text-fg-tertiary">
-                  No spaces in this view.
-                </p>
+                <p className="px-1 py-4 text-[12px] text-fg-tertiary">No spaces in this view.</p>
+              ) : usePier ? (
+                <FingerPier group={g} spaces={spaces} />
               ) : (
                 <div className="grid grid-cols-[repeat(auto-fill,minmax(60px,1fr))] gap-1.5">
                   {spaces.map((s) => (
@@ -86,19 +107,77 @@ export function DockMap() {
           );
         })}
       </div>
+
+      <p className="text-[11px] text-fg-tertiary">
+        <Badge tone="primary" size="sm">v0.1 finger pier</Badge>{" "}
+        Slip groups split into port (top) / starboard (bottom) by odd/even number. Future iteration:
+        per-group layout config (T-heads, fairways, buoy positions on a map).
+      </p>
     </div>
   );
 }
 
-function SpaceTile({ space }: { space: RentalSpace }) {
+function FingerPier({ group, spaces }: { group: RentalGroup; spaces: RentalSpace[] }) {
+  // Sort by numeric slip number. If numbers parse cleanly, split by parity
+  // (odd=port, even=starboard — most US marinas). Otherwise split in half
+  // sequentially (top row = first half, bottom row = second half).
+  const parsed = spaces.map((s) => ({ s, n: Number(s.number) }));
+  const hasNumeric = parsed.every((p) => Number.isFinite(p.n));
+  let port: RentalSpace[] = [];
+  let starboard: RentalSpace[] = [];
+
+  if (hasNumeric) {
+    const sorted = [...parsed].sort((a, b) => a.n - b.n);
+    port = sorted.filter((p) => p.n % 2 === 1).map((p) => p.s);
+    starboard = sorted.filter((p) => p.n % 2 === 0).map((p) => p.s);
+  } else {
+    const half = Math.ceil(spaces.length / 2);
+    port = spaces.slice(0, half);
+    starboard = spaces.slice(half);
+  }
+
+  return (
+    <div className="overflow-x-auto pb-1">
+      <div className="inline-flex flex-col gap-1 min-w-full">
+        {/* Port (top) row */}
+        <div className="flex gap-1">
+          {port.length === 0 && <div className="text-[11px] italic text-fg-tertiary px-1 py-2">port: —</div>}
+          {port.map((s) => (
+            <SpaceTile key={s.id} space={s} compact />
+          ))}
+        </div>
+
+        {/* Pier walkway */}
+        <div className="flex h-3 items-center gap-2 px-1">
+          <div className="h-px flex-1 bg-fg-tertiary/40" />
+          <span className="text-[9px] uppercase tracking-wider text-fg-tertiary">
+            {group.name.replace(/Dock|dock/, "").trim() || "Pier"} ▸ walkway
+          </span>
+          <div className="h-px flex-1 bg-fg-tertiary/40" />
+        </div>
+
+        {/* Starboard (bottom) row */}
+        <div className="flex gap-1">
+          {starboard.length === 0 && <div className="text-[11px] italic text-fg-tertiary px-1 py-2">starboard: —</div>}
+          {starboard.map((s) => (
+            <SpaceTile key={s.id} space={s} compact />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SpaceTile({ space, compact }: { space: RentalSpace; compact?: boolean }) {
   return (
     <button
       type="button"
       title={`${space.number} — ${STATUS_LABEL[space.status]}`}
-      className={
-        "flex aspect-square flex-col items-center justify-center rounded-[6px] border text-[11px] font-medium transition-colors " +
-        STATUS_BG[space.status]
-      }
+      className={cn(
+        "flex flex-col items-center justify-center rounded-[6px] border text-[11px] font-medium transition-colors",
+        STATUS_BG[space.status],
+        compact ? "h-12 min-w-[44px] px-1.5" : "aspect-square"
+      )}
     >
       <span className="leading-none">{space.number}</span>
       {space.length_inches && (

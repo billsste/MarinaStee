@@ -15,6 +15,7 @@ import {
   Inbox,
   Bell,
   BarChart3,
+  ShieldCheck,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -44,6 +45,7 @@ const NAV_GROUPS: NavItem[][] = [
     { label: "Reservations", href: "/reservations", icon: CalendarRange },
     { label: "Work Orders", href: "/work-orders", icon: Wrench },
     { label: "Ledger / POS", href: "/ledger", icon: Receipt },
+    { label: "Insurance / COIs", href: "/insurance", icon: ShieldCheck },
     { label: "Reports", href: "/reports", icon: BarChart3 },
   ],
   // Group 2: Communications + alerts (signal about the above)
