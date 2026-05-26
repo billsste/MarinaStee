@@ -6,7 +6,6 @@ import {
   METER_READINGS,
   RENTAL_GROUPS,
   RENTAL_SPACES,
-  formatMoney,
   meterAnomaly,
   meterDelta,
 } from "@/lib/mock-data";
@@ -413,17 +412,18 @@ function executeReadTool(
 // Context snapshot for the system prompt (always-on context)
 // ────────────────────────────────────────────────────────────
 
-function buildContext(ledger: LedgerEntry[]): string {
-  const totalOpen = ledger
-    .filter((l) => l.type === "invoice")
-    .reduce((s, l) => s + l.open_balance, 0);
+// Intentionally static across requests so the entire system block can be
+// prompt-cached. Anything that changes per-request (live ledger totals,
+// timestamps, request IDs) must NOT be interpolated here — it would
+// invalidate the cache on every call. The agent has query_* tools for
+// fetching live data on demand.
+function buildContext(): string {
   const occupied = RENTAL_SPACES.filter((s) => s.status === "occupied").length;
   const vacant = RENTAL_SPACES.filter((s) => s.status === "vacant").length;
 
-  return `LIVE SNAPSHOT (always-on, current as of this request):
+  return `STATIC SNAPSHOT (stable mock data — for fresh numbers, call the query_* tools):
 
 Slip occupancy: ${occupied}/${RENTAL_SPACES.length} (${vacant} vacant)
-Total open A/R: ${formatMoney(totalOpen)}
 Meter anomalies flagged: ${METER_READINGS.filter(meterAnomaly).length}
 Active contracts: ${CONTRACTS.filter((c) => c.status === "active").length}
 
@@ -531,18 +531,60 @@ async function streamFromClaude({
   ledger: LedgerEntry[];
 }) {
   const client = new Anthropic({ apiKey });
-  const system = `${SYSTEM_PROMPT}\n\n${buildContext(ledger)}`;
+
+  // ── Prompt caching ──────────────────────────────────────────
+  // Render order is tools → system → messages. A cache_control marker on
+  // the last system block caches tools + system together; we also mark
+  // the last tool as a defense-in-depth breakpoint so the tools list
+  // caches independently if we ever vary the system prefix.
+  //
+  // For the growing messages array inside the tool loop, we set a single
+  // sliding breakpoint on the latest user-turn message each iteration —
+  // older breakpoints fall off (cleared before each request) but their
+  // cache entries persist in the 5-minute TTL store, so the new
+  // breakpoint walks back and reads the prior turn's prefix.
+  //
+  // Verify hits via response.usage.cache_read_input_tokens — if zero
+  // across repeated identical-prefix requests, something is invalidating
+  // the prefix (see shared/prompt-caching.md).
+  const systemBlocks: Anthropic.Messages.TextBlockParam[] = [
+    {
+      type: "text",
+      text: `${SYSTEM_PROMPT}\n\n${buildContext()}`,
+      cache_control: { type: "ephemeral" },
+    },
+  ];
+
+  // Mark the last tool with cache_control. The tools array is otherwise
+  // identical to the original ALL_TOOLS export — only the final entry
+  // gains a cache_control field.
+  const cachedTools: Anthropic.Messages.Tool[] =
+    ALL_TOOLS.length > 0
+      ? [
+          ...ALL_TOOLS.slice(0, -1),
+          { ...ALL_TOOLS[ALL_TOOLS.length - 1], cache_control: { type: "ephemeral" } },
+        ]
+      : ALL_TOOLS;
 
   const messages: Anthropic.Messages.MessageParam[] = [
-    { role: "user", content: prompt },
+    {
+      role: "user",
+      content: [{ type: "text", text: prompt }],
+    },
   ];
 
   for (let turn = 0; turn < MAX_TURNS; turn += 1) {
+    // Move the messages-side cache_control breakpoint to the last content
+    // block of the most-recent user-turn message. Strip any previous
+    // markers first so we never exceed the 4-breakpoint per-request budget
+    // (system + tools account for 2; this is the 3rd).
+    applyMessagesCacheControl(messages);
+
     const upstream = client.messages.stream({
       model: "claude-sonnet-4-5",
       max_tokens: 1024,
-      system,
-      tools: ALL_TOOLS,
+      system: systemBlocks,
+      tools: cachedTools,
       messages,
     });
 
@@ -614,6 +656,49 @@ async function streamFromClaude({
       }
     );
     messages.push({ role: "user", content: toolResults });
+  }
+}
+
+// ────────────────────────────────────────────────────────────
+// Prompt-caching helpers
+// ────────────────────────────────────────────────────────────
+
+/**
+ * Slides the messages-side prompt-cache breakpoint to the last content
+ * block of the most-recent user-turn message. Strips any prior
+ * cache_control markers first so we don't exceed the 4-breakpoint budget
+ * as the conversation grows across tool-loop turns.
+ *
+ * The cache entries written by previous turns persist in the 5-min TTL
+ * store; the new breakpoint walks back (up to 20 blocks) and reads them.
+ */
+function applyMessagesCacheControl(
+  messages: Anthropic.Messages.MessageParam[]
+): void {
+  // Clear any existing cache_control on message content blocks.
+  for (const msg of messages) {
+    if (typeof msg.content === "string") continue;
+    for (const block of msg.content) {
+      if (block && typeof block === "object" && "cache_control" in block) {
+        delete (block as { cache_control?: unknown }).cache_control;
+      }
+    }
+  }
+
+  // Find the last user-turn message and set cache_control on its final
+  // content block. Tool-loop turns push user-role tool_result arrays;
+  // turn 1 has the initial prompt in structured form.
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    const msg = messages[i];
+    if (msg.role !== "user") continue;
+    if (typeof msg.content === "string" || msg.content.length === 0) return;
+    const last = msg.content[msg.content.length - 1];
+    if (last && typeof last === "object") {
+      (last as { cache_control?: { type: "ephemeral" } }).cache_control = {
+        type: "ephemeral",
+      };
+    }
+    return;
   }
 }
 

@@ -106,7 +106,10 @@ export function BoaterRow({
       </div>
 
       {/* Last seen */}
-      <div className="min-w-0 text-right text-[12px] text-fg-tertiary">
+      {/* suppressHydrationWarning: relative time depends on Date.now(), so
+          server + client values can drift by a minute. The display is
+          cosmetic — accept the warning to avoid a mount-guard remount. */}
+      <div className="min-w-0 text-right text-[12px] text-fg-tertiary" suppressHydrationWarning>
         {relativeTime(boater.last_seen_at)}
       </div>
     </Link>

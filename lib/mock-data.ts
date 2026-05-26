@@ -1051,7 +1051,7 @@ const ANNUAL_HOLDERS_SPEC: AnnualHolderSpec[] = [
   // ── Damsite B Dock (larger boats) ──────────────────────────────────────
   { bId: "b_franklin", first: "Tom", last: "Franklin", email: "tfranklin@example.com", phone: "(505) 555-6610", slipId: "B02", vesselName: "Storyteller", vesselYear: 2015, vesselMake: "Regal", vesselModel: "33 XO", vesselType: "powerboat", fuelType: "gasoline", loaFt: 33, beamFt: 10.5, rate: 4400, yearsHeld: 8, expiryYear: 2026 },
   { bId: "b_brown", first: "Robert", last: "Brown", email: "rb@example.com", phone: "(505) 555-3344", slipId: "B05", vesselName: "Sea Lark", vesselYear: 2013, vesselMake: "Sea Ray", vesselModel: "330 Sundancer", vesselType: "powerboat", fuelType: "gasoline", loaFt: 33, beamFt: 11, rate: 4500, yearsHeld: 10, expiryYear: 2027 },
-  { bId: "b_kim", first: "Yujin", last: "Kim", email: "yujin.kim@example.com", phone: "(505) 555-7733", slipId: "B08", vesselName: "Aria", vesselYear: 2019, vesselMake: "Beneteau", vesselModel: "Oceanis 35", vesselType: "sailboat", fuelType: "diesel", loaFt: 34, beamFt: 11.5, rate: 4500, yearsHeld: 4, expiryYear: 2026 },
+  { bId: "b_yujin_kim", first: "Yujin", last: "Kim", email: "yujin.kim@example.com", phone: "(505) 555-7733", slipId: "B08", vesselName: "Aria", vesselYear: 2019, vesselMake: "Beneteau", vesselModel: "Oceanis 35", vesselType: "sailboat", fuelType: "diesel", loaFt: 34, beamFt: 11.5, rate: 4500, yearsHeld: 4, expiryYear: 2026 },
   { bId: "b_velasquez", first: "Mariana", last: "Velasquez", email: "mariv@example.com", phone: "(505) 555-1188", slipId: "B11", vesselName: "Sirena", vesselYear: 2017, vesselMake: "Sea Ray", vesselModel: "350 SLX", vesselType: "powerboat", fuelType: "gasoline", loaFt: 35, beamFt: 11, rate: 4700, yearsHeld: 5, expiryYear: 2026 },
   { bId: "b_carter", first: "James", last: "Carter", email: "jc@example.com", phone: "(505) 555-2245", slipId: "B14", vesselName: "Persistence", vesselYear: 2016, vesselMake: "Catalina", vesselModel: "375", vesselType: "sailboat", fuelType: "diesel", loaFt: 37, beamFt: 12, rate: 4900, yearsHeld: 6, expiryYear: 2027, tags: ["yacht_club"] },
   { bId: "b_okafor", first: "Chinedu", last: "Okafor", email: "co@example.com", phone: "(505) 555-9921", slipId: "B17", vesselName: "Ada", vesselYear: 2021, vesselMake: "Cobalt", vesselModel: "R8 Surf", vesselType: "powerboat", fuelType: "gasoline", loaFt: 28, beamFt: 9, rate: 4400, yearsHeld: 2, expiryYear: 2027 },
@@ -1210,9 +1210,23 @@ const ANNUAL_VESSELS = ANNUAL_HOLDERS.map((h) => h.vessel);
 const ANNUAL_CONTRACTS = ANNUAL_HOLDERS.map((h) => h.contract);
 const ANNUAL_RESERVATIONS = ANNUAL_HOLDERS.flatMap((h) => [h.reservation, ...h.prevReservations]);
 
-export const BOATERS: Boater[] = [...NAMED_BOATERS, ...ANNUAL_BOATERS];
-export const VESSELS: Vessel[] = [...NAMED_VESSELS, ...ANNUAL_VESSELS];
-export const RESERVATIONS: Reservation[] = [...NAMED_RESERVATIONS, ...ANNUAL_RESERVATIONS];
+// Belt-and-suspenders: dedupe by id so a stray descriptor collision never
+// crashes the UI with "two children with the same key". Earlier entries win
+// (NAMED_BOATERS are hand-written and take priority over annual seeds).
+function dedupeById<T extends { id: string }>(arr: T[]): T[] {
+  const seen = new Set<string>();
+  const out: T[] = [];
+  for (const item of arr) {
+    if (seen.has(item.id)) continue;
+    seen.add(item.id);
+    out.push(item);
+  }
+  return out;
+}
+
+export const BOATERS: Boater[] = dedupeById([...NAMED_BOATERS, ...ANNUAL_BOATERS]);
+export const VESSELS: Vessel[] = dedupeById([...NAMED_VESSELS, ...ANNUAL_VESSELS]);
+export const RESERVATIONS: Reservation[] = dedupeById([...NAMED_RESERVATIONS, ...ANNUAL_RESERVATIONS]);
 
 export const CONTRACTS: Contract[] = [emmonsContract, ...ANNUAL_CONTRACTS];
 

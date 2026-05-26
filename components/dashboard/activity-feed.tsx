@@ -1,5 +1,6 @@
 "use client";
 
+import * as React from "react";
 import Link from "next/link";
 import {
   Receipt,
@@ -30,6 +31,12 @@ export function ActivityFeed() {
   // Live ledger + comms from store; work orders are static for now.
   const { ledger, communications } = useStore();
   const { openLedgerEntry } = useLedgerDrawer();
+
+  // Mount guard: relative-time strings ("15m", "2h") drift between server
+  // render and client hydration because they depend on Date.now(). Render
+  // the absolute month/day on the server, then swap to relative after mount.
+  const [mounted, setMounted] = React.useState(false);
+  React.useEffect(() => setMounted(true), []);
 
   const activity: Activity[] = [
     ...communications.map((c) => ({
@@ -71,15 +78,22 @@ export function ActivityFeed() {
       {activity.slice(0, 10).map((a) => {
         const boater = BOATERS.find((b) => b.id === a.boater_id);
         const ts = new Date(a.ts);
-        const diffMs = Date.now() - ts.getTime();
-        const when =
-          diffMs < 0
-            ? ts.toLocaleDateString(undefined, { month: "short", day: "numeric" })
-            : diffMs < 3_600_000
-              ? `${Math.max(1, Math.round(diffMs / 60_000))}m`
-              : diffMs < 86_400_000
-                ? `${Math.round(diffMs / 3_600_000)}h`
-                : ts.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+        // Absolute date on first render (SSR-safe); after mount we swap in
+        // relative time. This avoids the hydration mismatch where server +
+        // client compute different "Xm ago" strings.
+        const absolute = ts.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+        let when = absolute;
+        if (mounted) {
+          const diffMs = Date.now() - ts.getTime();
+          when =
+            diffMs < 0
+              ? absolute
+              : diffMs < 3_600_000
+                ? `${Math.max(1, Math.round(diffMs / 60_000))}m`
+                : diffMs < 86_400_000
+                  ? `${Math.round(diffMs / 3_600_000)}h`
+                  : absolute;
+        }
 
         const icon =
           a.kind === "comm" ? <MessageSquare className="size-3" />
