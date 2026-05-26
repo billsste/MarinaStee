@@ -154,18 +154,34 @@ export function NewContractSheet({
     return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
   }
 
+  // Context-aware framing: when launched from a vacant slip (defaultSlipId
+  // present), the user mental model is "assign this slip to a holder" —
+  // the underlying contract is an implementation detail. Reframe the
+  // title + CTA accordingly. Otherwise it's a free-standing new contract.
+  const fromSlip = Boolean(defaultSlipId);
+  const slipForTitle = fromSlip
+    ? RENTAL_SPACES.find((s) => s.id === defaultSlipId)
+    : null;
+  const dialogTitle = fromSlip
+    ? `Assign slip ${slipForTitle?.number ?? defaultSlipId}`
+    : "New contract";
+  const dialogDescription = fromSlip
+    ? "Pick a holder and term to claim this slip. The system drafts the underlying contract — you can send it for signature from the holder's Contracts list after."
+    : "Pick a template, set the term, and Marina Stee drafts the agreement. Send for signature from the holder's Contracts list after.";
+  const ctaLabel = fromSlip ? "Assign holder" : "Draft contract";
+
   return (
     <CreateSheet
       open={open}
       onOpenChange={onOpenChange}
-      title="New contract"
-      description="Pick a template, set the term, and Marina Stee drafts the agreement. Send for signature from the holder's Contracts list after."
+      title={dialogTitle}
+      description={dialogDescription}
       size="lg"
       footer={
         <>
           <Button variant="ghost" size="md" onClick={() => onOpenChange(false)}>Cancel</Button>
           <Button variant="primary" size="md" onClick={submit} disabled={!canSubmit}>
-            Draft contract
+            {ctaLabel}
           </Button>
         </>
       }
