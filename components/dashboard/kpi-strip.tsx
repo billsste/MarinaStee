@@ -51,7 +51,7 @@ export function KpiStrip() {
         value={`${occ.occupied} / ${occ.total}`}
         sub={`${Math.round(occ.pct)}% across all groups`}
         tone={occ.pct >= 85 ? "danger" : occ.pct >= 60 ? "warn" : "ok"}
-        href="/rentals"
+        href="/docks"
       />
       <Kpi
         icon={<Users className="size-4" strokeWidth={1.75} />}

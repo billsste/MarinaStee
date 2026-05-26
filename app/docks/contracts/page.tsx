@@ -4,7 +4,7 @@ import { RentalsAsk } from "@/components/rentals/rentals-ask";
 import { RenewalPipelineView } from "@/components/contracts/renewal-pipeline-view";
 import { ContractsView } from "@/components/contracts/contracts-view";
 
-export const metadata = { title: "Contracts — Marina Stee Rentals" };
+export const metadata = { title: "Contracts — Marina Stee Docks" };
 
 /*
  * Contracts page — pipeline-first for the annual cadence (90% case).

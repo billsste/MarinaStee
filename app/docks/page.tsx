@@ -27,7 +27,7 @@ export default function RentalsOverviewPage() {
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-4">
         <Kpi
           icon={<Anchor className="size-4" />}
-          label="Spaces"
+          label="Slips"
           value={`${occ.occupied} / ${occ.total}`}
           sub={`${Math.round(occ.pct)}% occupied`}
           tone={occ.pct >= 85 ? "danger" : occ.pct >= 60 ? "warn" : "ok"}

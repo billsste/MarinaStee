@@ -1,7 +1,7 @@
 import { RentalsAsk } from "@/components/rentals/rentals-ask";
 import { RatesManager } from "@/components/rentals/rates-manager";
 
-export const metadata = { title: "Rates — Marina Stee Rentals" };
+export const metadata = { title: "Rates — Marina Stee Docks" };
 
 export default function RatesPage() {
   return (

@@ -126,7 +126,7 @@ export function ActivityFeed() {
               </button>
             ) : (
               <Link
-                href={a.kind === "wo" ? `/work-orders/${a.id}` : boater ? `/boaters/${boater.id}` : "#"}
+                href={a.kind === "wo" ? `/work-orders/${a.id}` : boater ? `/holders/${boater.id}` : "#"}
                 className="group flex min-w-0 flex-1 items-start gap-2.5"
               >
                 {rowInner}

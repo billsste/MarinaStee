@@ -41,7 +41,7 @@ export function BoaterRow({
 
   return (
     <Link
-      href={`/boaters/${boater.id}`}
+      href={`/holders/${boater.id}`}
       className="grid grid-cols-[minmax(0,1.8fr)_minmax(0,0.9fr)_minmax(0,0.9fr)_minmax(0,0.9fr)_minmax(0,0.9fr)_minmax(0,0.7fr)] items-center gap-3 border-b border-hairline px-4 py-3 text-[13px] transition-colors hover:bg-surface-2"
     >
       {/* Identity */}

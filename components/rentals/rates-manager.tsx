@@ -16,7 +16,7 @@ import { formatMoney } from "@/lib/mock-data";
 import type { OccupancyType, Rate, RateCadence } from "@/lib/types";
 
 /*
- * /rentals/rates — primary interactive surface for slip rates.
+ * /docks/rates — primary interactive surface for slip rates.
  *
  * Implements the user mandate: every row can be Edit / Remove / Add via a
  * centered pop-up. Click any rate row → opens the edit dialog. Use the

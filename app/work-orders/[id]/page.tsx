@@ -74,7 +74,7 @@ export default async function WorkOrderDetailPage({ params }: Props) {
               {boater && (
                 <Badge tone="neutral">
                   for{" "}
-                  <Link href={`/boaters/${boater.id}`} className="ml-1 text-primary hover:underline">
+                  <Link href={`/holders/${boater.id}`} className="ml-1 text-primary hover:underline">
                     {boater.display_name}
                   </Link>
                 </Badge>

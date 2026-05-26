@@ -9,7 +9,7 @@ import {
   formatMoney,
 } from "@/lib/mock-data";
 
-export const metadata = { title: "Gas Tracking — Marina Stee Rentals" };
+export const metadata = { title: "Gas Tracking — Marina Stee Docks" };
 
 export default function GasPage() {
   const recentSales = [...FUEL_SALES].sort((a, b) => (a.sold_at < b.sold_at ? 1 : -1));

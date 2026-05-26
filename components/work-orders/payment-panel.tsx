@@ -32,7 +32,7 @@ export function PaymentPanel({ quote }: { quote: Quote }) {
             <div>
               <span className="text-fg-tertiary">Invoice:</span>{" "}
               <Link
-                href={`/boaters/${invoice.boater_id}?tab=financials`}
+                href={`/holders/${invoice.boater_id}?tab=financials`}
                 className="font-mono text-primary hover:underline"
               >
                 {invoice.number}
@@ -55,7 +55,7 @@ export function PaymentPanel({ quote }: { quote: Quote }) {
           <div>
             <span className="text-fg-tertiary">Invoice:</span>{" "}
             <Link
-              href={`/boaters/${invoice.boater_id}?tab=financials`}
+              href={`/holders/${invoice.boater_id}?tab=financials`}
               className="font-mono text-primary hover:underline"
             >
               {invoice.number}

@@ -291,7 +291,7 @@ function RosterRow({ row, onAssign }: { row: Row; onAssign: () => void }) {
   return (
     <li>
       <Link
-        href={`/boaters/${boater.id}`}
+        href={`/holders/${boater.id}`}
         className={cn(gridClass, "cursor-pointer hover:bg-surface-2")}
       >
         <span className="font-mono text-[12px] font-medium text-fg">{slip.id}</span>

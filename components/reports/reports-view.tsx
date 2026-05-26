@@ -184,7 +184,7 @@ export function ReportsView() {
             value={formatMoney(annualARR)}
             sub={`${activeAnnualContracts.length} active contracts`}
             tone="ok"
-            href="/rentals/contracts"
+            href="/docks/contracts"
           />
           <Kpi
             icon={<CalendarClock className="size-4" />}
@@ -192,7 +192,7 @@ export function ReportsView() {
             value={`${expiring90.length}`}
             sub={`${expiring180.length} within 180 days`}
             tone={expiring90.length > 0 ? "warn" : "neutral"}
-            href="/rentals/spaces"
+            href="/docks/slips"
           />
           <Kpi
             icon={<FileSignature className="size-4" />}
@@ -204,7 +204,7 @@ export function ReportsView() {
                 : `${renewedCount} of ${endedLastYear.length} renewed`
             }
             tone={renewalRate === null ? "neutral" : renewalRate >= 85 ? "ok" : renewalRate >= 70 ? "info" : "warn"}
-            href="/rentals/contracts"
+            href="/docks/contracts"
           />
           <Kpi
             icon={<Ship className="size-4" />}
@@ -212,7 +212,7 @@ export function ReportsView() {
             value={`${lapsedContracts.length}`}
             sub="Need re-engagement or waitlist match"
             tone={lapsedContracts.length > 0 ? "warn" : "ok"}
-            href="/rentals/spaces"
+            href="/docks/slips"
           />
         </div>
       </section>
@@ -249,7 +249,7 @@ export function ReportsView() {
             value={`${occ.pct.toFixed(0)}%`}
             sub={`${occ.occupied} of ${occ.total} spaces`}
             tone={occ.pct > 80 ? "ok" : occ.pct > 50 ? "info" : "warn"}
-            href="/rentals"
+            href="/docks"
           />
           <Kpi
             icon={<Ship className="size-4" />}
@@ -328,7 +328,7 @@ export function ReportsView() {
                   className="flex items-center justify-between gap-2 rounded-[6px] px-2 py-1 hover:bg-surface-2"
                 >
                   <Link
-                    href={`/boaters/${r.boater!.id}`}
+                    href={`/holders/${r.boater!.id}`}
                     className="flex min-w-0 items-center gap-2 truncate text-fg hover:text-primary"
                   >
                     <span className="inline-flex size-5 shrink-0 items-center justify-center rounded-full bg-surface-3 text-[10px] font-medium text-fg-subtle">

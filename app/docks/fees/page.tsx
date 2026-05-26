@@ -1,7 +1,7 @@
 import { RentalsAsk } from "@/components/rentals/rentals-ask";
 import { FeesManager } from "@/components/rentals/fees-manager";
 
-export const metadata = { title: "Additional Fees — Marina Stee Rentals" };
+export const metadata = { title: "Additional Fees — Marina Stee Docks" };
 
 export default function FeesPage() {
   return (

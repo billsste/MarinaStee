@@ -1,7 +1,7 @@
 import { RentalsAsk } from "@/components/rentals/rentals-ask";
 import { MetersManager } from "@/components/rentals/meters-manager";
 
-export const metadata = { title: "Meter Readings — Marina Stee Rentals" };
+export const metadata = { title: "Meter Readings — Marina Stee Docks" };
 
 export default function MetersPage() {
   return (

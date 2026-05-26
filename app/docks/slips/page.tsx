@@ -4,7 +4,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { RosterView } from "@/components/rentals/roster-view";
 import { InventoryView } from "@/components/rentals/inventory-view";
 
-export const metadata = { title: "Spaces — Marina Stee Rentals" };
+export const metadata = { title: "Slips — Marina Stee Docks" };
 
 /*
  * Spaces is now ROSTER-first for the annual-holder marina.

@@ -43,10 +43,10 @@ export default async function BoaterDetailPage({ params }: Props) {
   return (
     <div className="mx-auto w-full max-w-[1200px] px-5 pt-6 pb-12">
       <Link
-        href="/boaters"
+        href="/holders"
         className="mb-3 inline-flex items-center gap-1 text-[12px] text-fg-subtle hover:text-fg"
       >
-        <ChevronLeft className="size-3.5" /> All boaters
+        <ChevronLeft className="size-3.5" /> All holders
       </Link>
 
       <BoaterIdentityBar

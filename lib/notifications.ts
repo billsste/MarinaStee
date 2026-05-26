@@ -79,7 +79,7 @@ function overduePayments(ledger: LedgerEntry[], now: Date): Alert[] {
         detail: `Invoice ${l.number ?? l.id.slice(-6)} dated ${l.date} (${ageDays} days old).`,
         occurred_at: l.date,
         boater_id: l.boater_id,
-        href: boater ? `/boaters/${boater.id}` : undefined,
+        href: boater ? `/holders/${boater.id}` : undefined,
         suggested_prompt: boater
           ? `Send a payment reminder to ${boater.first_name}`
           : undefined,
@@ -98,7 +98,7 @@ function meterAnomalies(now: Date): Alert[] {
       title: `Slip ${sp?.number ?? "?"} pedestal jumped +${delta} ${m.unit ?? "units"}`,
       detail: `Meter ${m.meter_number} reading ${m.current_reading.toLocaleString()} — investigate before billing.`,
       occurred_at: m.current_ts ?? now.toISOString(),
-      href: "/rentals/meters",
+      href: "/docks/meters",
       suggested_prompt: `Open a work order to investigate pedestal ${sp?.number ?? m.meter_number}`,
     };
   });
@@ -131,7 +131,7 @@ function contractExpiry(now: Date): Alert[] {
             : `${daysRemaining} days remaining. Annual rate $${(c.annual_rate ?? 0).toLocaleString()}.`,
         occurred_at: c.effective_end,
         boater_id: c.boater_id,
-        href: boater ? `/boaters/${boater.id}` : "/rentals/contracts",
+        href: boater ? `/holders/${boater.id}` : "/docks/contracts",
         suggested_prompt: boater
           ? `Draft a renewal contract for ${boater.first_name}`
           : undefined,
@@ -151,7 +151,7 @@ function fuelLow(now: Date): Alert[] {
       title: `${cap(inv.fuel_type)} tank at ${pct.toFixed(0)}%`,
       detail: `${inv.current_level_gallons.toLocaleString()} of ${inv.tank_capacity_gallons.toLocaleString()} gal. Reorder threshold ${inv.reorder_threshold_pct}%.`,
       occurred_at: inv.last_updated_at ?? now.toISOString(),
-      href: "/rentals/gas",
+      href: "/docks/gas",
       suggested_prompt: `Place a fuel reorder for ${inv.fuel_type}`,
     };
   });
@@ -218,7 +218,7 @@ function insuranceExpiry(insurance: InsuranceCertificate[], now: Date): Alert[] 
       } · through ${c.effective_end}.`,
       occurred_at: c.effective_end,
       boater_id: c.boater_id,
-      href: boater ? `/boaters/${boater.id}` : undefined,
+      href: boater ? `/holders/${boater.id}` : undefined,
       suggested_prompt: boater
         ? `Ask ${boater.first_name} to upload a renewed COI for ${vessel?.name ?? "their vessel"}`
         : undefined,

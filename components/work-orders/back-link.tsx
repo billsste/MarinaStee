@@ -8,7 +8,7 @@ import { BOATERS } from "@/lib/mock-data";
 /*
  * Context-aware Back link for the work order detail page.
  *
- * If the user navigated here from a boater page (/boaters/[id]/...),
+ * If the user navigated here from a boater page (/holders/[id]/...),
  * the back link returns to that boater. Otherwise it falls back to the
  * global kanban (/work-orders). Reads document.referrer once on mount;
  * before that, renders the safe default so SSR + first paint match.
@@ -26,13 +26,13 @@ export function WorkOrderBackLink({ fallbackBoaterId }: { fallbackBoaterId?: str
       if (!ref) return;
       const url = new URL(ref);
       if (url.origin !== window.location.origin) return;
-      const m = url.pathname.match(/^\/boaters\/([^/]+)/);
+      const m = url.pathname.match(/^\/holders\/([^/]+)/);
       if (m) {
         const boaterId = m[1];
         const boater = BOATERS.find((b) => b.id === boaterId);
         if (boater) {
           setOrigin({
-            href: `/boaters/${boaterId}`,
+            href: `/holders/${boaterId}`,
             label: `Back to ${boater.display_name}`,
           });
           return;

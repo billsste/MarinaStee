@@ -1008,7 +1008,7 @@ export const COMMUNICATIONS: Communication[] = [...emmonsComms, ...otherCommunic
 // vessel types. The same data shape as Emmons — Boater + Vessel +
 // Contract + current-season Reservation.
 //
-// Drives: /rentals/spaces roster, /rentals/contracts renewal pipeline,
+// Drives: /docks/slips roster, /docks/contracts renewal pipeline,
 // /ledger billing run, /reports annual KPIs.
 // ============================================================
 

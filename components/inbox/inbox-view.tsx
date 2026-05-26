@@ -395,7 +395,7 @@ function ThreadView({
       <header className="flex items-start justify-between gap-3 border-b border-hairline px-4 py-3">
         <div>
           <Link
-            href={`/boaters/${boater.id}`}
+            href={`/holders/${boater.id}`}
             className="text-[15px] font-medium text-fg hover:text-primary"
           >
             {boater.display_name}
@@ -419,7 +419,7 @@ function ThreadView({
             </Button>
           )}
           <Button variant="secondary" size="sm" asChild>
-            <Link href={`/boaters/${boater.id}`}>Open profile →</Link>
+            <Link href={`/holders/${boater.id}`}>Open profile →</Link>
           </Button>
         </div>
       </header>

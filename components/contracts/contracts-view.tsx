@@ -356,7 +356,7 @@ function ContractRow({
         {boater ? (
           // stopPropagation so clicking the boater link doesn't also open the edit dialog
           <Link
-            href={`/boaters/${boater.id}`}
+            href={`/holders/${boater.id}`}
             className="text-primary hover:underline"
             onClick={(e) => e.stopPropagation()}
           >

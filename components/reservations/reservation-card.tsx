@@ -37,7 +37,7 @@ export function ReservationCard({
           <div className="flex items-center gap-1.5">
             {boater ? (
               <Link
-                href={`/boaters/${boater.id}`}
+                href={`/holders/${boater.id}`}
                 className="truncate text-[13px] font-medium text-fg hover:text-primary"
               >
                 {boater.display_name}
@@ -108,7 +108,7 @@ export function ReservationCard({
           )}
           {variant === "upcoming" && boater && (
             <Button variant="ghost" size="sm" asChild>
-              <Link href={`/boaters/${boater.id}`}>View</Link>
+              <Link href={`/holders/${boater.id}`}>View</Link>
             </Button>
           )}
         </div>

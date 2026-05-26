@@ -39,8 +39,8 @@ const NAV_GROUPS: NavItem[][] = [
   // Group 1: Dashboard + core operational entities
   [
     { label: "Dashboard", href: "/", icon: LayoutDashboard },
-    { label: "Rentals", href: "/rentals", icon: Anchor },
-    { label: "Boaters", href: "/boaters", icon: Users },
+    { label: "Docks", href: "/docks", icon: Anchor },
+    { label: "Holders", href: "/holders", icon: Users },
     { label: "Reservations", href: "/reservations", icon: CalendarRange },
     { label: "Work Orders", href: "/work-orders", icon: Wrench },
     { label: "Ledger / POS", href: "/ledger", icon: Receipt },

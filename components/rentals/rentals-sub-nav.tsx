@@ -14,13 +14,13 @@ import {
 import { cn } from "@/lib/utils";
 
 const NAV = [
-  { href: "/rentals", label: "Overview", icon: LayoutGrid, exact: true },
-  { href: "/rentals/spaces", label: "Spaces", icon: List },
-  { href: "/rentals/rates", label: "Rates", icon: Tag },
-  { href: "/rentals/fees", label: "Fees", icon: Plus },
-  { href: "/rentals/gas", label: "Gas", icon: Fuel },
-  { href: "/rentals/meters", label: "Meters", icon: Gauge },
-  { href: "/rentals/contracts", label: "Contracts", icon: FileText },
+  { href: "/docks", label: "Overview", icon: LayoutGrid, exact: true },
+  { href: "/docks/slips", label: "Slips", icon: List },
+  { href: "/docks/rates", label: "Rates", icon: Tag },
+  { href: "/docks/fees", label: "Fees", icon: Plus },
+  { href: "/docks/gas", label: "Gas", icon: Fuel },
+  { href: "/docks/meters", label: "Meters", icon: Gauge },
+  { href: "/docks/contracts", label: "Contracts", icon: FileText },
 ];
 
 export function RentalsSubNav() {
