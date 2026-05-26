@@ -6,7 +6,7 @@ import { Search, Sparkles, UserPlus } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { SpacesToolbar } from "@/components/rentals/spaces-toolbar";
-import { NewContractSheet } from "@/components/financials/new-contract-sheet";
+import { useRouter } from "next/navigation";
 import {
   BOATERS,
   SLIPS,
@@ -60,9 +60,9 @@ export function RosterView() {
   const [cadence, setCadence] = React.useState<CadenceFilter>("all");
   const [status, setStatus] = React.useState<StatusFilter>("all");
   const [query, setQuery] = React.useState("");
-  // Vacant slips become "assign" actions — clicking opens the contract
-  // dialog pre-seeded with the slip id so staff can claim it in one shot.
-  const [assignSlipId, setAssignSlipId] = React.useState<string | null>(null);
+  // Vacant slips → navigate into the assignment wizard at
+  // /slips/[id]/assign instead of opening a one-shot dialog.
+  const router = useRouter();
 
   // Build joined rows once per change
   const rows: Row[] = React.useMemo(() => {
@@ -217,7 +217,7 @@ export function RosterView() {
               <RosterRow
                 key={r.slip.id}
                 row={r}
-                onAssign={() => setAssignSlipId(r.slip.id)}
+                onAssign={() => router.push(`/slips/${r.slip.id}/assign`)}
               />
             ))}
           </ul>
@@ -234,11 +234,6 @@ export function RosterView() {
         </span>
       </div>
 
-      <NewContractSheet
-        open={assignSlipId !== null}
-        onOpenChange={(b) => { if (!b) setAssignSlipId(null); }}
-        defaultSlipId={assignSlipId ?? undefined}
-      />
     </div>
   );
 }
