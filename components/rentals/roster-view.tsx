@@ -267,14 +267,12 @@ export function RosterView() {
 
       {/* Roster table */}
       <div className="overflow-hidden rounded-[12px] border border-hairline bg-surface-1">
-        <div className="grid grid-cols-[64px_minmax(0,1.6fr)_minmax(0,1.5fr)_minmax(0,1.1fr)_88px_minmax(0,1.2fr)_96px_120px] gap-3 border-b border-hairline bg-surface-2 px-3 py-2 text-[10px] font-medium uppercase tracking-wide text-fg-tertiary">
+        <div className="grid grid-cols-[64px_minmax(0,1.8fr)_minmax(0,1.7fr)_minmax(0,1.2fr)_120px_140px] gap-3 border-b border-hairline bg-surface-2 px-3 py-2 text-[10px] font-medium uppercase tracking-wide text-fg-tertiary">
           <span>Slip</span>
           <span>Holder</span>
           <span>Vessel</span>
           <span>Cadence</span>
           <span className="text-right">Rate</span>
-          <span>Expires</span>
-          <span className="text-right">Time left</span>
           <span>Status</span>
         </div>
         {filtered.length === 0 ? (
@@ -364,7 +362,7 @@ function RosterRow({
   onAssign: () => void;
   onEditSlip: () => void;
 }) {
-  const { slip, contract, boater, vessel, rowStatus, daysUntilExpiry } = row;
+  const { slip, contract, boater, vessel, rowStatus } = row;
   const statusBadge = (() => {
     if (rowStatus === "vacant") return <Badge tone="ok" size="sm">Vacant</Badge>;
     if (rowStatus === "lapsed") return <Badge tone="danger" size="sm">Lapsed</Badge>;
@@ -373,7 +371,7 @@ function RosterRow({
   })();
 
   const gridClass =
-    "grid grid-cols-[64px_minmax(0,1.6fr)_minmax(0,1.5fr)_minmax(0,1.1fr)_88px_minmax(0,1.2fr)_96px_120px] items-center gap-3 px-3 py-2 text-[13px] transition-colors";
+    "grid grid-cols-[64px_minmax(0,1.8fr)_minmax(0,1.7fr)_minmax(0,1.2fr)_120px_140px] items-center gap-3 px-3 py-2 text-[13px] transition-colors";
 
   // Hover-only pencil affordance for editing the slip's intrinsic
   // defaults (class, max LOA/beam, default rates). Sits above the row's
@@ -427,8 +425,6 @@ function RosterRow({
               ? formatMoney(slip.default_annual_rate)
               : "—"}
           </span>
-          <span className="text-fg-tertiary">—</span>
-          <span className="text-right text-fg-tertiary">—</span>
           <span>{statusBadge}</span>
         </button>
       </li>
@@ -486,24 +482,6 @@ function RosterRow({
           ) : (
             "—"
           )}
-        </span>
-        <span className="text-[12px] text-fg-subtle">
-          {contract?.effective_end ?? "—"}
-        </span>
-        <span
-          className={cn(
-            "text-right tabular text-[12px]",
-            daysUntilExpiry === null && "text-fg-tertiary",
-            daysUntilExpiry !== null && daysUntilExpiry < 0 && "text-status-danger",
-            daysUntilExpiry !== null && daysUntilExpiry >= 0 && daysUntilExpiry <= 90 && "text-status-warn",
-            daysUntilExpiry !== null && daysUntilExpiry > 90 && "text-fg-subtle"
-          )}
-        >
-          {daysUntilExpiry === null
-            ? "—"
-            : daysUntilExpiry < 0
-            ? `${-daysUntilExpiry}d ago`
-            : `${daysUntilExpiry}d`}
         </span>
         <span>{statusBadge}</span>
       </Link>
