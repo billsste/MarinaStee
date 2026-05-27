@@ -273,7 +273,7 @@ export function RosterView() {
           <span>Vessel</span>
           <span>Cadence</span>
           <span className="text-right">Rate</span>
-          <span>Through</span>
+          <span>Expires</span>
           <span className="text-right">Days</span>
           <span>Status</span>
         </div>
@@ -462,16 +462,16 @@ function RosterRow({
         </span>
         <span className="text-right tabular text-fg">
           {contract?.annual_rate ? (
-            <>
-              {formatMoney(contract.annual_rate)}
-              {/* Flag override when contract rate diverges materially
-                  from the slip's default — staff sees discounted /
-                  comp'd / grandfathered pricing at a glance. */}
+            <span className="inline-flex items-baseline justify-end gap-1">
+              {/* Override flag — rendered BEFORE the money so the
+                  money's right edge aligns identically across all rows
+                  (with or without an override). Staff sees discounted
+                  / comp'd / grandfathered pricing at a glance. */}
               {slip.default_annual_rate > 0 &&
                 Math.abs(contract.annual_rate - slip.default_annual_rate) >= 100 && (
                   <span
                     className={cn(
-                      "ml-1 inline-block text-[10px]",
+                      "text-[10px]",
                       contract.annual_rate < slip.default_annual_rate
                         ? "text-status-warn"
                         : "text-status-info"
@@ -481,7 +481,8 @@ function RosterRow({
                     {contract.annual_rate < slip.default_annual_rate ? "↓" : "↑"}
                   </span>
                 )}
-            </>
+              <span>{formatMoney(contract.annual_rate)}</span>
+            </span>
           ) : (
             "—"
           )}
