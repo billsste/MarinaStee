@@ -3,6 +3,7 @@ import type {
   Vessel,
   Picklist,
   PicklistValue,
+  Dock,
   Slip,
   SlipClass,
   Tenant,
@@ -705,6 +706,7 @@ function makeSlip(
   const annual = annualRateFor(loa, slipClass);
   return {
     id: `${prefix}${padded}`,
+    dock_id: `dock_${prefix.toLowerCase()}`,
     dock,
     invoice_category: category,
     number: padded,
@@ -720,6 +722,18 @@ function makeSlip(
     default_seasonal_rate: Math.round((annual * 0.6) / 50) * 50,
   };
 }
+
+// Dock entities — Slip.dock_id points here. Operators edit these via
+// Settings → Docks; the prefix drives auto-generated slip ids when
+// adding a new slip.
+export const DOCKS: Dock[] = [
+  { id: "dock_a", tenant_id: SEED_TENANT_ID, name: "Damsite A Dock", short_name: "A Dock", prefix: "A", sort_order: 0, active: true },
+  { id: "dock_b", tenant_id: SEED_TENANT_ID, name: "Damsite B Dock", short_name: "B Dock", prefix: "B", sort_order: 1, active: true },
+  { id: "dock_c", tenant_id: SEED_TENANT_ID, name: "Damsite C Dock", short_name: "C Dock", prefix: "C", sort_order: 2, active: true },
+  { id: "dock_d", tenant_id: SEED_TENANT_ID, name: "Damsite D Dock", short_name: "D Dock", prefix: "D", sort_order: 3, active: true },
+  { id: "dock_e", tenant_id: SEED_TENANT_ID, name: "Damsite E Dock", short_name: "E Dock", prefix: "E", sort_order: 4, active: true },
+  { id: "dock_t", tenant_id: SEED_TENANT_ID, name: "Transient Dock", short_name: "Transient", prefix: "T", sort_order: 5, active: true },
+];
 
 export const SLIPS: Slip[] = [
   // Damsite A Dock — 30 uncovered slips, 24–34 ft. Standard pricing.
@@ -760,6 +774,7 @@ export const SLIPS: Slip[] = [
     const padded = `0${num}`;
     return {
       id: `T${padded}`,
+      dock_id: "dock_t",
       dock: "Transient Dock",
       invoice_category: "BOGGS Cove",
       number: `T-${padded}`,

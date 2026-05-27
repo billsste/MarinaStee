@@ -15,7 +15,9 @@ import {
 } from "@/lib/mock-data";
 import {
   upsertSlip,
+  useActiveDocks,
   useContracts,
+  useDocks,
   usePicklistLabel,
   useReservations,
   useSlips,
@@ -98,11 +100,16 @@ export function RosterView() {
   // slip" affordance can mutate slip_class / default_annual_rate /
   // dimensions without crossing the server/seed boundary.
   const slips = useSlips();
-
-  const docks = React.useMemo(
-    () => Array.from(new Set(slips.map((s) => s.dock))).sort(),
-    [slips]
-  );
+  // First-class Dock entity drives filter chips + the dock-name lookup
+  // in row rendering. Operators rename docks in Settings → Docks and
+  // every row picks up the new name without touching slip records.
+  const activeDocks = useActiveDocks();
+  const allDocks = useDocks();
+  const dockNameById = React.useMemo(() => {
+    const m = new Map<string, string>();
+    for (const d of allDocks) m.set(d.id, d.short_name || d.name);
+    return m;
+  }, [allDocks]);
 
   // Slip-edit dialog state — opens from the small pencil affordance
   // appearing on each row hover.
@@ -161,7 +168,7 @@ export function RosterView() {
   const filtered = React.useMemo(() => {
     const q = query.trim().toLowerCase();
     return rows.filter((r) => {
-      if (dock !== "all" && r.slip.dock !== dock) return false;
+      if (dock !== "all" && r.slip.dock_id !== dock) return false;
       if (cadence !== "all" && r.boater?.billing_cadence !== cadence) {
         // vacant slips have no cadence — they only match when filter is "all"
         return false;
@@ -220,7 +227,13 @@ export function RosterView() {
           <Seg
             label="Dock"
             value={dock}
-            options={[{ value: "all", label: "All" }, ...docks.map((d) => ({ value: d, label: shortenDock(d) }))]}
+            options={[
+              { value: "all", label: "All" },
+              ...activeDocks.map((d) => ({
+                value: d.id,
+                label: d.short_name || d.name,
+              })),
+            ]}
             onChange={setDock}
           />
           <Seg
@@ -267,8 +280,9 @@ export function RosterView() {
 
       {/* Roster table */}
       <div className="overflow-hidden rounded-[12px] border border-hairline bg-surface-1">
-        <div className="grid grid-cols-[64px_minmax(0,1.8fr)_minmax(0,1.7fr)_minmax(0,1.2fr)_120px_140px] gap-3 border-b border-hairline bg-surface-2 px-3 py-2 text-[10px] font-medium uppercase tracking-wide text-fg-tertiary">
+        <div className="grid grid-cols-[64px_84px_minmax(0,1.8fr)_minmax(0,1.7fr)_minmax(0,1.1fr)_120px_140px] gap-3 border-b border-hairline bg-surface-2 px-3 py-2 text-[10px] font-medium uppercase tracking-wide text-fg-tertiary">
           <span>Slip</span>
+          <span>Dock</span>
           <span>Holder</span>
           <span>Vessel</span>
           <span>Cadence</span>
@@ -285,6 +299,7 @@ export function RosterView() {
               <RosterRow
                 key={r.slip.id}
                 row={r}
+                dockLabel={dockNameById.get(r.slip.dock_id) ?? r.slip.dock}
                 onAssign={() => router.push(`/slips/${r.slip.id}/assign`)}
                 onEditSlip={() => openSlipEdit(r.slip)}
               />
@@ -319,14 +334,24 @@ export function RosterView() {
         fields={SLIP_FIELDS}
         record={editingSlip}
         onSave={(values) => {
-          // Generate a synthetic id for new slips. Convention: short
-          // dock prefix + slip number — keeps demo IDs readable
-          // (e.g. "DSM-15"). Falls back to a timestamp if dock/number
-          // missing so we still get a unique id.
-          const dockPrefix = (values.dock || "SLP")
-            .replace(/[^A-Za-z]/g, "")
-            .toUpperCase()
-            .slice(0, 3);
+          // Resolve dock_id from the dock name. If the dock string
+          // matches an existing dock (case-insensitive), reuse its id;
+          // otherwise mint a runtime id derived from the name. Real
+          // operator workflow: pick the dock from Settings → Docks
+          // first, then add slips to it.
+          const dockName = (values.dock || "Unsorted").trim();
+          const existing = allDocks.find(
+            (d) =>
+              d.name.toLowerCase() === dockName.toLowerCase() ||
+              d.short_name.toLowerCase() === dockName.toLowerCase()
+          );
+          const dockId =
+            existing?.id ??
+            `dock_runtime_${dockName.replace(/\s+/g, "_").toLowerCase()}`;
+          const dockPrefix =
+            existing?.prefix ??
+            (dockName.replace(/[^A-Za-z]/g, "").toUpperCase().slice(0, 3) ||
+              "SLP");
           const number = values.number || "1";
           const generatedId =
             !values.id || values.id === ""
@@ -335,8 +360,9 @@ export function RosterView() {
           upsertSlip({
             ...values,
             id: generatedId,
+            dock_id: dockId,
             number: values.number || "1",
-            dock: values.dock || "Unsorted",
+            dock: dockName,
             slip_class: values.slip_class || "uncovered",
             max_loa_inches: Number(values.max_loa_inches) || 0,
             max_beam_inches: Number(values.max_beam_inches) || 0,
@@ -355,10 +381,12 @@ export function RosterView() {
 
 function RosterRow({
   row,
+  dockLabel,
   onAssign,
   onEditSlip,
 }: {
   row: Row;
+  dockLabel: string;
   onAssign: () => void;
   onEditSlip: () => void;
 }) {
@@ -371,7 +399,7 @@ function RosterRow({
   })();
 
   const gridClass =
-    "grid grid-cols-[64px_minmax(0,1.8fr)_minmax(0,1.7fr)_minmax(0,1.2fr)_120px_140px] items-center gap-3 px-3 py-2 text-[13px] transition-colors";
+    "grid grid-cols-[64px_84px_minmax(0,1.8fr)_minmax(0,1.7fr)_minmax(0,1.1fr)_120px_140px] items-center gap-3 px-3 py-2 text-[13px] transition-colors";
 
   // Hover-only pencil affordance for editing the slip's intrinsic
   // defaults (class, max LOA/beam, default rates). Sits above the row's
@@ -410,6 +438,7 @@ function RosterRow({
             {slip.id}
             <SlipClassDot slipClass={slip.slip_class} />
           </span>
+          <span className="truncate text-[12px] text-fg-subtle">{dockLabel}</span>
           <span className="min-w-0 truncate">
             <span className="inline-flex items-center gap-1 text-fg-tertiary group-hover:text-primary">
               <UserPlus className="size-3" />
@@ -442,6 +471,7 @@ function RosterRow({
           {slip.id}
           <SlipClassDot slipClass={slip.slip_class} />
         </span>
+        <span className="truncate text-[12px] text-fg-subtle">{dockLabel}</span>
         <span className="min-w-0 truncate">
           <span className="font-medium text-fg">{boater.display_name}</span>
           {boater.tags.includes("board_member") && (

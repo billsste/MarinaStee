@@ -78,9 +78,12 @@ export function CsvImportView() {
     for (const [idx, row] of rows.entries()) {
       try {
         if (kind === "slips") {
+          const dockName = row.dock || "Unsorted";
+          const dockId = `dock_csv_${dockName.replace(/\s+/g, "_").toLowerCase()}`;
           const slip: Slip = {
             id: row.id || `S-${idx + 1}`,
-            dock: row.dock || "Unsorted",
+            dock_id: dockId,
+            dock: dockName,
             invoice_category: "Marina Slip Fees",
             number: row.number || String(idx + 1),
             slip_class: (row.slip_class as SlipClass) || "uncovered",

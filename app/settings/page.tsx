@@ -12,6 +12,7 @@ import {
   Store,
   Upload,
   Sparkles,
+  Anchor,
 } from "lucide-react";
 import { PageShell } from "@/components/page-shell";
 import { RentalsAsk } from "@/components/rentals/rentals-ask";
@@ -49,6 +50,13 @@ export default function SettingsPage() {
           icon={<Users className="size-4" />}
           title="Staff & Roles"
           subtitle="Invite team, assign roles, manage permission matrix"
+        />
+
+        <SettingsLink
+          href="/settings/docks"
+          icon={<Anchor className="size-4" />}
+          title="Docks"
+          subtitle="The docks at your marina — slip-id prefix, sort order, active flag"
         />
 
         <SettingsLink

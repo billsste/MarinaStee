@@ -393,9 +393,27 @@ export type SlipClass =
   | "buoy"             // mooring ball
   | "dry_storage";     // out of water, indoor or yard
 
+// Docks are first-class. Marinas can have multiple — Damsite A/B/C,
+// PWC float, transient dock, dry storage building. Each owns a set of
+// slips. Operators edit docks in Settings → Docks; the prefix drives
+// slip-id generation, the sort_order controls display order.
+
+export interface Dock {
+  id: string;
+  tenant_id: string;
+  name: string;             // "Damsite A Dock"
+  short_name: string;       // "A Dock"  — shown in compact rows + chips
+  prefix?: string;          // "A"  → drives slip-id generation
+  sort_order: number;
+  active: boolean;
+  // Optional metadata for future surfaces (visual map, capacity reports)
+  notes?: string;
+}
+
 export interface Slip {
   id: string;              // e.g. "A29"
-  dock: string;            // e.g. "Damsite A Dock"
+  dock_id: string;         // FK → Dock — canonical association
+  dock: string;            // denormalized display name (kept in sync)
   invoice_category: string; // e.g. "BOGGS Cove"
   number: string;          // e.g. "29"
   max_loa_inches: number;

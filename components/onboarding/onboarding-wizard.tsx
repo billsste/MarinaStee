@@ -248,10 +248,17 @@ function SlipsStep({ onNext }: { onNext: () => void }) {
   function bulkCreate() {
     const n = Math.max(0, Math.min(500, Number(count) || 0));
     const r = Number(rate) || 0;
+    const dockPrefix = dockName.replace(/\s+/g, "").slice(0, 3).toUpperCase();
+    // Derive a stable dock_id from the dock name so all bulk-created
+    // slips for this dock share it. Real Settings → Docks records get a
+    // proper id; this wizard path creates a runtime one if the dock is
+    // new.
+    const dockId = `dock_wiz_${dockPrefix.toLowerCase()}`;
     for (let i = 1; i <= n; i++) {
-      const id = `${dockName.replace(/\s+/g, "").slice(0, 3).toUpperCase()}-${String(i).padStart(2, "0")}`;
+      const id = `${dockPrefix}-${String(i).padStart(2, "0")}`;
       const slip: Slip = {
         id,
+        dock_id: dockId,
         dock: dockName,
         invoice_category: "Marina Slip Fees",
         number: String(i),

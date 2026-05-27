@@ -25,6 +25,7 @@ import {
   RATES,
   RENTAL_BOATS,
   RENTAL_GROUPS,
+  DOCKS,
   RENTAL_SPACES,
   ROLES_SEED,
   SLIPS,
@@ -60,6 +61,7 @@ import type {
   RentalGroup,
   RentalSpace,
   Slip,
+  Dock,
   Reservation,
   StaffNote,
   Tenant,
@@ -137,6 +139,7 @@ type State = {
   // Mirrored from the SLIPS seed at boot so the Roster + wizard can
   // edit a slip's defaults without crossing the server/seed boundary.
   slips: Slip[];
+  docks: Dock[];
   fuelInventory: FuelInventory[];
   // Boat Rentals (own fleet — pontoons, kayaks, jet skis, ...)
   rentalBoats: RentalBoat[];
@@ -179,6 +182,7 @@ let state: State = {
   rentalGroups: [...RENTAL_GROUPS],
   rentalSpaces: [...RENTAL_SPACES],
   slips: [...SLIPS],
+  docks: [...DOCKS],
   fuelInventory: [...FUEL_INVENTORY],
   rentalBoats: [...RENTAL_BOATS],
   boatRentals: [...BOAT_RENTALS],
@@ -2921,6 +2925,75 @@ export function usePosCatalogForLocation(
     (i) => i.active && i.location_keys.includes(locationKey)
   );
 }
+// ── Docks (per-tenant inventory grouping) ─────────────────
+//
+// Operators manage docks via Settings → Docks. Slip.dock_id references
+// these. When a dock is renamed, every slip on it picks up the new name
+// at next render (display reads via the lookup hooks below — slip.dock
+// stays as a denormalized cache for back-compat with code that still
+// reads the string).
+export function upsertDock(d: Dock) {
+  const exists = state.docks.some((x) => x.id === d.id);
+  state = {
+    ...state,
+    docks: exists
+      ? state.docks.map((x) => (x.id === d.id ? d : x))
+      : [...state.docks, d],
+  };
+  // Keep denormalized slip.dock string in sync — anyone editing dock
+  // name expects existing slips to reflect it immediately.
+  state = {
+    ...state,
+    slips: state.slips.map((s) =>
+      s.dock_id === d.id ? { ...s, dock: d.name } : s
+    ),
+  };
+  notify();
+}
+export function updateDock(id: string, patch: Partial<Dock>) {
+  state = {
+    ...state,
+    docks: state.docks.map((d) => (d.id === id ? { ...d, ...patch } : d)),
+  };
+  if (patch.name) {
+    const newName = patch.name;
+    state = {
+      ...state,
+      slips: state.slips.map((s) =>
+        s.dock_id === id ? { ...s, dock: newName } : s
+      ),
+    };
+  }
+  notify();
+}
+export function deleteDock(id: string) {
+  // Soft-safe delete — refuse if any slip still references this dock.
+  const slipsOnDock = state.docks.find((d) => d.id === id)
+    ? state.slips.filter((s) => s.dock_id === id).length
+    : 0;
+  if (slipsOnDock > 0) {
+    throw new Error(
+      `Can't delete dock — ${slipsOnDock} slip(s) still reference it. Move or delete those slips first.`
+    );
+  }
+  state = { ...state, docks: state.docks.filter((d) => d.id !== id) };
+  notify();
+}
+export function nextDockId() {
+  return `dock_runtime_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`;
+}
+export function useDocks(): Dock[] {
+  return useStore().docks.sort((a, b) => a.sort_order - b.sort_order);
+}
+export function useActiveDocks(): Dock[] {
+  return useDocks().filter((d) => d.active);
+}
+export function useDock(id: string | undefined): Dock | undefined {
+  const docks = useStore().docks;
+  if (!id) return undefined;
+  return docks.find((d) => d.id === id);
+}
+
 // Permissions util — checks whether the (single) current staff session
 // has a permission. Stub: returns true for super-admin role in seed,
 // real impl wires session → staff_id → role_id → permissions.
