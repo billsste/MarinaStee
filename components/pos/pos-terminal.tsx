@@ -23,13 +23,11 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
 import {
   BOATERS,
-  POS_CATALOG,
-  POS_LOCATIONS,
   formatMoney,
   getOpenBalance,
   initialsOf,
-  type PosCatalogItem,
 } from "@/lib/mock-data";
+import type { PosCatalogItem } from "@/lib/types";
 import {
   addCommunication,
   addLedgerEntry,
@@ -38,7 +36,9 @@ import {
   nextLedgerId,
   nextPosOrderId,
   nextPosOrderNumber,
+  useActivePosLocations,
   useFeesByScope,
+  usePosCatalogForLocation,
 } from "@/lib/client-store";
 import type {
   Boater,
@@ -77,8 +77,12 @@ export function PosTerminal() {
   const [paymentMethod, setPaymentMethod] = React.useState<PosPaymentMethod | null>(null);
   const [completedAt, setCompletedAt] = React.useState<string | null>(null);
 
-  const location = POS_LOCATIONS.find((l) => l.key === locationKey)!;
-  const catalog = POS_CATALOG.filter((c) => c.location_keys.includes(locationKey));
+  const locations = useActivePosLocations();
+  const location = locations.find((l) => l.key === locationKey)!;
+  // POS catalog is now store-backed (operator-editable). Falls back to
+  // an empty array if the location has no items — UI shows the empty
+  // state so staff knows to add items via Settings → POS Catalog.
+  const catalog = usePosCatalogForLocation(locationKey);
   // Service fees that are available at POS — show as their own category
   // in the palette so staff can ring them up from any register without
   // hunting through the Fees page.
@@ -94,12 +98,14 @@ export function PosTerminal() {
   // of the rendering / addItem flow doesn't need to fork.
   if (posFees.length > 0) {
     grouped["Service Fees"] = posFees.map((f) => ({
+      id: `pos_fee_${f.id}`,
       sku: `FEE-${f.id}`,
       name: f.name,
       category: "Service Fees",
       price: f.amount,
       location_keys: [locationKey],
       taxable: false,
+      active: true,
     }));
   }
 
@@ -259,7 +265,7 @@ export function PosTerminal() {
       {/* LEFT — item palette */}
       <div className="order-2 rounded-[12px] border border-hairline bg-surface-1 lg:order-1">
         <div className="flex flex-wrap items-center gap-1 border-b border-hairline px-3 py-2">
-          {POS_LOCATIONS.map((l) => {
+          {locations.map((l) => {
             const Icon = LOCATION_ICON[l.key];
             const active = l.key === locationKey;
             return (

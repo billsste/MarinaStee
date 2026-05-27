@@ -22,6 +22,159 @@ export interface Tenant {
   created_at: string;
 }
 
+// ── Marina profile (per-tenant operator config) ──────────────
+//
+// What every customer-facing surface needs about the marina: name,
+// branding, address, contact, timezone, business hours, tax defaults.
+// Settings → Marina Profile is the operator-facing editor; all read
+// sites in the app should pull from here, not hard-coded strings.
+
+export interface MarinaProfile {
+  id: string;
+  tenant_id: string;
+  // Branding
+  display_name: string;       // "Marina Stee · Damsite Cove"
+  short_name: string;          // "Marina Stee"
+  tagline?: string;            // shown on receipts + portal
+  logo_url?: string;           // operator-uploaded; data URL in prototype
+  // Contact
+  email: string;
+  phone: string;
+  website?: string;
+  // Address
+  address_line1: string;
+  address_line2?: string;
+  city: string;
+  state: string;
+  postal_code: string;
+  country: string;
+  // Operations
+  timezone: string;            // "America/Denver"
+  business_hours_open: string; // "08:00"
+  business_hours_close: string;// "20:00"
+  // Tax + accounting defaults
+  default_tax_rate: number;    // 0..1 (e.g., 0.0825)
+  accounting_close: "monthly_eom" | "monthly_15th" | "weekly_friday";
+  // Outbound sender labels
+  outbound_email_from_name: string; // "Marina Stee"
+  outbound_sms_sender_label: string; // "MarinaStee"
+}
+
+// ── Communication templates ───────────────────────────────────
+//
+// System-generated comms (receipt, contract sent, COI reminder, etc.)
+// pull their copy from these templates so operators can edit tone /
+// branding without code. Each template has merge tokens that the
+// dispatcher fills at send time — same {{token}} syntax as contract
+// templates.
+
+export type CommTemplateKind =
+  | "receipt_pos_sale"
+  | "receipt_annual_billing"
+  | "contract_sent_for_signature"
+  | "contract_signed_confirmation"
+  | "coi_reminder"
+  | "renewal_reminder"
+  | "payment_failed"
+  | "welcome_new_holder"
+  | "waitlist_offer"
+  | "rental_pickup_link"
+  | "rental_return_receipt"
+  | "service_complete";
+
+export interface CommTemplate {
+  id: string;
+  tenant_id: string;
+  kind: CommTemplateKind;
+  name: string;                  // display name on the editor
+  description?: string;          // what triggers this comm
+  channel: "email" | "sms" | "voice"; // primary channel; system can override
+  subject: string;               // for email; ignored on SMS
+  body_markdown: string;         // template body with {{tokens}}
+  active: boolean;               // off → fall back to hard-coded copy
+  available_tokens: string[];    // hint shown on the editor
+}
+
+// ── Roles + permissions (Settings → Staff) ────────────────────
+//
+// Roles are tenant-scoped so each marina can define its own (e.g.,
+// some marinas want a "Harbormaster" role, others want "Owner /
+// Manager / Dockhand / Office"). Permissions are a flat list of
+// action.entity keys (e.g., "create.contract", "refund.payment").
+
+export type PermissionKey =
+  | "manage.settings"
+  | "manage.staff"
+  | "manage.picklists"
+  | "manage.catalog"        // POS catalog + fees + rates
+  | "manage.marina_profile"
+  | "create.boater"
+  | "update.boater"
+  | "delete.boater"
+  | "create.contract"
+  | "terminate.contract"
+  | "create.work_order"
+  | "complete.work_order"
+  | "process.payment"
+  | "refund.payment"
+  | "run.annual_billing"
+  | "manage.qb_sync"
+  | "view.financials"
+  | "view.reports";
+
+export interface Role {
+  id: string;
+  tenant_id: string;
+  name: string;                // "Super admin", "Manager", "Dockhand"
+  description?: string;
+  permissions: PermissionKey[];
+  is_system: boolean;          // built-in role (can edit perms but not delete/rename)
+  sort_order: number;
+}
+
+export interface StaffMember {
+  id: string;
+  tenant_id: string;
+  name: string;
+  email: string;
+  phone?: string;
+  role_id: string;             // → Role
+  status: "invited" | "active" | "suspended";
+  mfa_enabled: boolean;
+  last_login_at?: string;
+  created_at: string;
+}
+
+// ── Provider configs (Stripe / Postmark / Twilio stubs) ───────
+//
+// Real integrations land when the backend does. In the prototype these
+// are settings the operator fills in via Settings → Connections, but
+// the network calls aren't wired — they just persist config so the UI
+// shows "connected" and the right downstream behavior unlocks.
+
+export interface AppProviderConfig {
+  id: string;
+  tenant_id: string;
+  kind: "payment" | "email" | "sms" | "accounting";
+  provider:
+    | "stripe"
+    | "square"
+    | "postmark"
+    | "sendgrid"
+    | "twilio"
+    | "messagebird"
+    | "quickbooks"
+    | "xero";
+  display_name: string;
+  status: "disconnected" | "connected" | "needs_attention";
+  // Provider-specific fields are stored in `config` (publishable key,
+  // from-address, sender-id, account-id, etc.). At provision time the
+  // server-side adapter knows what to expect for each provider.
+  config: Record<string, string | number | boolean | null>;
+  connected_at?: string;
+  last_error?: string;
+}
+
 // ── Picklists ────────────────────────────────────────────────
 //
 // Per-tenant managed dropdown values. Each picklist owns the set of
@@ -42,7 +195,11 @@ export type PicklistFieldKey =
   | "event_type"
   | "rental_boat_type"
   | "contact_role"
-  | "refund_reason";
+  | "refund_reason"
+  | "billing_cadence"       // Annual / Seasonal / Monthly / Transient
+  | "reservation_type"      // Annual / Seasonal / Monthly / Transient / Recurring
+  | "payment_method"        // Card / Cash / ACH / Charge to account / Split
+  | "work_order_priority";  // High / Normal / Low
 
 export interface PicklistValue {
   id: string;                // ten_xxx_pv_xxx
@@ -916,6 +1073,31 @@ export interface PosLocation {
   name: string;
   allows_charge_to_account: boolean;
   default_tax_rate: number;     // 0..1
+  /** Operator-editable; defaults exist for the seeded 4 but new
+   *  locations get a generic shop icon. */
+  icon_key?: "fuel" | "shop" | "restaurant" | "harbormaster" | "marina";
+  /** When inactive, the location disappears from the POS Terminal
+   *  tab strip but historical PosOrders still resolve their location. */
+  active: boolean;
+  sort_order: number;
+}
+
+// PosCatalogItem now lives in the store, not the seed. Each item gets
+// a stable `id` separate from `sku` so operators can rename a SKU
+// without breaking historical PosOrder line items. Cost-of-goods is
+// optional but enables true margin tracking when present.
+
+export interface PosCatalogItem {
+  id: string;
+  sku: string;                  // human SKU shown on receipts
+  name: string;
+  category: string;             // free-text — "Mains", "Sides", "Drinks"
+  price: number;
+  cost?: number;                // cost-of-goods (for margin reports)
+  location_keys: PosLocationKey[];
+  taxable: boolean;
+  active: boolean;              // soft-archive — preserves order history
+  image_url?: string;           // optional thumbnail
 }
 
 export type PosPaymentMethod = "card" | "cash" | "charge_to_account" | "split";

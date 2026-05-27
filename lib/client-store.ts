@@ -7,25 +7,31 @@ import {
   BOATERS,
   CARDS_ON_FILE,
   COMMUNICATIONS,
+  COMM_TEMPLATES_SEED,
   CONTRACT_TEMPLATES,
   CONTRACTS,
   FUEL_INVENTORY,
   INSURANCE_CERTIFICATES,
   LEDGER,
   MARINA_EVENTS,
+  MARINA_PROFILE_SEED,
   METER_READINGS,
   PICKLISTS,
+  POS_CATALOG,
   POS_LOCATIONS,
   POS_ORDERS,
+  PROVIDER_CONFIGS_SEED,
   QUOTES,
   RATES,
   RENTAL_BOATS,
   RENTAL_GROUPS,
   RENTAL_SPACES,
+  ROLES_SEED,
   SLIPS,
   RESERVATIONS,
   SEED_TENANT_ID,
   STAFF_NOTES,
+  STAFF_SEED,
   TENANTS,
   VESSELS,
   WAITLIST,
@@ -61,6 +67,15 @@ import type {
   WaitlistEntry,
   WaitlistStatus,
   WorkOrder,
+  MarinaProfile,
+  CommTemplate,
+  CommTemplateKind,
+  Role,
+  PermissionKey,
+  StaffMember,
+  AppProviderConfig,
+  PosCatalogItem,
+  PosLocation,
 } from "@/lib/types";
 
 // GL account derivation — POS location → GL bucket, falls back to A/R for ledger.
@@ -130,6 +145,14 @@ type State = {
   tenants: Tenant[];
   currentTenantId: string;
   picklists: Picklist[];
+  // Operator-configurable surfaces (Batch 1 expansion)
+  marinaProfile: MarinaProfile;
+  commTemplates: CommTemplate[];
+  roles: Role[];
+  staff: StaffMember[];
+  providerConfigs: AppProviderConfig[];
+  posLocations: PosLocation[];
+  posCatalog: PosCatalogItem[];
 };
 
 let state: State = {
@@ -162,6 +185,13 @@ let state: State = {
   tenants: [...TENANTS],
   currentTenantId: SEED_TENANT_ID,
   picklists: [...PICKLISTS],
+  marinaProfile: { ...MARINA_PROFILE_SEED },
+  commTemplates: [...COMM_TEMPLATES_SEED],
+  roles: [...ROLES_SEED],
+  staff: [...STAFF_SEED],
+  providerConfigs: [...PROVIDER_CONFIGS_SEED],
+  posLocations: [...POS_LOCATIONS],
+  posCatalog: [...POS_CATALOG],
 };
 
 const subscribers = new Set<() => void>();
@@ -2678,4 +2708,229 @@ export function nextTemplateId() {
 
 export function nextMeterId() {
   return `m_runtime_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+}
+
+// ════════════════════════════════════════════════════════════
+// Operator-configurable surfaces (Batch 1)
+// ════════════════════════════════════════════════════════════
+
+// ── Marina Profile ──────────────────────────────────────────
+export function updateMarinaProfile(patch: Partial<MarinaProfile>) {
+  state = { ...state, marinaProfile: { ...state.marinaProfile, ...patch } };
+  notify();
+}
+export function useMarinaProfile(): MarinaProfile {
+  return useStore().marinaProfile;
+}
+
+// ── Comm templates ──────────────────────────────────────────
+export function upsertCommTemplate(t: CommTemplate) {
+  const exists = state.commTemplates.some((x) => x.id === t.id);
+  state = {
+    ...state,
+    commTemplates: exists
+      ? state.commTemplates.map((x) => (x.id === t.id ? t : x))
+      : [...state.commTemplates, t],
+  };
+  notify();
+}
+export function updateCommTemplate(id: string, patch: Partial<CommTemplate>) {
+  state = {
+    ...state,
+    commTemplates: state.commTemplates.map((t) =>
+      t.id === id ? { ...t, ...patch } : t
+    ),
+  };
+  notify();
+}
+export function deleteCommTemplate(id: string) {
+  state = {
+    ...state,
+    commTemplates: state.commTemplates.filter((t) => t.id !== id),
+  };
+  notify();
+}
+export function nextCommTemplateId() {
+  return `ct_runtime_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+}
+export function useCommTemplates(): CommTemplate[] {
+  return useStore().commTemplates;
+}
+export function useCommTemplate(kind: CommTemplateKind): CommTemplate | undefined {
+  return useStore().commTemplates.find((t) => t.kind === kind);
+}
+
+// ── Roles ────────────────────────────────────────────────────
+export function upsertRole(r: Role) {
+  const exists = state.roles.some((x) => x.id === r.id);
+  state = {
+    ...state,
+    roles: exists
+      ? state.roles.map((x) => (x.id === r.id ? r : x))
+      : [...state.roles, r],
+  };
+  notify();
+}
+export function updateRole(id: string, patch: Partial<Role>) {
+  state = {
+    ...state,
+    roles: state.roles.map((r) => (r.id === id ? { ...r, ...patch } : r)),
+  };
+  notify();
+}
+export function deleteRole(id: string) {
+  const role = state.roles.find((r) => r.id === id);
+  if (role?.is_system) return;
+  state = { ...state, roles: state.roles.filter((r) => r.id !== id) };
+  notify();
+}
+export function nextRoleId() {
+  return `role_runtime_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+}
+export function useRoles(): Role[] {
+  return useStore().roles;
+}
+
+// ── Staff ────────────────────────────────────────────────────
+export function upsertStaffMember(s: StaffMember) {
+  const exists = state.staff.some((x) => x.id === s.id);
+  state = {
+    ...state,
+    staff: exists
+      ? state.staff.map((x) => (x.id === s.id ? s : x))
+      : [...state.staff, s],
+  };
+  notify();
+}
+export function updateStaffMember(id: string, patch: Partial<StaffMember>) {
+  state = {
+    ...state,
+    staff: state.staff.map((s) => (s.id === id ? { ...s, ...patch } : s)),
+  };
+  notify();
+}
+export function deleteStaffMember(id: string) {
+  state = { ...state, staff: state.staff.filter((s) => s.id !== id) };
+  notify();
+}
+export function nextStaffId() {
+  return `staff_runtime_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+}
+export function useStaff(): StaffMember[] {
+  return useStore().staff;
+}
+
+// ── Provider configs ────────────────────────────────────────
+export function upsertProviderConfig(p: AppProviderConfig) {
+  const exists = state.providerConfigs.some((x) => x.id === p.id);
+  state = {
+    ...state,
+    providerConfigs: exists
+      ? state.providerConfigs.map((x) => (x.id === p.id ? p : x))
+      : [...state.providerConfigs, p],
+  };
+  notify();
+}
+export function updateProviderConfig(id: string, patch: Partial<AppProviderConfig>) {
+  state = {
+    ...state,
+    providerConfigs: state.providerConfigs.map((p) =>
+      p.id === id ? { ...p, ...patch } : p
+    ),
+  };
+  notify();
+}
+export function useProviderConfigs(): AppProviderConfig[] {
+  return useStore().providerConfigs;
+}
+export function useProviderConfig(kind: AppProviderConfig["kind"]): AppProviderConfig | undefined {
+  return useStore().providerConfigs.find((p) => p.kind === kind);
+}
+
+// ── POS Locations ───────────────────────────────────────────
+export function upsertPosLocation(loc: PosLocation) {
+  const exists = state.posLocations.some((x) => x.id === loc.id);
+  state = {
+    ...state,
+    posLocations: exists
+      ? state.posLocations.map((x) => (x.id === loc.id ? loc : x))
+      : [...state.posLocations, loc],
+  };
+  notify();
+}
+export function updatePosLocation(id: string, patch: Partial<PosLocation>) {
+  state = {
+    ...state,
+    posLocations: state.posLocations.map((l) =>
+      l.id === id ? { ...l, ...patch } : l
+    ),
+  };
+  notify();
+}
+export function deletePosLocation(id: string) {
+  state = {
+    ...state,
+    posLocations: state.posLocations.filter((l) => l.id !== id),
+  };
+  notify();
+}
+export function nextPosLocationId() {
+  return `loc_runtime_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+}
+export function usePosLocations(): PosLocation[] {
+  return useStore().posLocations.sort((a, b) => a.sort_order - b.sort_order);
+}
+export function useActivePosLocations(): PosLocation[] {
+  return usePosLocations().filter((l) => l.active);
+}
+
+// ── POS Catalog ─────────────────────────────────────────────
+export function upsertPosItem(item: PosCatalogItem) {
+  const exists = state.posCatalog.some((x) => x.id === item.id);
+  state = {
+    ...state,
+    posCatalog: exists
+      ? state.posCatalog.map((x) => (x.id === item.id ? item : x))
+      : [...state.posCatalog, item],
+  };
+  notify();
+}
+export function updatePosItem(id: string, patch: Partial<PosCatalogItem>) {
+  state = {
+    ...state,
+    posCatalog: state.posCatalog.map((i) =>
+      i.id === id ? { ...i, ...patch } : i
+    ),
+  };
+  notify();
+}
+export function deletePosItem(id: string) {
+  state = { ...state, posCatalog: state.posCatalog.filter((i) => i.id !== id) };
+  notify();
+}
+export function nextPosItemId() {
+  return `pos_runtime_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+}
+export function usePosCatalog(): PosCatalogItem[] {
+  return useStore().posCatalog;
+}
+export function usePosCatalogForLocation(
+  locationKey: PosLocation["key"]
+): PosCatalogItem[] {
+  return useStore().posCatalog.filter(
+    (i) => i.active && i.location_keys.includes(locationKey)
+  );
+}
+// Permissions util — checks whether the (single) current staff session
+// has a permission. Stub: returns true for super-admin role in seed,
+// real impl wires session → staff_id → role_id → permissions.
+export function hasPermission(
+  staffId: string | undefined,
+  perm: PermissionKey
+): boolean {
+  if (!staffId) return false;
+  const s = state.staff.find((x) => x.id === staffId);
+  if (!s) return false;
+  const role = state.roles.find((r) => r.id === s.role_id);
+  return role?.permissions.includes(perm) ?? false;
 }

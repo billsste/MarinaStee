@@ -18,6 +18,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { RentalsAsk } from "@/components/rentals/rentals-ask";
 import { USERS, PICKLISTS } from "@/lib/mock-data";
+import { MarinaIdentityCard } from "@/components/settings/marina-identity-card";
 
 export const metadata = { title: "Settings — Marina Stee" };
 
@@ -63,16 +64,7 @@ export default function SettingsPage() {
       </Link>
 
       <div className="mt-5 grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <SettingsCard
-          icon={<Building2 className="size-4" />}
-          title="Marina identity"
-          subtitle="Name, branding, tax + accounting defaults"
-        >
-          <FieldRow label="Marina name" value="Marina Stee" />
-          <FieldRow label="Time zone" value="America/Denver" />
-          <FieldRow label="Tax rate (default)" value="8.25%" />
-          <FieldRow label="Accounting close" value="Monthly · last day of month" />
-        </SettingsCard>
+        <MarinaIdentityCard />
 
         <SettingsCard
           icon={<Users className="size-4" />}

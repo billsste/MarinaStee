@@ -32,6 +32,12 @@ import type {
   MarinaEvent,
   RentalBoat,
   BoatRental,
+  MarinaProfile,
+  CommTemplate,
+  Role,
+  StaffMember,
+  AppProviderConfig,
+  PosCatalogItem,
 } from "@/lib/types";
 
 // ============================================================
@@ -207,6 +213,432 @@ export const PICKLISTS: Picklist[] = [
       pv(SEED_TENANT_ID, "service_issue", "Service issue", 3),
       pv(SEED_TENANT_ID, "other", "Other", 4),
     ],
+  },
+  {
+    id: `pl_${SEED_TENANT_ID.slice(-6)}_billing_cadence`,
+    tenant_id: SEED_TENANT_ID,
+    field_key: "billing_cadence",
+    label: "Billing cadence",
+    description:
+      "How a holder is billed for their slip — annual, seasonal, monthly, or transient (per-stay).",
+    editable: true,
+    values: [
+      pv(SEED_TENANT_ID, "annual", "Annual", 0),
+      pv(SEED_TENANT_ID, "seasonal", "Seasonal", 1),
+      pv(SEED_TENANT_ID, "monthly", "Monthly", 2),
+      pv(SEED_TENANT_ID, "transient", "Transient", 3),
+    ],
+  },
+  {
+    id: `pl_${SEED_TENANT_ID.slice(-6)}_reservation_type`,
+    tenant_id: SEED_TENANT_ID,
+    field_key: "reservation_type",
+    label: "Reservation type",
+    description:
+      "Reservation classification. Drives calendar colors and reporting buckets.",
+    editable: true,
+    values: [
+      pv(SEED_TENANT_ID, "annual", "Annual", 0),
+      pv(SEED_TENANT_ID, "seasonal", "Seasonal", 1),
+      pv(SEED_TENANT_ID, "monthly", "Monthly", 2),
+      pv(SEED_TENANT_ID, "transient", "Transient", 3),
+      pv(SEED_TENANT_ID, "recurring", "Recurring", 4),
+    ],
+  },
+  {
+    id: `pl_${SEED_TENANT_ID.slice(-6)}_payment_method`,
+    tenant_id: SEED_TENANT_ID,
+    field_key: "payment_method",
+    label: "Payment method",
+    description:
+      "Available payment methods at POS and on invoices. Adjust based on what your processor supports.",
+    editable: true,
+    values: [
+      pv(SEED_TENANT_ID, "card", "Card", 0),
+      pv(SEED_TENANT_ID, "cash", "Cash", 1),
+      pv(SEED_TENANT_ID, "ach", "ACH / bank transfer", 2),
+      pv(SEED_TENANT_ID, "charge_to_account", "Charge to account", 3),
+      pv(SEED_TENANT_ID, "check", "Check", 4),
+      pv(SEED_TENANT_ID, "split", "Split tender", 5),
+    ],
+  },
+  {
+    id: `pl_${SEED_TENANT_ID.slice(-6)}_work_order_priority`,
+    tenant_id: SEED_TENANT_ID,
+    field_key: "work_order_priority",
+    label: "Work order priority",
+    description: "How urgent a work order is. Drives kanban sort and SLA alerts.",
+    editable: true,
+    values: [
+      pv(SEED_TENANT_ID, "high", "High", 0),
+      pv(SEED_TENANT_ID, "normal", "Normal", 1),
+      pv(SEED_TENANT_ID, "low", "Low", 2),
+    ],
+  },
+];
+
+// ── Marina profile (default seed values) ───────────────────────
+export const MARINA_PROFILE_SEED: MarinaProfile = {
+  id: `mp_${SEED_TENANT_ID.slice(-6)}`,
+  tenant_id: SEED_TENANT_ID,
+  display_name: "Marina Stee · Damsite Cove",
+  short_name: "Marina Stee",
+  tagline: "Family-run since 1972.",
+  email: "harbormaster@marinastee.example",
+  phone: "(505) 555-0100",
+  website: "https://marinastee.example",
+  address_line1: "1 Damsite Drive",
+  city: "Santa Fe",
+  state: "NM",
+  postal_code: "87501",
+  country: "USA",
+  timezone: "America/Denver",
+  business_hours_open: "08:00",
+  business_hours_close: "20:00",
+  default_tax_rate: 0.0825,
+  accounting_close: "monthly_eom",
+  outbound_email_from_name: "Marina Stee",
+  outbound_sms_sender_label: "MarinaStee",
+};
+
+// ── Comm templates (default seed values) ───────────────────────
+export const COMM_TEMPLATES_SEED: CommTemplate[] = [
+  {
+    id: `ct_${SEED_TENANT_ID.slice(-6)}_receipt_pos`,
+    tenant_id: SEED_TENANT_ID,
+    kind: "receipt_pos_sale",
+    name: "POS sale receipt",
+    description: "Sent to the customer after a POS sale closes.",
+    channel: "email",
+    subject: "Marina Stee receipt — {{location.name}}",
+    body_markdown:
+      "Hi {{customer.first_name}},\n\nYour {{order.total_formatted}} purchase at {{location.name}} has been {{order.payment_verb}}.\n\nReceipt #{{order.number}}\nDate: {{order.date}}\n\n{{order.line_items_summary}}\n\nThanks for stopping by.\n— {{marina.short_name}}",
+    active: true,
+    available_tokens: [
+      "customer.first_name",
+      "customer.display_name",
+      "order.number",
+      "order.date",
+      "order.total_formatted",
+      "order.payment_verb",
+      "order.line_items_summary",
+      "location.name",
+      "marina.short_name",
+    ],
+  },
+  {
+    id: `ct_${SEED_TENANT_ID.slice(-6)}_contract_sent`,
+    tenant_id: SEED_TENANT_ID,
+    kind: "contract_sent_for_signature",
+    name: "Contract sent for signature",
+    description:
+      "Sent when a contract is drafted and the onboarding link is dispatched.",
+    channel: "email",
+    subject: "Welcome to {{marina.short_name}} — complete onboarding",
+    body_markdown:
+      "Hi {{boater.first_name}},\n\nYour slip {{slip.number}} at {{slip.dock}} is reserved. Please complete the following to activate your contract:\n\n  1. Review and sign your agreement\n  2. Add a payment method\n\nIt takes about 2 minutes: {{onboarding.url}}\n\nReply to this message if you have any questions.\n— {{marina.short_name}}",
+    active: true,
+    available_tokens: [
+      "boater.first_name",
+      "boater.display_name",
+      "slip.number",
+      "slip.dock",
+      "onboarding.url",
+      "contract.annual_rate_formatted",
+      "marina.short_name",
+    ],
+  },
+  {
+    id: `ct_${SEED_TENANT_ID.slice(-6)}_contract_signed`,
+    tenant_id: SEED_TENANT_ID,
+    kind: "contract_signed_confirmation",
+    name: "Contract signed confirmation",
+    description: "Sent after the holder signs and finalizes onboarding.",
+    channel: "email",
+    subject: "You're all set at {{marina.short_name}}",
+    body_markdown:
+      "Hi {{boater.first_name}},\n\nThanks for completing onboarding. Your slip {{slip.number}} is active through {{contract.effective_end}}.\n\nA copy of your signed contract is attached for your records.\n\nWelcome aboard.\n— {{marina.short_name}}",
+    active: true,
+    available_tokens: [
+      "boater.first_name",
+      "slip.number",
+      "contract.effective_end",
+      "contract.number",
+      "marina.short_name",
+    ],
+  },
+  {
+    id: `ct_${SEED_TENANT_ID.slice(-6)}_coi_reminder`,
+    tenant_id: SEED_TENANT_ID,
+    kind: "coi_reminder",
+    name: "COI expiration reminder",
+    description: "Sent when a holder's insurance certificate is approaching expiry.",
+    channel: "email",
+    subject: "Your insurance certificate expires {{coi.expires_at}}",
+    body_markdown:
+      "Hi {{boater.first_name}},\n\nYour Certificate of Insurance for {{vessel.name}} expires on {{coi.expires_at}}. Please upload a renewed COI at: {{coi.upload_url}}\n\nLapse of insurance suspends slip access per your lease — let us know if you need help.\n\n— {{marina.short_name}}",
+    active: true,
+    available_tokens: [
+      "boater.first_name",
+      "vessel.name",
+      "coi.expires_at",
+      "coi.upload_url",
+      "marina.short_name",
+    ],
+  },
+  {
+    id: `ct_${SEED_TENANT_ID.slice(-6)}_renewal_reminder`,
+    tenant_id: SEED_TENANT_ID,
+    kind: "renewal_reminder",
+    name: "Contract renewal reminder",
+    description:
+      "Sent to annual holders before their contract auto-renews — confirms intent and rate.",
+    channel: "email",
+    subject: "{{marina.short_name}} renewal — slip {{slip.number}}",
+    body_markdown:
+      "Hi {{boater.first_name}},\n\nYour annual slip lease at {{slip.number}} expires {{contract.effective_end}} and auto-renews unless you tell us otherwise.\n\nNext term rate: {{contract.annual_rate_formatted}} / year\n\nIf you'd like to make any changes (vessel swap, slip transfer, cancel), reply by {{deadline.date}}.\n\nThanks for keeping your boat with us.\n— {{marina.short_name}}",
+    active: true,
+    available_tokens: [
+      "boater.first_name",
+      "slip.number",
+      "contract.effective_end",
+      "contract.annual_rate_formatted",
+      "deadline.date",
+      "marina.short_name",
+    ],
+  },
+  {
+    id: `ct_${SEED_TENANT_ID.slice(-6)}_payment_failed`,
+    tenant_id: SEED_TENANT_ID,
+    kind: "payment_failed",
+    name: "Payment failed",
+    description:
+      "Sent when an auto-charge attempt fails. Prompts the holder to update their card.",
+    channel: "email",
+    subject: "We couldn't charge your card — {{marina.short_name}}",
+    body_markdown:
+      "Hi {{boater.first_name}},\n\nWe tried to charge {{invoice.amount_formatted}} for invoice #{{invoice.number}} and the card on file was declined.\n\nUpdate your payment method here: {{portal.url}}\n\nWe'll retry in 24 hours. Reach out if you need help.\n— {{marina.short_name}}",
+    active: true,
+    available_tokens: [
+      "boater.first_name",
+      "invoice.number",
+      "invoice.amount_formatted",
+      "portal.url",
+      "marina.short_name",
+    ],
+  },
+  {
+    id: `ct_${SEED_TENANT_ID.slice(-6)}_waitlist_offer`,
+    tenant_id: SEED_TENANT_ID,
+    kind: "waitlist_offer",
+    name: "Waitlist offer",
+    description: "Sent when a slip opens up and the next waitlist holder gets first dibs.",
+    channel: "email",
+    subject: "A slip just opened at {{marina.short_name}}",
+    body_markdown:
+      "Hi {{boater.first_name}},\n\nGood news — slip {{slip.number}} at {{slip.dock}} just became available, and you're next on the waitlist.\n\nThis offer is held for {{offer.hours_remaining}} hours. Claim it here: {{claim.url}}\n\n— {{marina.short_name}}",
+    active: true,
+    available_tokens: [
+      "boater.first_name",
+      "slip.number",
+      "slip.dock",
+      "offer.hours_remaining",
+      "claim.url",
+      "marina.short_name",
+    ],
+  },
+  {
+    id: `ct_${SEED_TENANT_ID.slice(-6)}_welcome_new`,
+    tenant_id: SEED_TENANT_ID,
+    kind: "welcome_new_holder",
+    name: "Welcome — new holder",
+    description: "First-touch comm after a brand new holder is created.",
+    channel: "email",
+    subject: "Welcome to {{marina.short_name}}",
+    body_markdown:
+      "Hi {{boater.first_name}},\n\nWelcome to {{marina.short_name}}. We're glad to have you.\n\nA few things to know:\n  • Office hours: {{marina.hours}}\n  • Pump-out: on-demand via the dock office or via the agent in your portal\n  • COI: please upload before your first launch — {{coi.upload_url}}\n\nReach out anytime.\n— {{marina.short_name}}",
+    active: true,
+    available_tokens: [
+      "boater.first_name",
+      "boater.display_name",
+      "marina.short_name",
+      "marina.hours",
+      "coi.upload_url",
+    ],
+  },
+];
+
+// ── Roles + Staff (default seed values) ────────────────────────
+export const ROLES_SEED: Role[] = [
+  {
+    id: `role_${SEED_TENANT_ID.slice(-6)}_super_admin`,
+    tenant_id: SEED_TENANT_ID,
+    name: "Super admin",
+    description: "Full access to everything, including settings + staff management.",
+    permissions: [
+      "manage.settings",
+      "manage.staff",
+      "manage.picklists",
+      "manage.catalog",
+      "manage.marina_profile",
+      "create.boater",
+      "update.boater",
+      "delete.boater",
+      "create.contract",
+      "terminate.contract",
+      "create.work_order",
+      "complete.work_order",
+      "process.payment",
+      "refund.payment",
+      "run.annual_billing",
+      "manage.qb_sync",
+      "view.financials",
+      "view.reports",
+    ],
+    is_system: true,
+    sort_order: 0,
+  },
+  {
+    id: `role_${SEED_TENANT_ID.slice(-6)}_manager`,
+    tenant_id: SEED_TENANT_ID,
+    name: "Manager",
+    description: "Operations + financials. Cannot manage staff or core settings.",
+    permissions: [
+      "manage.catalog",
+      "manage.picklists",
+      "create.boater",
+      "update.boater",
+      "create.contract",
+      "terminate.contract",
+      "create.work_order",
+      "complete.work_order",
+      "process.payment",
+      "refund.payment",
+      "run.annual_billing",
+      "view.financials",
+      "view.reports",
+    ],
+    is_system: true,
+    sort_order: 1,
+  },
+  {
+    id: `role_${SEED_TENANT_ID.slice(-6)}_dockhand`,
+    tenant_id: SEED_TENANT_ID,
+    name: "Dockhand",
+    description: "Day-of operations — POS, check-in/out, work orders.",
+    permissions: [
+      "create.boater",
+      "update.boater",
+      "create.work_order",
+      "complete.work_order",
+      "process.payment",
+    ],
+    is_system: true,
+    sort_order: 2,
+  },
+  {
+    id: `role_${SEED_TENANT_ID.slice(-6)}_office`,
+    tenant_id: SEED_TENANT_ID,
+    name: "Office",
+    description: "Comms + invoicing. No closeout or refund powers.",
+    permissions: [
+      "create.boater",
+      "update.boater",
+      "create.contract",
+      "view.financials",
+    ],
+    is_system: true,
+    sort_order: 3,
+  },
+  {
+    id: `role_${SEED_TENANT_ID.slice(-6)}_read_only`,
+    tenant_id: SEED_TENANT_ID,
+    name: "Read-only",
+    description: "View everything, change nothing. Good for auditors + accountants.",
+    permissions: ["view.financials", "view.reports"],
+    is_system: true,
+    sort_order: 4,
+  },
+];
+
+export const STAFF_SEED: StaffMember[] = [
+  {
+    id: `staff_${SEED_TENANT_ID.slice(-6)}_owner`,
+    tenant_id: SEED_TENANT_ID,
+    name: "Sync, Service",
+    email: "sync@marinastee.example",
+    phone: "(505) 555-0101",
+    role_id: `role_${SEED_TENANT_ID.slice(-6)}_super_admin`,
+    status: "active",
+    mfa_enabled: true,
+    last_login_at: "2026-05-26T07:30:00Z",
+    created_at: "2024-01-15T10:00:00Z",
+  },
+  {
+    id: `staff_${SEED_TENANT_ID.slice(-6)}_manager`,
+    tenant_id: SEED_TENANT_ID,
+    name: "Marina Manager",
+    email: "manager@marinastee.example",
+    phone: "(505) 555-0102",
+    role_id: `role_${SEED_TENANT_ID.slice(-6)}_manager`,
+    status: "active",
+    mfa_enabled: true,
+    last_login_at: "2026-05-25T18:14:00Z",
+    created_at: "2024-02-01T09:00:00Z",
+  },
+  {
+    id: `staff_${SEED_TENANT_ID.slice(-6)}_dock_a`,
+    tenant_id: SEED_TENANT_ID,
+    name: "Dock Lead A",
+    email: "dock-a@marinastee.example",
+    phone: "(505) 555-0103",
+    role_id: `role_${SEED_TENANT_ID.slice(-6)}_dockhand`,
+    status: "active",
+    mfa_enabled: false,
+    last_login_at: "2026-05-26T06:50:00Z",
+    created_at: "2025-03-12T08:00:00Z",
+  },
+];
+
+// ── Provider configs (default seed — disconnected) ────────────
+export const PROVIDER_CONFIGS_SEED: AppProviderConfig[] = [
+  {
+    id: `prov_${SEED_TENANT_ID.slice(-6)}_stripe`,
+    tenant_id: SEED_TENANT_ID,
+    kind: "payment",
+    provider: "stripe",
+    display_name: "Stripe",
+    status: "disconnected",
+    config: { publishable_key: "", secret_key_set: false, default_currency: "usd" },
+  },
+  {
+    id: `prov_${SEED_TENANT_ID.slice(-6)}_postmark`,
+    tenant_id: SEED_TENANT_ID,
+    kind: "email",
+    provider: "postmark",
+    display_name: "Postmark",
+    status: "disconnected",
+    config: { server_token_set: false, from_address: "" },
+  },
+  {
+    id: `prov_${SEED_TENANT_ID.slice(-6)}_twilio`,
+    tenant_id: SEED_TENANT_ID,
+    kind: "sms",
+    provider: "twilio",
+    display_name: "Twilio",
+    status: "disconnected",
+    config: { account_sid: "", auth_token_set: false, from_number: "" },
+  },
+  {
+    id: `prov_${SEED_TENANT_ID.slice(-6)}_quickbooks`,
+    tenant_id: SEED_TENANT_ID,
+    kind: "accounting",
+    provider: "quickbooks",
+    display_name: "QuickBooks Online",
+    status: "needs_attention",
+    config: { realm_id: "9341452847219000", oauth_refresh_set: true, expires_at: "2026-05-29" },
+    connected_at: "2025-09-15T14:00:00Z",
+    last_error: "Re-authorize — token expires in 3 days",
   },
 ];
 
@@ -2523,43 +2955,36 @@ export const FUEL_SALES: FuelSale[] = [
   { id: "fs_005", fuel_type: "gasoline", gallons: 19, price_per_gallon: 4.79, total: 91.01, sold_at: "2026-05-20T10:05:00Z", pedestal_id: "P-FUEL-1", patron_id: "p_002", payment_method: "cash" },
 ];
 
-// POS item catalog — per location
-export interface PosCatalogItem {
-  sku: string;
-  name: string;
-  category: string;
-  price: number;
-  location_keys: ("fuel_dock" | "ship_store" | "restaurant" | "harbormaster")[];
-  taxable: boolean;
-}
-
+// POS item catalog — see `PosCatalogItem` in lib/types.ts. Seed only;
+// the store treats these as the initial state, then the operator edits
+// items via Settings → POS Catalog (or the inline tile editor).
 export const POS_CATALOG: PosCatalogItem[] = [
   // Fuel Dock
-  { sku: "FUEL-GAS", name: "Gasoline / gal", category: "Fuel", price: 4.89, location_keys: ["fuel_dock"], taxable: true },
-  { sku: "FUEL-DSL", name: "Diesel / gal", category: "Fuel", price: 5.12, location_keys: ["fuel_dock"], taxable: true },
-  { sku: "OIL-2STR", name: "2-stroke oil quart", category: "Fluids", price: 18.50, location_keys: ["fuel_dock", "ship_store"], taxable: true },
+  { id: "pos_fuel_gas", sku: "FUEL-GAS", name: "Gasoline / gal", category: "Fuel", price: 4.89, cost: 3.42, location_keys: ["fuel_dock"], taxable: true, active: true },
+  { id: "pos_fuel_dsl", sku: "FUEL-DSL", name: "Diesel / gal", category: "Fuel", price: 5.12, cost: 3.78, location_keys: ["fuel_dock"], taxable: true, active: true },
+  { id: "pos_oil_2str", sku: "OIL-2STR", name: "2-stroke oil quart", category: "Fluids", price: 18.50, cost: 9.50, location_keys: ["fuel_dock", "ship_store"], taxable: true, active: true },
   // Ship Store
-  { sku: "ROPE-50", name: "Dock line 50ft", category: "Lines", price: 28.00, location_keys: ["ship_store"], taxable: true },
-  { sku: "FENDER-M", name: "Fender — medium", category: "Lines", price: 18.00, location_keys: ["ship_store"], taxable: true },
-  { sku: "FLARE-KIT", name: "Flare kit", category: "Safety", price: 64.00, location_keys: ["ship_store"], taxable: true },
-  { sku: "ICE-10", name: "Ice 10lb bag", category: "Provisions", price: 4.50, location_keys: ["ship_store"], taxable: false },
-  { sku: "SUNSCRN", name: "Sunscreen SPF 50", category: "Provisions", price: 12.99, location_keys: ["ship_store"], taxable: true },
+  { id: "pos_rope_50", sku: "ROPE-50", name: "Dock line 50ft", category: "Lines", price: 28.00, cost: 14.00, location_keys: ["ship_store"], taxable: true, active: true },
+  { id: "pos_fender_m", sku: "FENDER-M", name: "Fender — medium", category: "Lines", price: 18.00, cost: 9.50, location_keys: ["ship_store"], taxable: true, active: true },
+  { id: "pos_flare_kit", sku: "FLARE-KIT", name: "Flare kit", category: "Safety", price: 64.00, cost: 35.00, location_keys: ["ship_store"], taxable: true, active: true },
+  { id: "pos_ice_10", sku: "ICE-10", name: "Ice 10lb bag", category: "Provisions", price: 4.50, cost: 1.25, location_keys: ["ship_store"], taxable: false, active: true },
+  { id: "pos_sunscrn", sku: "SUNSCRN", name: "Sunscreen SPF 50", category: "Provisions", price: 12.99, cost: 6.50, location_keys: ["ship_store"], taxable: true, active: true },
   // Restaurant
-  { sku: "BURGER", name: "Marina burger", category: "Mains", price: 16.00, location_keys: ["restaurant"], taxable: true },
-  { sku: "FISH-TACO", name: "Fish tacos (3)", category: "Mains", price: 18.00, location_keys: ["restaurant"], taxable: true },
-  { sku: "CAESAR", name: "Caesar salad", category: "Sides", price: 12.00, location_keys: ["restaurant"], taxable: true },
-  { sku: "BEER-DR", name: "Draft beer", category: "Drinks", price: 8.00, location_keys: ["restaurant"], taxable: true },
-  { sku: "MARG", name: "Margarita", category: "Drinks", price: 12.00, location_keys: ["restaurant"], taxable: true },
+  { id: "pos_burger", sku: "BURGER", name: "Marina burger", category: "Mains", price: 16.00, cost: 4.20, location_keys: ["restaurant"], taxable: true, active: true },
+  { id: "pos_fish_taco", sku: "FISH-TACO", name: "Fish tacos (3)", category: "Mains", price: 18.00, cost: 5.50, location_keys: ["restaurant"], taxable: true, active: true },
+  { id: "pos_caesar", sku: "CAESAR", name: "Caesar salad", category: "Sides", price: 12.00, cost: 2.80, location_keys: ["restaurant"], taxable: true, active: true },
+  { id: "pos_beer_dr", sku: "BEER-DR", name: "Draft beer", category: "Drinks", price: 8.00, cost: 1.40, location_keys: ["restaurant"], taxable: true, active: true },
+  { id: "pos_marg", sku: "MARG", name: "Margarita", category: "Drinks", price: 12.00, cost: 2.80, location_keys: ["restaurant"], taxable: true, active: true },
   // Harbormaster
-  { sku: "PUMP-OUT", name: "Pump-out service", category: "Service", price: 25.00, location_keys: ["harbormaster"], taxable: false },
-  { sku: "TRANSIENT-DAY", name: "Transient slip — daily", category: "Service", price: 45.00, location_keys: ["harbormaster"], taxable: false },
+  { id: "pos_pump_out", sku: "PUMP-OUT", name: "Pump-out service", category: "Service", price: 25.00, location_keys: ["harbormaster"], taxable: false, active: true },
+  { id: "pos_transient_day", sku: "TRANSIENT-DAY", name: "Transient slip — daily", category: "Service", price: 45.00, location_keys: ["harbormaster"], taxable: false, active: true },
 ];
 
 export const POS_LOCATIONS: PosLocation[] = [
-  { id: "loc_fuel", key: "fuel_dock", name: "Fuel Dock", allows_charge_to_account: true, default_tax_rate: 0.0825 },
-  { id: "loc_store", key: "ship_store", name: "Ship Store", allows_charge_to_account: true, default_tax_rate: 0.0825 },
-  { id: "loc_rest", key: "restaurant", name: "Marina Restaurant", allows_charge_to_account: true, default_tax_rate: 0.0825 },
-  { id: "loc_hm", key: "harbormaster", name: "Harbormaster", allows_charge_to_account: true, default_tax_rate: 0 },
+  { id: "loc_fuel", key: "fuel_dock", name: "Fuel Dock", allows_charge_to_account: true, default_tax_rate: 0.0825, icon_key: "fuel", active: true, sort_order: 0 },
+  { id: "loc_store", key: "ship_store", name: "Ship Store", allows_charge_to_account: true, default_tax_rate: 0.0825, icon_key: "shop", active: true, sort_order: 1 },
+  { id: "loc_rest", key: "restaurant", name: "Marina Restaurant", allows_charge_to_account: true, default_tax_rate: 0.0825, icon_key: "restaurant", active: true, sort_order: 2 },
+  { id: "loc_hm", key: "harbormaster", name: "Harbormaster", allows_charge_to_account: true, default_tax_rate: 0, icon_key: "harbormaster", active: true, sort_order: 3 },
 ];
 
 export const POS_ORDERS: PosOrder[] = [
