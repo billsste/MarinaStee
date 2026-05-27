@@ -274,7 +274,7 @@ export function RosterView() {
           <span>Cadence</span>
           <span className="text-right">Rate</span>
           <span>Expires</span>
-          <span className="text-right">Days</span>
+          <span className="text-right">Time left</span>
           <span>Status</span>
         </div>
         {filtered.length === 0 ? (
