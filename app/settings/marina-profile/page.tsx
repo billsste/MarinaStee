@@ -16,7 +16,7 @@ export default function MarinaProfilePage() {
   return (
     <PageShell
       title="Marina Profile"
-      description="The marina's identity — what shows up on receipts, contracts, the boater portal, and every outbound message. Changes auto-save as you tab between fields."
+      description="The marina's identity — what shows up on receipts, contracts, the boater portal, and every outbound message. Changes save automatically when you leave a field — confirmation appears in the bottom-right."
     >
       <MarinaProfileView />
     </PageShell>

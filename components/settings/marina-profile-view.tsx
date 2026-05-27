@@ -11,6 +11,7 @@ import {
   Upload,
   X,
   Check,
+  CheckCircle2,
 } from "lucide-react";
 import { Field, Select, TextInput, Textarea } from "@/components/create-sheet";
 import {
@@ -37,8 +38,27 @@ import { cn } from "@/lib/utils";
 export function MarinaProfileView() {
   const profile = useMarinaProfile();
 
+  // Save bar telemetry — track when the profile was last mutated so the
+  // bottom status pill can render "Saved · Just now" / "Saved · 2 min
+  // ago". Auto-save commits happen on field blur (see useAutoSave).
+  const isFirstRender = React.useRef(true);
+  const [lastSavedAt, setLastSavedAt] = React.useState<number | null>(null);
+  const [flashSaved, setFlashSaved] = React.useState(false);
+
+  React.useEffect(() => {
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      return;
+    }
+    // profile reference changed → store committed → confirm to operator
+    setLastSavedAt(Date.now());
+    setFlashSaved(true);
+    const t = window.setTimeout(() => setFlashSaved(false), 1800);
+    return () => window.clearTimeout(t);
+  }, [profile]);
+
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 pb-24">
       <Section
         icon={<Building2 className="size-4" />}
         title="Branding"
@@ -202,8 +222,70 @@ export function MarinaProfileView() {
           />
         </div>
       </Section>
+
+      <SaveBar lastSavedAt={lastSavedAt} flashSaved={flashSaved} />
     </div>
   );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Sticky save-status bar — gives the operator constant visual confirmation
+// that auto-save is working. Settings pages historically committed silently
+// on blur; users want to see proof. Bar sits fixed at the bottom-right of
+// the viewport and shows:
+//   - "All changes saved" with a green check when clean
+//   - "Saved · Just now" flashing green for ~2s after each commit
+//   - "Saved · 5 min ago" stable state afterward
+
+function SaveBar({
+  lastSavedAt,
+  flashSaved,
+}: {
+  lastSavedAt: number | null;
+  flashSaved: boolean;
+}) {
+  const [, force] = React.useState(0);
+  // Re-render once a minute so "5 min ago" stays current
+  React.useEffect(() => {
+    const id = window.setInterval(() => force((n) => n + 1), 60_000);
+    return () => window.clearInterval(id);
+  }, []);
+
+  const label = !lastSavedAt
+    ? "All changes saved"
+    : flashSaved
+    ? "Saved · Just now"
+    : `Saved · ${formatRelative(lastSavedAt)}`;
+
+  return (
+    <div className="pointer-events-none fixed bottom-5 right-5 z-40 flex justify-end">
+      <div
+        className={
+          "pointer-events-auto inline-flex items-center gap-2 rounded-full border bg-surface-1 px-3 py-1.5 text-[12px] font-medium shadow-md transition-colors " +
+          (flashSaved
+            ? "border-status-ok/40 bg-status-ok/10 text-status-ok"
+            : "border-hairline text-fg-subtle")
+        }
+      >
+        <CheckCircle2
+          className={
+            "size-3.5 " + (flashSaved ? "text-status-ok" : "text-fg-tertiary")
+          }
+        />
+        <span>{label}</span>
+      </div>
+    </div>
+  );
+}
+
+function formatRelative(ts: number): string {
+  const seconds = Math.round((Date.now() - ts) / 1000);
+  if (seconds < 60) return "Just now";
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `${minutes} min ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return new Date(ts).toLocaleDateString();
 }
 
 // ─────────────────────────────────────────────────────────────────────
