@@ -280,7 +280,7 @@ export function RosterView() {
 
       {/* Roster table */}
       <div className="overflow-hidden rounded-[12px] border border-hairline bg-surface-1">
-        <div className="grid grid-cols-[64px_84px_minmax(0,1.8fr)_minmax(0,1.7fr)_minmax(0,1.1fr)_120px_140px] gap-3 border-b border-hairline bg-surface-2 px-3 py-2 text-[10px] font-medium uppercase tracking-wide text-fg-tertiary">
+        <div className="grid grid-cols-[64px_84px_minmax(0,1.8fr)_minmax(0,1.7fr)_minmax(0,1.1fr)_110px_100px] gap-5 border-b border-hairline bg-surface-2 px-3 py-2 text-[10px] font-medium uppercase tracking-wide text-fg-tertiary">
           <span>Slip</span>
           <span>Dock</span>
           <span>Holder</span>
@@ -399,7 +399,7 @@ function RosterRow({
   })();
 
   const gridClass =
-    "grid grid-cols-[64px_84px_minmax(0,1.8fr)_minmax(0,1.7fr)_minmax(0,1.1fr)_120px_140px] items-center gap-3 px-3 py-2 text-[13px] transition-colors";
+    "grid grid-cols-[64px_84px_minmax(0,1.8fr)_minmax(0,1.7fr)_minmax(0,1.1fr)_110px_100px] items-center gap-5 px-3 py-2 text-[13px] transition-colors";
 
   // Hover-only pencil affordance for editing the slip's intrinsic
   // defaults (class, max LOA/beam, default rates). Sits above the row's
