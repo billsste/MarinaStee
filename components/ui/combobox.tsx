@@ -131,7 +131,7 @@ export function Combobox({
         <Popover.Content
           align="start"
           sideOffset={4}
-          className="z-50 w-[--radix-popover-trigger-width] overflow-hidden rounded-[10px] border border-hairline bg-surface-1 shadow-xl outline-none"
+          className="z-50 w-[--radix-popover-trigger-width] min-w-[360px] overflow-hidden rounded-[10px] border border-hairline bg-surface-1 shadow-xl outline-none"
           onOpenAutoFocus={(e) => e.preventDefault()}
         >
           <div className="flex items-center gap-2 border-b border-hairline px-3 py-2">

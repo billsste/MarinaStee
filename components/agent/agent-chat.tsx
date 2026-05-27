@@ -4,7 +4,7 @@ import * as React from "react";
 import { Sparkles, ArrowUp, CheckCheck, X, User as UserIcon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
+import { cn, formatPhone } from "@/lib/utils";
 import { useStore } from "@/lib/client-store";
 import type { AgentAction } from "@/lib/simulated-agent";
 import { executeAgentAction } from "@/lib/agent-actions";
@@ -348,7 +348,7 @@ function ActionCard({
       {action.kind === "create_boater" && (
         <p className="mt-1 max-w-md text-[12px] text-fg-subtle">
           {action.email && `${action.email} · `}
-          {action.phone && `${action.phone} · `}
+          {action.phone && `${formatPhone(action.phone)} · `}
           {action.preferred_channel} · {action.billing_cadence}
         </p>
       )}

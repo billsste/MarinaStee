@@ -4,6 +4,7 @@ import * as React from "react";
 import { CreateSheet, Field, Select, TextInput, Textarea } from "@/components/create-sheet";
 import { Button } from "@/components/ui/button";
 import { executeAgentAction } from "@/lib/agent-actions";
+import { formatPhoneInput, phoneDigitCount } from "@/lib/utils";
 
 /*
  * Code generation: holders get a system-assigned shorthand at create time
@@ -56,7 +57,15 @@ export function NewBoaterSheet({
     }
   }, [open]);
 
-  const canSubmit = firstName.trim().length > 0 && lastName.trim().length > 0;
+  // Simple email shape check — full RFC-grade isn't worth the overhead at
+  // the demo layer. Real backend validation will be authoritative.
+  const emailLooksValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+  const phoneIsComplete = phoneDigitCount(phone) === 10;
+  const canSubmit =
+    firstName.trim().length > 0 &&
+    lastName.trim().length > 0 &&
+    emailLooksValid &&
+    phoneIsComplete;
 
   function submit() {
     if (!canSubmit) return;
@@ -65,8 +74,8 @@ export function NewBoaterSheet({
       label: "",
       first_name: firstName.trim(),
       last_name: lastName.trim(),
-      email: email.trim() || undefined,
-      phone: phone.trim() || undefined,
+      email: email.trim(),
+      phone: phone.trim(),
       // Auto-generated code — gets superseded by slip-encoded code when a
       // slip is attached via the contract flow.
       code: generateHolderCode(billingCadence),
@@ -107,11 +116,17 @@ export function NewBoaterSheet({
         </div>
 
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Email">
+          <Field label="Email" required>
             <TextInput type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="david@example.com" />
           </Field>
-          <Field label="Phone">
-            <TextInput type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="(555) 555-0123" />
+          <Field label="Phone" required>
+            <TextInput
+              type="tel"
+              inputMode="tel"
+              value={phone}
+              onChange={(e) => setPhone(formatPhoneInput(e.target.value))}
+              placeholder="(555) 555-0123"
+            />
           </Field>
         </div>
 

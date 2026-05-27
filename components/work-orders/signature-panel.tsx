@@ -13,6 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { BOATERS } from "@/lib/mock-data";
 import { addCommunication } from "@/lib/client-store";
+import { formatPhone } from "@/lib/utils";
 import type { Communication, Quote } from "@/lib/types";
 
 function nextCommId() {
@@ -186,7 +187,7 @@ export function SignaturePanel({ quote: initialQuote }: { quote: Quote }) {
                   <span className="text-fg">
                     {boater.communication_prefs.preferred_channel === "email"
                       ? boater.primary_contact.email
-                      : boater.primary_contact.phone}
+                      : formatPhone(boater.primary_contact.phone)}
                   </span>
                 </>
               )}

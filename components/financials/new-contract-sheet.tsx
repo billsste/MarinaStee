@@ -6,7 +6,23 @@ import { Button } from "@/components/ui/button";
 import { Combobox } from "@/components/ui/combobox";
 import { NewBoaterSheet } from "@/components/boaters/new-boater-sheet";
 import { BOATERS, CONTRACT_TEMPLATES, RENTAL_SPACES, SLIPS, VESSELS } from "@/lib/mock-data";
-import { useBoaters } from "@/lib/client-store";
+import { useBoaters, useFees } from "@/lib/client-store";
+import type { ContractTemplate } from "@/lib/types";
+
+/**
+ * Returns the canonical rate for a contract template. If a fee in the
+ * catalog has linked_template_id pointing back to this template (e.g.,
+ * Winterization Service ↔ tpl_winterization), that fee's amount wins —
+ * fees are the SKU table. Otherwise falls back to the template's own
+ * default_annual_rate (legacy / un-linked templates).
+ */
+function resolveTemplateRate(
+  tpl: ContractTemplate,
+  fees: ReturnType<typeof useFees>
+): number | undefined {
+  const linked = fees.find((f) => f.linked_template_id === tpl.id);
+  return linked?.amount ?? tpl.default_annual_rate;
+}
 import { executeAgentAction } from "@/lib/agent-actions";
 
 export function NewContractSheet({
@@ -22,6 +38,10 @@ export function NewContractSheet({
 }) {
   const liveBoaters = useBoaters();
   const boaters = liveBoaters.length > 0 ? liveBoaters : BOATERS;
+  // Fee catalog is the canonical SKU table — when a template is linked
+  // to a fee (e.g. Winterization template ↔ fee_winterize), the fee's
+  // amount drives the contract's annual rate, not the template's field.
+  const fees = useFees();
 
   const [boaterId, setBoaterId] = React.useState(defaultBoaterId ?? "");
   const [templateId, setTemplateId] = React.useState<string>(
@@ -57,7 +77,9 @@ export function NewContractSheet({
         .toISOString()
         .slice(0, 10);
       setEnd(endDate);
-      setAnnualRate(firstTpl?.default_annual_rate?.toString() ?? "");
+      setAnnualRate(
+        firstTpl ? (resolveTemplateRate(firstTpl, fees)?.toString() ?? "") : ""
+      );
       setCadence(firstTpl?.default_billing_cadence ?? "monthly");
       setAttachments([]);
     }
@@ -97,8 +119,9 @@ export function NewContractSheet({
     const tpl = CONTRACT_TEMPLATES.find((t) => t.id === templateId);
     if (!tpl) return;
     setCadence(tpl.default_billing_cadence);
-    if (tpl.default_annual_rate) {
-      setAnnualRate(tpl.default_annual_rate.toString());
+    const resolved = resolveTemplateRate(tpl, fees);
+    if (resolved) {
+      setAnnualRate(resolved.toString());
     }
     if (start) {
       const endDate = new Date(

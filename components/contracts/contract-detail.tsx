@@ -314,6 +314,7 @@ function DocumentSection({
   const hasSignaturePng = !!contract.signature_data_url;
   const hasSignedPdf = !!contract.signed_pdf_url;
   const attachments = contract.attachments ?? [];
+  const hasAiDraft = !!contract.drafted_body_markdown;
 
   return (
     <section className="rounded-[12px] border border-hairline bg-surface-1">
@@ -339,6 +340,14 @@ function DocumentSection({
           downloadName={template?.source_file_name}
           mimeBadge={template?.source_file_type?.toUpperCase()}
         />
+
+        {/* Layer 1.5: AI-drafted body (when the wizard filled the merge tokens) */}
+        {hasAiDraft && (
+          <AiDraftedBody
+            body={contract.drafted_body_markdown!}
+            draftedAt={contract.drafted_at}
+          />
+        )}
 
         {/* Layer 2: signed contract */}
         {signed ? (
@@ -796,6 +805,65 @@ function Field({
             </Link>
           ) : (
             inner
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── AI-drafted body ───────────────────────────────────────────────
+//
+// Renders the contract body Claude (or the local-fill fallback)
+// produced from the template + this contract's context. Collapsible —
+// shows a teaser by default with an Expand affordance so the detail
+// page doesn't blow up vertically for long lease docs.
+
+function AiDraftedBody({
+  body,
+  draftedAt,
+}: {
+  body: string;
+  draftedAt?: string;
+}) {
+  const [expanded, setExpanded] = React.useState(false);
+  const previewLineCount = 8;
+  const lines = body.split("\n");
+  const preview = lines.slice(0, previewLineCount).join("\n");
+  const isTruncated = lines.length > previewLineCount;
+
+  return (
+    <div className="rounded-[10px] border border-primary/30 bg-primary-soft/20 p-3">
+      <div className="flex items-start gap-2">
+        <Sparkles className="mt-0.5 size-4 shrink-0 text-primary" />
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center justify-between gap-2">
+            <div className="text-[13px] font-medium text-fg">
+              AI-drafted contract body
+            </div>
+            {draftedAt && (
+              <span className="text-[11px] text-fg-tertiary">
+                {new Date(draftedAt).toLocaleString()}
+              </span>
+            )}
+          </div>
+          <p className="mt-0.5 text-[11px] text-fg-subtle">
+            Generated from the template by Claude when the contract was drafted.
+            The boater reads this on /onboard before signing.
+          </p>
+          <pre className="mt-2 max-h-[480px] overflow-auto whitespace-pre-wrap rounded-[6px] border border-hairline bg-surface-1 p-3 text-[12px] leading-5 text-fg font-sans">
+            {expanded || !isTruncated ? body : preview}
+          </pre>
+          {isTruncated && (
+            <button
+              type="button"
+              onClick={() => setExpanded((v) => !v)}
+              className="mt-1.5 text-[11px] font-medium text-primary hover:underline"
+            >
+              {expanded
+                ? "Collapse"
+                : `Show full document (${lines.length - previewLineCount} more lines)`}
+            </button>
           )}
         </div>
       </div>

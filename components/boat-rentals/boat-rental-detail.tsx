@@ -38,7 +38,7 @@ import type {
   Communication,
   RentalBoat,
 } from "@/lib/types";
-import { cn } from "@/lib/utils";
+import { cn, formatPhone } from "@/lib/utils";
 
 /*
  * Booking detail page. The center of the Boat Rentals chain — staff
@@ -214,7 +214,7 @@ export function BoatRentalDetail({
               {(boater?.primary_contact.phone ?? rental.patron_phone) && (
                 <ContactRow
                   icon={<Phone className="size-3.5" />}
-                  value={boater?.primary_contact.phone ?? rental.patron_phone ?? ""}
+                  value={formatPhone(boater?.primary_contact.phone ?? rental.patron_phone ?? "")}
                 />
               )}
               {rental.patron_id_last4 && (

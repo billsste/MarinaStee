@@ -7,6 +7,7 @@ import { Combobox } from "@/components/ui/combobox";
 import { BOATERS } from "@/lib/mock-data";
 import { useBoaters } from "@/lib/client-store";
 import { executeAgentAction } from "@/lib/agent-actions";
+import { formatPhone } from "@/lib/utils";
 
 export function NewMessageSheet({
   open,
@@ -40,7 +41,7 @@ export function NewMessageSheet({
   const recipient =
     boater && (channel === "email"
       ? boater.primary_contact.email ?? "—"
-      : boater.primary_contact.phone ?? "—");
+      : formatPhone(boater.primary_contact.phone) || "—");
 
   const canSubmit = boaterId.length > 0 && body.trim().length > 0;
 

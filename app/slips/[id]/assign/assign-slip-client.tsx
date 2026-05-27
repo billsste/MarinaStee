@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { Check, Sparkles, UserPlus, X } from "lucide-react";
+import { Check, Plus, Sparkles, UserPlus, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Combobox } from "@/components/ui/combobox";
@@ -15,9 +15,11 @@ import { BOATERS, CONTRACT_TEMPLATES, VESSELS, formatMoney } from "@/lib/mock-da
 import {
   addCommunication,
   mintContractSignatureToken,
+  updateContract,
   useBoaters,
   useContractTemplates,
   useFees,
+  useSlip,
   useVesselsForBoater,
 } from "@/lib/client-store";
 import { executeAgentAction } from "@/lib/agent-actions";
@@ -89,8 +91,29 @@ type LocalAttachment = {
   sizeBytes: number;
 };
 
-export function AssignSlipClient({ slip }: { slip: SlipMeta }) {
+export function AssignSlipClient({ slip: ssrSlip }: { slip: SlipMeta }) {
   const router = useRouter();
+  // Prefer the store's copy of the slip so edits made on the Roster's
+  // "Edit slip" affordance flow into the wizard immediately. Fall back
+  // to the SSR-passed seed values if the store hasn't surfaced the slip
+  // (shouldn't happen, but defensive).
+  const liveSlip = useSlip(ssrSlip.id);
+  const slip: SlipMeta = liveSlip
+    ? {
+        id: liveSlip.id,
+        number: liveSlip.number,
+        dock: liveSlip.dock,
+        loaInches: liveSlip.max_loa_inches,
+        beamInches: liveSlip.max_beam_inches,
+        hasPower: liveSlip.has_power,
+        hasWater: liveSlip.has_water,
+        occupancyType: ssrSlip.occupancyType,
+        slipClass: liveSlip.slip_class,
+        defaultAnnualRate: liveSlip.default_annual_rate,
+        defaultMonthlyRate: liveSlip.default_monthly_rate,
+        defaultSeasonalRate: liveSlip.default_seasonal_rate,
+      }
+    : ssrSlip;
   const liveBoaters = useBoaters();
   const boaters = liveBoaters.length > 0 ? liveBoaters : BOATERS;
   const fees = useFees();
@@ -272,6 +295,78 @@ export function AssignSlipClient({ slip }: { slip: SlipMeta }) {
             : undefined,
       });
 
+      // AI draft pass — fill the template's merge tokens with concrete
+      // context for this contract. Runs against /api/draft-contract,
+      // which calls the Anthropic API if ANTHROPIC_API_KEY is set and
+      // falls back to a deterministic local fill otherwise. Either way
+      // the contract ends up with a `drafted_body_markdown` ready for
+      // the holder to read on /onboard.
+      if (result.ok && result.createdId && selectedTemplate?.body_markdown) {
+        try {
+          const vesselForDraft = vesselOptions.find(
+            (v) => v.id === draft.vesselId
+          );
+          const draftRes = await fetch("/api/draft-contract", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              template_name: selectedTemplate.name,
+              template_body: selectedTemplate.body_markdown,
+              context: {
+                boater: selectedBoater
+                  ? {
+                      display_name: selectedBoater.display_name,
+                      code: selectedBoater.code ?? "",
+                      legal_name: selectedBoater.display_name,
+                      primary_contact: selectedBoater.primary_contact,
+                      address: selectedBoater.address,
+                    }
+                  : null,
+                slip: {
+                  number: slip.number,
+                  dock: slip.dock,
+                  slipClass: slip.slipClass,
+                  loa_feet: Math.round(slip.loaInches / 12),
+                },
+                vessel: vesselForDraft
+                  ? {
+                      name: vesselForDraft.name,
+                      year: vesselForDraft.year ?? "",
+                      make: vesselForDraft.make ?? "",
+                      model: vesselForDraft.model ?? "",
+                    }
+                  : null,
+                contract: {
+                  effective_start: draft.start,
+                  effective_end: draft.end,
+                  annual_rate: annualRate,
+                  billing_cadence: cadence,
+                  services: selectedFees.map((f) => ({
+                    name: f.name,
+                    amount: f.amount,
+                  })),
+                },
+              },
+            }),
+          });
+          if (draftRes.ok) {
+            const json = (await draftRes.json()) as {
+              drafted_body_markdown?: string;
+            };
+            if (json.drafted_body_markdown) {
+              updateContract(result.createdId, {
+                drafted_body_markdown: json.drafted_body_markdown,
+                drafted_at: new Date().toISOString(),
+              });
+            }
+          }
+        } catch (err) {
+          // Non-fatal: the contract is created, just lacks the AI body.
+          // Staff can re-draft from the contract detail page.
+          console.error("[wizard] draft-contract call failed", err);
+        }
+      }
+
       // Onboarding chain — mint the signature token, transition the
       // contract to "sent," and dispatch an outbound Communication to
       // the holder with their /onboard/[token] URL. This is what makes
@@ -332,6 +427,15 @@ export function AssignSlipClient({ slip }: { slip: SlipMeta }) {
   }
 
   // ── Right-rail context: the slip itself (always visible) ─────────────
+  const servicesTotal = selectedFees.reduce((acc, f) => acc + f.amount, 0);
+  // Year-one total: contract rate (annual / monthly×12 / one season)
+  // plus the selected add-ons. Quick-and-dirty: we sum all selected fees
+  // regardless of billing_mode — staff want a directional total, not a
+  // perfectly normalized cadence math.
+  const contractAnnualized =
+    draft.cadence === "monthly" ? draft.amount * 12 : draft.amount;
+  const yearOneTotal = contractAnnualized + servicesTotal;
+
   const rightRail = (
     <div className="space-y-4">
       <div>
@@ -360,6 +464,35 @@ export function AssignSlipClient({ slip }: { slip: SlipMeta }) {
           />
         )}
       </dl>
+
+      {/* Services rollup — appears the moment a fee is checked in Step 2 */}
+      {selectedFees.length > 0 && (
+        <div className="border-t border-hairline pt-3">
+          <div className="mb-1.5 text-[10px] uppercase tracking-wide text-fg-tertiary">
+            Services ({selectedFees.length})
+          </div>
+          <ul className="space-y-1 text-[12px]">
+            {selectedFees.map((f) => (
+              <li key={f.id} className="flex items-baseline justify-between gap-2">
+                <span className="min-w-0 flex-1 truncate text-fg-subtle">
+                  {f.name}
+                </span>
+                <span className="money-display tabular text-fg">
+                  +{formatMoney(f.amount)}
+                </span>
+              </li>
+            ))}
+          </ul>
+          <div className="mt-2 flex items-baseline justify-between gap-2 border-t border-hairline pt-2">
+            <span className="text-[11px] font-medium uppercase tracking-wide text-fg-tertiary">
+              Year one
+            </span>
+            <span className="money-display text-[14px] font-medium text-fg">
+              {formatMoney(yearOneTotal)}
+            </span>
+          </div>
+        </div>
+      )}
       {/* Agent affordance — Marina Stee's differentiator */}
       <div className="rounded-[10px] border border-primary/30 bg-primary-soft/40 p-3">
         <div className="flex items-center gap-1.5 text-[12px] font-medium text-primary">
@@ -473,26 +606,34 @@ export function AssignSlipClient({ slip }: { slip: SlipMeta }) {
                   : "Pick a vessel on file for this holder, or skip and attach later."
               }
             >
-              <Combobox
-                value={draft.vesselId}
-                onChange={(v) => setDraft((d) => ({ ...d, vesselId: v }))}
-                options={vesselOptions.map((v) => ({
-                  value: v.id,
-                  label: v.name,
-                  hint: v.year ? `· ${v.year}` : undefined,
-                }))}
-                placeholder={
-                  selectedBoater
-                    ? vesselOptions.length === 0
-                      ? "No vessels on file — add one"
-                      : "No vessel"
-                    : "Pick a holder first"
-                }
-                searchPlaceholder="Search vessels…"
-                disabled={!selectedBoater}
-                onCreateNew={selectedBoater ? () => setNewVesselOpen(true) : undefined}
-                createNewLabel="Add a new vessel"
-              />
+              {selectedBoater && vesselOptions.length === 0 ? (
+                // Skip the empty dropdown indirection — surface the
+                // create CTA directly so staff doesn't have to click
+                // into a list with one item.
+                <button
+                  type="button"
+                  onClick={() => setNewVesselOpen(true)}
+                  className="flex h-10 w-full items-center justify-center gap-1.5 rounded-[8px] border border-dashed border-primary/40 bg-primary-soft/30 px-3 text-[13px] font-medium text-primary hover:bg-primary-soft/50"
+                >
+                  <Plus className="size-3.5" />
+                  Add a new vessel
+                </button>
+              ) : (
+                <Combobox
+                  value={draft.vesselId}
+                  onChange={(v) => setDraft((d) => ({ ...d, vesselId: v }))}
+                  options={vesselOptions.map((v) => ({
+                    value: v.id,
+                    label: v.name,
+                    hint: v.year ? `· ${v.year}` : undefined,
+                  }))}
+                  placeholder={selectedBoater ? "No vessel" : "Pick a holder first"}
+                  searchPlaceholder="Search vessels…"
+                  disabled={!selectedBoater}
+                  onCreateNew={selectedBoater ? () => setNewVesselOpen(true) : undefined}
+                  createNewLabel="Add a new vessel"
+                />
+              )}
             </FieldLabel>
           </div>
         )}
@@ -646,14 +787,9 @@ export function AssignSlipClient({ slip }: { slip: SlipMeta }) {
                         )}
                       >
                         <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-2">
-                            <span className="text-[13px] font-medium text-fg">
-                              {f.name}
-                            </span>
-                            <Badge tone="outline" size="sm">
-                              {f.billing_mode}
-                            </Badge>
-                          </div>
+                          <span className="text-[13px] font-medium text-fg">
+                            {f.name}
+                          </span>
                           {f.description && (
                             <p className="mt-0.5 text-[11px] text-fg-subtle">
                               {f.description}
@@ -792,7 +928,11 @@ export function AssignSlipClient({ slip }: { slip: SlipMeta }) {
               <ReviewBlock
                 label="Vessel"
                 value={
-                  VESSELS.find((v) => v.id === draft.vesselId)?.name ?? "—"
+                  // Check live (store-backed) vessels first so freshly-
+                  // created ones resolve immediately; fall back to seed.
+                  vesselOptions.find((v) => v.id === draft.vesselId)?.name ??
+                  VESSELS.find((v) => v.id === draft.vesselId)?.name ??
+                  "—"
                 }
                 onEdit={() => setStepIdx(0)}
               />

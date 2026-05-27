@@ -22,7 +22,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
-import { cn } from "@/lib/utils";
+import { cn, formatPhone } from "@/lib/utils";
 import { RecordEditDialog, type FieldSpec } from "@/components/record-edit-dialog";
 import {
   formatInches,
@@ -199,7 +199,7 @@ export function OverviewTab({
         <Panel title="Contact" onEdit={() => setEditContactOpen(true)}>
           <div className="space-y-1">
             <ContactRow icon={<Mail className="size-3.5" />} label="Email" value={boater.primary_contact.email} />
-            <ContactRow icon={<Phone className="size-3.5" />} label="Phone" value={boater.primary_contact.phone} />
+            <ContactRow icon={<Phone className="size-3.5" />} label="Phone" value={formatPhone(boater.primary_contact.phone)} />
             <ContactRow
               icon={<MapPin className="size-3.5" />}
               label="Address"
@@ -216,7 +216,7 @@ export function OverviewTab({
                   <li key={c.id} className="text-[12px] text-fg-muted">
                     <span className="text-fg">{c.name}</span>
                     <span className="text-fg-tertiary"> · {contactRoleLabels.get(c.role) ?? c.role}</span>
-                    <span className="text-fg-tertiary"> · {c.phone ?? c.email}</span>
+                    <span className="text-fg-tertiary"> · {c.phone ? formatPhone(c.phone) : c.email}</span>
                   </li>
                 ))}
               </ul>

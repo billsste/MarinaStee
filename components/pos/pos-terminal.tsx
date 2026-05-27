@@ -38,6 +38,7 @@ import {
   nextLedgerId,
   nextPosOrderId,
   nextPosOrderNumber,
+  useFeesByScope,
 } from "@/lib/client-store";
 import type {
   Boater,
@@ -78,12 +79,29 @@ export function PosTerminal() {
 
   const location = POS_LOCATIONS.find((l) => l.key === locationKey)!;
   const catalog = POS_CATALOG.filter((c) => c.location_keys.includes(locationKey));
+  // Service fees that are available at POS — show as their own category
+  // in the palette so staff can ring them up from any register without
+  // hunting through the Fees page.
+  const posFees = useFeesByScope("pos");
 
   // Group catalog by category for the palette
   const grouped = catalog.reduce<Record<string, PosCatalogItem[]>>((acc, c) => {
     (acc[c.category] ||= []).push(c);
     return acc;
   }, {});
+  // Inject service fees as a virtual "Service Fees" category at the
+  // bottom of the palette. They're shaped as PosCatalogItem so the rest
+  // of the rendering / addItem flow doesn't need to fork.
+  if (posFees.length > 0) {
+    grouped["Service Fees"] = posFees.map((f) => ({
+      sku: `FEE-${f.id}`,
+      name: f.name,
+      category: "Service Fees",
+      price: f.amount,
+      location_keys: [locationKey],
+      taxable: false,
+    }));
+  }
 
   const subtotal = items.reduce((s, l) => s + l.total, 0);
   const taxableSubtotal = items.filter((l) => l.taxable).reduce((s, l) => s + l.total, 0);

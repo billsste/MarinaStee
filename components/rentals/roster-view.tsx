@@ -2,18 +2,24 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { Search, Sparkles, UserPlus } from "lucide-react";
+import { Pencil, Search, Sparkles, UserPlus } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { RecordEditDialog, type FieldSpec } from "@/components/record-edit-dialog";
 import { SpacesToolbar } from "@/components/rentals/spaces-toolbar";
 import { useRouter } from "next/navigation";
 import {
   BOATERS,
-  SLIPS,
   VESSELS,
   formatMoney,
 } from "@/lib/mock-data";
-import { useContracts, usePicklistLabel, useReservations } from "@/lib/client-store";
+import {
+  upsertSlip,
+  useContracts,
+  usePicklistLabel,
+  useReservations,
+  useSlips,
+} from "@/lib/client-store";
 import { cn } from "@/lib/utils";
 import type { Boater, Contract, Reservation, Slip, Vessel } from "@/lib/types";
 
@@ -47,14 +53,65 @@ type Row = {
 // "Expiring" = active contract with effective_end <= 90 days out
 const EXPIRY_WINDOW_DAYS = 90;
 
+// Slip-edit fields. Class is wired to the `slip_class` picklist so the
+// super-user can rename or add classes from Settings → Customization
+// without touching code. Rates are dollars per year.
+const SLIP_FIELDS: FieldSpec<Slip>[] = [
+  { key: "number", label: "Number", kind: "text", required: true, col: 2 },
+  { key: "dock", label: "Dock", kind: "text", required: true, col: 2 },
+  {
+    key: "slip_class",
+    label: "Class",
+    kind: "select",
+    col: 2,
+    picklist: "slip_class",
+  },
+  { key: "invoice_category", label: "Invoice category", kind: "text", col: 2 },
+  { key: "max_loa_inches", label: "Max LOA (inches)", kind: "number", col: 2 },
+  { key: "max_beam_inches", label: "Max beam (inches)", kind: "number", col: 2 },
+  { key: "has_power", label: "Power available", kind: "boolean" },
+  { key: "has_water", label: "Water available", kind: "boolean" },
+  {
+    key: "default_annual_rate",
+    label: "Default annual rate ($)",
+    kind: "number",
+    col: 2,
+  },
+  {
+    key: "default_monthly_rate",
+    label: "Default monthly rate ($)",
+    kind: "number",
+    col: 2,
+  },
+  {
+    key: "default_seasonal_rate",
+    label: "Default seasonal rate ($)",
+    kind: "number",
+    col: 2,
+  },
+];
+
 export function RosterView() {
   const contracts = useContracts();
   const reservations = useReservations();
+  // Slip-intrinsic data lives in the store now so the row-level "Edit
+  // slip" affordance can mutate slip_class / default_annual_rate /
+  // dimensions without crossing the server/seed boundary.
+  const slips = useSlips();
 
   const docks = React.useMemo(
-    () => Array.from(new Set(SLIPS.map((s) => s.dock))).sort(),
-    []
+    () => Array.from(new Set(slips.map((s) => s.dock))).sort(),
+    [slips]
   );
+
+  // Slip-edit dialog state — opens from the small pencil affordance
+  // appearing on each row hover.
+  const [editingSlip, setEditingSlip] = React.useState<Slip | undefined>();
+  const [slipEditOpen, setSlipEditOpen] = React.useState(false);
+  function openSlipEdit(slip: Slip) {
+    setEditingSlip(slip);
+    setSlipEditOpen(true);
+  }
 
   const [dock, setDock] = React.useState<string>("all");
   const [cadence, setCadence] = React.useState<CadenceFilter>("all");
@@ -67,7 +124,7 @@ export function RosterView() {
   // Build joined rows once per change
   const rows: Row[] = React.useMemo(() => {
     const now = Date.now();
-    return SLIPS.map((slip) => {
+    return slips.map((slip) => {
       // Most recent ACTIVE or LAPSED contract for this slip
       const slipContracts = contracts
         .filter((c) => c.slip_id === slip.id)
@@ -218,6 +275,7 @@ export function RosterView() {
                 key={r.slip.id}
                 row={r}
                 onAssign={() => router.push(`/slips/${r.slip.id}/assign`)}
+                onEditSlip={() => openSlipEdit(r.slip)}
               />
             ))}
           </ul>
@@ -234,13 +292,34 @@ export function RosterView() {
         </span>
       </div>
 
+      <RecordEditDialog<Slip>
+        open={slipEditOpen}
+        onOpenChange={setSlipEditOpen}
+        title={
+          editingSlip
+            ? `Edit slip ${editingSlip.id}`
+            : "Edit slip"
+        }
+        description="Slip defaults flow into the assignment wizard for any new contract on this slip. Existing contracts keep what they were signed at."
+        fields={SLIP_FIELDS}
+        record={editingSlip}
+        onSave={(values) => upsertSlip(values)}
+      />
     </div>
   );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-function RosterRow({ row, onAssign }: { row: Row; onAssign: () => void }) {
+function RosterRow({
+  row,
+  onAssign,
+  onEditSlip,
+}: {
+  row: Row;
+  onAssign: () => void;
+  onEditSlip: () => void;
+}) {
   const { slip, contract, boater, vessel, rowStatus, daysUntilExpiry } = row;
   const statusBadge = (() => {
     if (rowStatus === "vacant") return <Badge tone="ok" size="sm">Vacant</Badge>;
@@ -252,11 +331,31 @@ function RosterRow({ row, onAssign }: { row: Row; onAssign: () => void }) {
   const gridClass =
     "grid grid-cols-[64px_minmax(0,1.6fr)_minmax(0,1.5fr)_minmax(0,1.1fr)_88px_minmax(0,1.2fr)_96px_120px] items-center gap-3 px-3 py-2 text-[13px] transition-colors";
 
+  // Hover-only pencil affordance for editing the slip's intrinsic
+  // defaults (class, max LOA/beam, default rates). Sits above the row's
+  // primary click target so the click doesn't navigate or open assign.
+  const editPencil = (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        onEditSlip();
+      }}
+      title="Edit slip defaults"
+      aria-label="Edit slip defaults"
+      className="absolute right-2 top-1/2 z-10 -translate-y-1/2 rounded-md border border-hairline bg-surface-1 p-1 text-fg-subtle opacity-0 shadow-sm transition-opacity hover:bg-surface-2 hover:text-fg group-hover:opacity-100"
+    >
+      <Pencil className="size-3" />
+    </button>
+  );
+
   // Vacant slips → "Assign holder" action. Occupied / lapsed / expiring →
   // navigate to the boater detail.
   if (!boater) {
     return (
-      <li>
+      <li className="group relative">
+        {editPencil}
         <button
           type="button"
           onClick={onAssign}
@@ -293,7 +392,8 @@ function RosterRow({ row, onAssign }: { row: Row; onAssign: () => void }) {
   }
 
   return (
-    <li>
+    <li className="group relative">
+      {editPencil}
       <Link
         href={`/holders/${boater.id}`}
         className={cn(gridClass, "cursor-pointer hover:bg-surface-2")}

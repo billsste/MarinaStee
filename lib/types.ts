@@ -496,6 +496,13 @@ export interface ContractTemplate {
    * "slip.number", "contract.annual_rate"].
    */
   detected_merge_fields?: string[];
+  /**
+   * Raw template body (markdown). Used as the source for AI-drafted
+   * contracts — merge tokens like {{boater.display_name}} are filled
+   * by the /api/draft-contract route and the result is stored on the
+   * Contract as `drafted_body_markdown`.
+   */
+  body_markdown?: string;
 }
 
 export type ContractStatus =
@@ -540,6 +547,14 @@ export interface Contract {
   signer_name?: string;
   signature_data_url?: string;        // base64 PNG of signature pad
   signer_ip?: string;                  // captured for audit
+  /**
+   * AI-drafted contract body (markdown). Populated by the
+   * /api/draft-contract route at wizard-submit time. Renders in the
+   * Document section so staff (and the boater on /onboard) can read
+   * the actual filled contract before signing.
+   */
+  drafted_body_markdown?: string;
+  drafted_at?: string;                 // ISO timestamp of the draft
   /**
    * Per-step onboarding progress. Drives the staff-side progress rail.
    * Each field is set to the ISO timestamp when the step completed; a
@@ -658,20 +673,68 @@ export interface Rate {
   applies_to_group_ids?: string[]; // omitted = all groups of that occupancy type
 }
 
-export type FeeBillingMode =
-  | "single_billing"            // one-time charge
-  | "bill_with_rental"          // added to a rental invoice
-  | "recurring_monthly"
-  | "recurring_annual";
+/**
+ * Fees are the canonical SKU table. Other entities (work orders, contract
+ * templates, boat rentals, POS) reference a fee by id and ride its current
+ * values. Editing a fee's amount flows everywhere automatically.
+ */
+export type FeeRecurrence =
+  | "one_time"
+  | "monthly"
+  | "annual";
+
+/**
+ * Where a fee surfaces in the UI / when it gets auto-attached.
+ *  - slip_contract: appears in the assign-slip wizard's Services step
+ *  - work_order: auto-attached on WO closeout when linked_activity_type matches
+ *  - boat_rental: auto-attached on rental closeout when auto_attach is true
+ *  - pos: appears as a Service-Fee tile in the POS terminal palette
+ *  - annual_billing_run: appears on every annual-cadence invoice when applicable
+ */
+export type FeeAppliesTo =
+  | "slip_contract"
+  | "work_order"
+  | "boat_rental"
+  | "pos"
+  | "annual_billing_run";
 
 export interface AdditionalFee {
   id: string;
   name: string;                 // "Hoist Fee", "Transfer Fee", "Pump-out"
   description?: string;
   amount: number;
-  billing_mode: FeeBillingMode;
+  /**
+   * One-time vs monthly vs annual. Annual fees with applies_to including
+   * "annual_billing_run" get rolled into every annual-cadence invoice.
+   */
+  recurrence: FeeRecurrence;
+  /**
+   * Scope: which surfaces this fee is available to and which closeouts
+   * auto-attach it. Use at least one entry — fees with empty applies_to
+   * are catalog-only.
+   */
+  applies_to: FeeAppliesTo[];
   accounting_line_item: string; // "2025/2026 Marina Del Sur Slip Fees"
   applies_to_group_ids?: string[];
+  /**
+   * When set, this fee is the SKU for a Work Order activity. Completing a
+   * WO of the matching activity_type appends this fee as a line item on
+   * the closeout invoice (no manual quote editing needed).
+   */
+  linked_activity_type?: WorkOrderActivityType;
+  /**
+   * When set, this fee is the priced service for a Contract Template (e.g.
+   * the Winterization template's price flows from here, not the template
+   * itself). Editing fee.amount updates every future contract drafted from
+   * the linked template.
+   */
+  linked_template_id?: string;
+  /**
+   * When applies_to includes a closeout scope (work_order / boat_rental),
+   * auto_attach controls whether the fee silently appends to the invoice
+   * or just becomes available for staff to opt in. Default: true.
+   */
+  auto_attach?: boolean;
 }
 
 export interface MeterReading {

@@ -1,11 +1,14 @@
 import { NextRequest } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import {
+  ADDITIONAL_FEES,
   BOATERS,
   CONTRACTS,
+  CONTRACT_TEMPLATES,
   METER_READINGS,
   RENTAL_GROUPS,
   RENTAL_SPACES,
+  WORK_ORDERS,
   meterAnomaly,
   meterDelta,
 } from "@/lib/mock-data";
@@ -72,6 +75,22 @@ const READ_TOOLS: Anthropic.Messages.Tool[] = [
         days_window: {
           type: "number",
           description: "How many days from today to look ahead. Default: 90.",
+        },
+      },
+      required: [],
+    },
+  },
+  {
+    name: "query_fee_usage",
+    description:
+      "Returns the additional-fee catalog plus per-fee usage counts (ledger invoice references, linked WO activity matches, linked contract templates). Use when staff asks where a fee is being charged, how many holders have it, or wants to audit fee usage before renaming/archiving.",
+    input_schema: {
+      type: "object",
+      properties: {
+        fee_query: {
+          type: "string",
+          description:
+            "Optional name/keyword filter (e.g., 'pet', 'pump-out'). If omitted, returns all fees.",
         },
       },
       required: [],
@@ -452,6 +471,55 @@ function executeReadTool(
       };
     });
     return { count: anomalous.length, readings: anomalous };
+  }
+
+  if (name === "query_fee_usage") {
+    const q =
+      typeof input.fee_query === "string"
+        ? (input.fee_query as string).toLowerCase().trim()
+        : "";
+    const matches = q
+      ? ADDITIONAL_FEES.filter(
+          (f) =>
+            f.name.toLowerCase().includes(q) ||
+            f.id.toLowerCase().includes(q) ||
+            (f.description ?? "").toLowerCase().includes(q)
+        )
+      : ADDITIONAL_FEES;
+    const rows = matches.map((f) => {
+      const lname = f.name.toLowerCase();
+      // Invoices that reference this fee by name (demo-grade)
+      const invoice_refs = ledger.filter(
+        (l) =>
+          l.type === "invoice" &&
+          (l.line_items ?? []).some((li) =>
+            li.description.toLowerCase().includes(lname)
+          )
+      );
+      // Work orders matching the linked activity type
+      const wo_refs = f.linked_activity_type
+        ? WORK_ORDERS.filter((w) => w.activity_type === f.linked_activity_type)
+        : [];
+      // Linked contract template (if any)
+      const linked_template = f.linked_template_id
+        ? CONTRACT_TEMPLATES.find((t) => t.id === f.linked_template_id)?.name
+        : undefined;
+      return {
+        fee_id: f.id,
+        name: f.name,
+        amount: f.amount,
+        recurrence: f.recurrence,
+        applies_to: f.applies_to,
+        invoice_count: invoice_refs.length,
+        work_order_count: wo_refs.length,
+        linked_template,
+        linked_activity_type: f.linked_activity_type,
+        auto_attach: f.auto_attach ?? false,
+        total_usage:
+          invoice_refs.length + wo_refs.length + (linked_template ? 1 : 0),
+      };
+    });
+    return { count: rows.length, fees: rows };
   }
 
   if (name === "query_contract_expiry") {

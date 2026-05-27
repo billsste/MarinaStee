@@ -19,7 +19,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useBoaters, useStore } from "@/lib/client-store";
 import { executeAgentAction } from "@/lib/agent-actions";
-import { cn } from "@/lib/utils";
+import { cn, formatPhone } from "@/lib/utils";
 import type { Boater, Communication } from "@/lib/types";
 
 /**
@@ -520,7 +520,7 @@ function ThreadView({
           </Link>
           <div className="mt-0.5 text-[11px] text-fg-tertiary">
             {boater.primary_contact.email ?? "—"}
-            {boater.primary_contact.phone && ` · ${boater.primary_contact.phone}`}
+            {boater.primary_contact.phone && ` · ${formatPhone(boater.primary_contact.phone)}`}
             {" · "}
             prefers {boater.communication_prefs.preferred_channel}
           </div>

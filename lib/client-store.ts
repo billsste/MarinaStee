@@ -22,6 +22,7 @@ import {
   RENTAL_BOATS,
   RENTAL_GROUPS,
   RENTAL_SPACES,
+  SLIPS,
   RESERVATIONS,
   SEED_TENANT_ID,
   STAFF_NOTES,
@@ -52,6 +53,7 @@ import type {
   RentalBoat,
   RentalGroup,
   RentalSpace,
+  Slip,
   Reservation,
   StaffNote,
   Tenant,
@@ -116,6 +118,10 @@ type State = {
   meters: MeterReading[];
   rentalGroups: RentalGroup[];
   rentalSpaces: RentalSpace[];
+  // Slip-intrinsic data (class, LOA, default annual rate, utilities).
+  // Mirrored from the SLIPS seed at boot so the Roster + wizard can
+  // edit a slip's defaults without crossing the server/seed boundary.
+  slips: Slip[];
   fuelInventory: FuelInventory[];
   // Boat Rentals (own fleet — pontoons, kayaks, jet skis, ...)
   rentalBoats: RentalBoat[];
@@ -149,6 +155,7 @@ let state: State = {
   meters: [...METER_READINGS],
   rentalGroups: [...RENTAL_GROUPS],
   rentalSpaces: [...RENTAL_SPACES],
+  slips: [...SLIPS],
   fuelInventory: [...FUEL_INVENTORY],
   rentalBoats: [...RENTAL_BOATS],
   boatRentals: [...BOAT_RENTALS],
@@ -207,6 +214,26 @@ export function postBillingRunInvoice(opts: {
   if (!boater || opts.amount <= 0) return null;
   const now = new Date().toISOString();
 
+  // Collect any annual-recurring fees that apply to the annual billing
+  // run. These get rolled into the same invoice as additional line
+  // items (e.g., Pet Fee surcharge for holders flagged with pets).
+  // We apply *all* such fees to every contract for now — once we have
+  // boater-level flags (has_pet, etc.), this filter tightens.
+  const annualRecurringFees = state.fees.filter(
+    (f) =>
+      f.recurrence === "annual" &&
+      f.applies_to.includes("annual_billing_run")
+  );
+
+  const lineItems: { description: string; amount: number }[] = [
+    { description: opts.line_item_label, amount: opts.amount },
+    ...annualRecurringFees.map((f) => ({
+      description: f.name,
+      amount: f.amount,
+    })),
+  ];
+  const total = lineItems.reduce((acc, li) => acc + li.amount, 0);
+
   // 1. Post the invoice
   const invoiceId = nextLedgerId();
   const invoice: LedgerEntry = {
@@ -215,13 +242,13 @@ export function postBillingRunInvoice(opts: {
     type: "invoice",
     number: nextInvoiceNumber(),
     date: opts.date,
-    amount: opts.amount,
-    open_balance: opts.amount,
+    amount: total,
+    open_balance: total,
     method: "ach",
     status: "open",
     gl_account: "Slip Fee Revenue",
     qb_sync_status: "pending",
-    line_items: [{ description: opts.line_item_label, amount: opts.amount }],
+    line_items: lineItems,
   };
   state = { ...state, ledger: [invoice, ...state.ledger] };
 
@@ -236,7 +263,7 @@ export function postBillingRunInvoice(opts: {
       type: "payment",
       number: nextInvoiceNumber(),
       date: opts.date,
-      amount: opts.amount,
+      amount: total,
       open_balance: 0,
       method: "card",
       status: "paid",
@@ -486,6 +513,18 @@ function fireWorkOrderCloseoutChain(id: string): void {
   const now = new Date().toISOString();
   const today = now.slice(0, 10);
 
+  // Look up any fee that's linked to this WO's activity_type. If the
+  // fee auto-attaches and isn't already represented on the quote, we'll
+  // append it as a line item so closeouts can skip a manual quote edit.
+  const linkedFee = wo.activity_type
+    ? state.fees.find(
+        (f) =>
+          f.linked_activity_type === wo.activity_type &&
+          f.applies_to.includes("work_order") &&
+          f.auto_attach !== false
+      )
+    : undefined;
+
   // If there's a signed quote with line items and no invoice yet,
   // post one now.
   let invoiceId: string | undefined;
@@ -496,24 +535,74 @@ function fireWorkOrderCloseoutChain(id: string): void {
     quote.total > 0
   ) {
     invoiceId = nextLedgerId();
+    // Build line items: start from the quote, append the linked fee if
+    // it's not already on there (matched by name; demo-grade dedupe).
+    const baseItems = quote.line_items.map((li) => ({
+      description: li.name,
+      amount: li.total,
+    }));
+    const alreadyHasLinked =
+      !!linkedFee &&
+      baseItems.some((li) =>
+        li.description.toLowerCase().includes(linkedFee.name.toLowerCase())
+      );
+    const items =
+      linkedFee && !alreadyHasLinked
+        ? [...baseItems, { description: linkedFee.name, amount: linkedFee.amount }]
+        : baseItems;
+    const total = items.reduce((acc, li) => acc + li.amount, 0);
     const invoice: LedgerEntry = {
       id: invoiceId,
       boater_id: wo.boater_id,
       type: "invoice",
       number: nextInvoiceNumber(),
       date: today,
-      amount: quote.total,
-      open_balance: quote.total,
+      amount: total,
+      open_balance: total,
       method: null,
       status: "open",
-      line_items: quote.line_items.map((li) => ({
-        description: li.name,
-        amount: li.total,
-      })),
+      line_items: items,
       gl_account: "Services",
       qb_sync_status: "pending",
       linked_work_order_id: wo.id,
       linked_quote_id: quote.id,
+    };
+    state = {
+      ...state,
+      ledger: [invoice, ...state.ledger],
+      workOrders: state.workOrders.map((w) =>
+        w.id === id
+          ? {
+              ...w,
+              linked_ledger_entry_ids: [
+                ...(w.linked_ledger_entry_ids ?? []),
+                invoiceId!,
+              ],
+            }
+          : w
+      ),
+    };
+  } else if (linkedFee && !alreadyInvoiced) {
+    // No quote attached but we have an auto-attach fee for this activity
+    // type — post a fee-only invoice so staff doesn't have to draft a
+    // throwaway quote for a $25 pump-out, etc.
+    invoiceId = nextLedgerId();
+    const invoice: LedgerEntry = {
+      id: invoiceId,
+      boater_id: wo.boater_id,
+      type: "invoice",
+      number: nextInvoiceNumber(),
+      date: today,
+      amount: linkedFee.amount,
+      open_balance: linkedFee.amount,
+      method: null,
+      status: "open",
+      line_items: [
+        { description: linkedFee.name, amount: linkedFee.amount },
+      ],
+      gl_account: linkedFee.accounting_line_item || "Services",
+      qb_sync_status: "pending",
+      linked_work_order_id: wo.id,
     };
     state = {
       ...state,
@@ -1118,6 +1207,27 @@ export function upsertRentalSpace(s: RentalSpace) {
 }
 export function deleteRentalSpace(id: string) {
   state = { ...state, rentalSpaces: state.rentalSpaces.filter((s) => s.id !== id) };
+  notify();
+}
+
+// ── Slip CRUD ───────────────────────────────────────────────
+// Slip-intrinsic data (class, max LOA/beam, utilities, default rates).
+// Staff edits these from the Roster's row action.
+export function updateSlip(id: string, patch: Partial<Slip>) {
+  state = {
+    ...state,
+    slips: state.slips.map((s) => (s.id === id ? { ...s, ...patch } : s)),
+  };
+  notify();
+}
+export function upsertSlip(slip: Slip) {
+  const exists = state.slips.some((s) => s.id === slip.id);
+  state = {
+    ...state,
+    slips: exists
+      ? state.slips.map((s) => (s.id === slip.id ? slip : s))
+      : [...state.slips, slip],
+  };
   notify();
 }
 export function nextRentalGroupId() {
@@ -1807,6 +1917,55 @@ export function useFees(): AdditionalFee[] {
   return useStore().fees;
 }
 
+/**
+ * Scoped fee lookup. Returns fees whose `applies_to` includes the given
+ * scope. Use in the consumer that needs them (POS palette, slip wizard,
+ * annual run, WO closeout, boat rental).
+ */
+export function useFeesByScope(scope: AdditionalFee["applies_to"][number]): AdditionalFee[] {
+  const fees = useStore().fees;
+  return fees.filter((f) => f.applies_to.includes(scope));
+}
+
+/**
+ * Per-fee usage count across the entire data model. Drives the
+ * "X in use" affordance on the Fees Manager. Counts:
+ *   - Contracts that included the fee at draft time (via line items name match)
+ *   - Work Order closeout invoices (line items name match)
+ *   - Linked contract template (1 if linked_template_id is set)
+ *   - Boat rentals with the fee as auto-attach line item
+ *   - Ledger invoices referencing the fee name
+ */
+export function useFeeUsage(): Map<string, number> {
+  const s = useStore();
+  const usage = new Map<string, number>();
+  for (const fee of s.fees) {
+    let count = 0;
+    const name = fee.name.toLowerCase();
+    // 1. Ledger invoices with a line item matching this fee
+    for (const l of s.ledger) {
+      if (l.type !== "invoice") continue;
+      const items = l.line_items ?? [];
+      for (const li of items) {
+        if (li.description.toLowerCase().includes(name)) {
+          count += 1;
+          break;
+        }
+      }
+    }
+    // 2. Linked contract template
+    if (fee.linked_template_id) count += 1;
+    // 3. Work orders matching the linked activity
+    if (fee.linked_activity_type) {
+      for (const wo of s.workOrders) {
+        if (wo.activity_type === fee.linked_activity_type) count += 1;
+      }
+    }
+    usage.set(fee.id, count);
+  }
+  return usage;
+}
+
 export function useContractTemplates(): ContractTemplate[] {
   return useStore().templates;
 }
@@ -1839,6 +1998,14 @@ export function useStaffNotesForBoater(boaterId: string): StaffNote[] {
 export function useInsuranceForBoater(boaterId: string): InsuranceCertificate[] {
   const s = useStore();
   return s.insurance.filter((c) => c.boater_id === boaterId);
+}
+
+export function useSlips(): Slip[] {
+  return useStore().slips;
+}
+
+export function useSlip(id: string): Slip | undefined {
+  return useStore().slips.find((s) => s.id === id);
 }
 
 export function useInsuranceForVessel(vesselId: string): InsuranceCertificate[] {
@@ -2025,7 +2192,21 @@ export function closeBoatRental(
   const lateFee = lateMs > 0 ? Math.ceil(lateMs / (30 * 60_000)) * 50 : 0;
 
   const damageCharge = inputs.damage_charge ?? 0;
-  const finalTotal = +(r.base_amount + fuelCharge + damageCharge + lateFee).toFixed(2);
+
+  // Auto-attach fees flagged for boat rentals. Demo-grade: applies any
+  // fee with applies_to: boat_rental and auto_attach=true. (Hoist fee
+  // intentionally has auto_attach=false in the seed so it doesn't
+  // auto-add — it's an opt-in that staff applies when the lift was used.)
+  const rentalAutoFees = state.fees.filter(
+    (f) =>
+      f.applies_to.includes("boat_rental") &&
+      f.auto_attach === true
+  );
+  const autoFeesTotal = rentalAutoFees.reduce((acc, f) => acc + f.amount, 0);
+
+  const finalTotal = +(
+    r.base_amount + fuelCharge + damageCharge + lateFee + autoFeesTotal
+  ).toFixed(2);
 
   // Build the invoice + receipt. For walk-ins, boater_id is synthetic
   // (`walk_in:<rentalId>`) but the ledger still records it for audit.
@@ -2038,6 +2219,9 @@ export function closeBoatRental(
   if (fuelCharge > 0) lineItems.push({ description: "Fuel + refueling", amount: fuelCharge });
   if (damageCharge > 0) lineItems.push({ description: "Damage assessment", amount: damageCharge });
   if (lateFee > 0) lineItems.push({ description: "Late return fee", amount: lateFee });
+  for (const f of rentalAutoFees) {
+    lineItems.push({ description: f.name, amount: f.amount });
+  }
 
   const invoice: LedgerEntry = {
     id: invoiceId,

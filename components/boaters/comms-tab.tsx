@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { useCommunicationsForBoater } from "@/lib/client-store";
 import { useLedgerDrawer } from "@/components/ledger/ledger-entry-drawer";
 import { NewMessageSheet } from "@/components/comms/new-message-sheet";
+import { formatPhone } from "@/lib/utils";
 import type { Communication } from "@/lib/types";
 
 function channelIcon(type: Communication["type"]) {
@@ -215,7 +216,7 @@ function CommDetailDialog({
               </div>
               <div>
                 <dt className="text-fg-tertiary">To</dt>
-                <dd className="text-fg">{comm.recipient}</dd>
+                <dd className="text-fg">{comm.type === "sms" || comm.type === "voice" ? formatPhone(comm.recipient) : comm.recipient}</dd>
               </div>
               <div>
                 <dt className="text-fg-tertiary">Sent</dt>

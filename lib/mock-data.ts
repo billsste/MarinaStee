@@ -353,6 +353,49 @@ export const CONTRACT_TEMPLATES: ContractTemplate[] = [
     body_preview: "This Slip Lease Agreement is entered into between Marina Stee and {{boater.legal_name}}…",
     required_signers: ["boater", "manager"],
     auto_renew: true,
+    body_markdown: `# Annual Slip Lease Agreement
+
+**Marina:** Marina Stee
+**Holder:** {{boater.display_name}} ({{boater.code}})
+**Slip:** {{slip.number}} · {{slip.dock}}
+**Vessel:** {{vessel.name}} ({{vessel.year}} {{vessel.make}} {{vessel.model}})
+**Effective period:** {{contract.effective_start}} through {{contract.effective_end}}
+
+---
+
+## 1. Slip Assignment
+Marina Stee grants the Holder exclusive use of slip **{{slip.number}}** at {{slip.dock}} for the term of this Agreement. The Holder may moor only the vessel identified above. Any substitution requires Marina written consent and a vessel re-fit check (LOA, beam, draft).
+
+## 2. Term and Renewal
+This Agreement runs from **{{contract.effective_start}}** through **{{contract.effective_end}}** and renews automatically for successive 12-month terms unless either party provides 60 days' written notice prior to the renewal date.
+
+## 3. Fees and Billing
+- **Annual rate:** {{contract.annual_rate_formatted}}
+- **Billing cadence:** {{contract.billing_cadence}}
+- **Payment method:** A card on file is required throughout the term. Failed payments incur a 1.5% monthly late fee.
+- **Add-ons:** {{contract.services_summary}}
+
+## 4. Insurance
+Holder shall maintain a Certificate of Insurance (COI) naming Marina Stee as an additional insured, with minimum hull and liability coverage of $300,000. Lapse of COI is grounds for immediate suspension of slip access.
+
+## 5. Use of Slip
+The slip is for the moorage of the named vessel only. Live-aboard use, commercial chartering, and subletting are prohibited without prior written consent. Holder agrees to abide by Marina rules posted on-site and updated from time to time.
+
+## 6. Damage and Liability
+Marina Stee is not liable for damage to the vessel, its contents, or personal property caused by weather, theft, vandalism, fire, or acts of God. Holder is responsible for damage to Marina property caused by the vessel.
+
+## 7. Termination
+Either party may terminate for cause (non-payment, material breach, dangerous operation) with 14 days' written notice. Holder may terminate without cause with 60 days' notice; no prorated refund is owed.
+
+## 8. Signatures
+By signing below, both parties agree to the terms above.
+
+**Holder:** ______________________________ Date: ____________
+{{boater.display_name}}
+
+**Marina Manager:** ______________________________ Date: ____________
+Marina Stee
+`,
   },
   {
     id: "tpl_seasonal_slip",
@@ -365,6 +408,41 @@ export const CONTRACT_TEMPLATES: ContractTemplate[] = [
     body_preview: "Seasonal slip term from {{contract.effective_start}} through {{contract.effective_end}}…",
     required_signers: ["boater", "manager"],
     auto_renew: false,
+    body_markdown: `# Seasonal Slip Lease Agreement
+
+**Marina:** Marina Stee
+**Holder:** {{boater.display_name}} ({{boater.code}})
+**Slip:** {{slip.number}} · {{slip.dock}}
+**Vessel:** {{vessel.name}}
+**Season:** {{contract.effective_start}} → {{contract.effective_end}}
+
+---
+
+## 1. Slip Assignment
+Marina Stee grants the Holder use of slip **{{slip.number}}** for the season specified above. The Holder must remove the vessel by the end-of-season date; daily storage fees apply thereafter.
+
+## 2. Term
+This Agreement covers a single season and does **not** auto-renew. A new agreement is required for the following season.
+
+## 3. Fees
+- **Seasonal rate:** {{contract.annual_rate_formatted}}
+- **Billing cadence:** {{contract.billing_cadence}}
+- **Add-ons:** {{contract.services_summary}}
+
+## 4. Insurance
+A current COI is required for the entire season. See Section 4 of the Annual Slip Lease for coverage minimums.
+
+## 5. Use
+Identical to the Annual Slip Lease. No live-aboard, no commercial use, abide by posted Marina rules.
+
+## 6. Signatures
+
+**Holder:** ______________________________ Date: ____________
+{{boater.display_name}}
+
+**Marina Manager:** ______________________________ Date: ____________
+Marina Stee
+`,
   },
   {
     id: "tpl_winterization",
@@ -376,6 +454,35 @@ export const CONTRACT_TEMPLATES: ContractTemplate[] = [
     body_preview: "Marina Stee will winterize the vessel described below…",
     required_signers: ["boater"],
     auto_renew: false,
+    body_markdown: `# Winterization Service Agreement
+
+**Marina:** Marina Stee
+**Holder:** {{boater.display_name}}
+**Vessel:** {{vessel.name}} ({{vessel.year}} {{vessel.make}} {{vessel.model}})
+**Scheduled date:** {{contract.effective_start}}
+
+---
+
+## Scope of Work
+Marina Stee will perform standard winterization on the vessel above:
+- Engine flush + fuel stabilizer
+- Plumbing antifreeze (fresh water + head)
+- Battery disconnect + trickle-charge setup
+- Hull rinse + cover fit-check
+
+## Service Fee
+Total: {{contract.annual_rate_formatted}}. Billed at completion.
+
+## Holder Responsibilities
+- Vessel must be empty of personal effects on the scheduled date
+- Hull cover supplied by Holder
+- Any additional work outside the scope above is billed separately
+
+## Signature
+
+**Holder:** ______________________________ Date: ____________
+{{boater.display_name}}
+`,
   },
 ];
 
@@ -2322,12 +2429,67 @@ export const RATES: Rate[] = [
 ];
 
 export const ADDITIONAL_FEES: AdditionalFee[] = [
-  { id: "fee_hoist", name: "Hoist Fee", description: "In/out hoist service for vessel launch or haul-out.", amount: 55.02, billing_mode: "bill_with_rental", accounting_line_item: "2025/2026 Marina Del Sur Slip Fees" },
-  { id: "fee_transfer", name: "Transfer Fee", description: "Slip-to-slip transfer charge.", amount: 200, billing_mode: "single_billing", accounting_line_item: "2025/2026 Marina Del Sur Slip Fees" },
-  { id: "fee_pump_out", name: "Pump-out Service", description: "Holding tank pump-out, on-demand.", amount: 25, billing_mode: "single_billing", accounting_line_item: "2026 Services" },
-  { id: "fee_winterize", name: "Winterization Service", description: "Engine, plumbing, fuel stabilizer.", amount: 285, billing_mode: "single_billing", accounting_line_item: "2026 Services" },
-  { id: "fee_storage_move", name: "Storage Move", description: "Move vessel between storage locations.", amount: 120, billing_mode: "single_billing", accounting_line_item: "2026 Services" },
-  { id: "fee_pet_fee", name: "Pet Fee", description: "Annual pet liability surcharge.", amount: 75, billing_mode: "recurring_annual", accounting_line_item: "2026 Annual Fees" },
+  {
+    id: "fee_hoist",
+    name: "Hoist Fee",
+    description: "In/out hoist service for vessel launch or haul-out.",
+    amount: 55.02,
+    recurrence: "one_time",
+    applies_to: ["slip_contract", "boat_rental", "work_order", "pos"],
+    accounting_line_item: "2025/2026 Marina Del Sur Slip Fees",
+    linked_activity_type: "haul_out",
+    auto_attach: false,
+  },
+  {
+    id: "fee_transfer",
+    name: "Transfer Fee",
+    description: "Slip-to-slip transfer charge.",
+    amount: 200,
+    recurrence: "one_time",
+    applies_to: ["slip_contract", "pos"],
+    accounting_line_item: "2025/2026 Marina Del Sur Slip Fees",
+  },
+  {
+    id: "fee_pump_out",
+    name: "Pump-out Service",
+    description: "Holding tank pump-out, on-demand.",
+    amount: 25,
+    recurrence: "one_time",
+    applies_to: ["work_order", "pos"],
+    accounting_line_item: "2026 Services",
+    linked_activity_type: "pump_out",
+    auto_attach: true,
+  },
+  {
+    id: "fee_winterize",
+    name: "Winterization Service",
+    description: "Engine, plumbing, fuel stabilizer.",
+    amount: 285,
+    recurrence: "one_time",
+    applies_to: ["slip_contract", "work_order", "pos"],
+    accounting_line_item: "2026 Services",
+    linked_activity_type: "winterization",
+    linked_template_id: "tpl_winterization",
+    auto_attach: true,
+  },
+  {
+    id: "fee_storage_move",
+    name: "Storage Move",
+    description: "Move vessel between storage locations.",
+    amount: 120,
+    recurrence: "one_time",
+    applies_to: ["work_order", "pos"],
+    accounting_line_item: "2026 Services",
+  },
+  {
+    id: "fee_pet_fee",
+    name: "Pet Fee",
+    description: "Annual pet liability surcharge.",
+    amount: 75,
+    recurrence: "annual",
+    applies_to: ["slip_contract", "annual_billing_run"],
+    accounting_line_item: "2026 Annual Fees",
+  },
 ];
 
 // Meter readings — most normal, a couple anomalous
