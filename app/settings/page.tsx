@@ -10,6 +10,8 @@ import {
   Mail,
   Package,
   Store,
+  Upload,
+  Sparkles,
 } from "lucide-react";
 import { PageShell } from "@/components/page-shell";
 import { RentalsAsk } from "@/components/rentals/rentals-ask";
@@ -90,6 +92,20 @@ export default function SettingsPage() {
           icon={<Bell className="size-4" />}
           title="Notification rules"
           subtitle="Quiet hours, channel defaults, storm triggers, reminders"
+        />
+
+        <SettingsLink
+          href="/settings/import"
+          icon={<Upload className="size-4" />}
+          title="Data Import"
+          subtitle="CSV import for slips, boaters, vessels"
+        />
+
+        <SettingsLink
+          href="/onboarding"
+          icon={<Sparkles className="size-4" />}
+          title="Re-run setup wizard"
+          subtitle="Step through the first-run flow again"
         />
 
         <SettingsLink
