@@ -3,323 +3,154 @@ import {
   Building2,
   Users,
   CreditCard,
-  Plug,
   Bell,
   Server,
-  CheckCircle2,
-  AlertCircle,
-  CloudUpload,
-  RefreshCw,
   Tag,
   ChevronRight,
+  Mail,
+  Package,
+  Store,
 } from "lucide-react";
 import { PageShell } from "@/components/page-shell";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { RentalsAsk } from "@/components/rentals/rentals-ask";
-import { USERS, PICKLISTS } from "@/lib/mock-data";
 import { MarinaIdentityCard } from "@/components/settings/marina-identity-card";
 
 export const metadata = { title: "Settings — Marina Stee" };
 
+/*
+ * Settings landing page — primarily a router into focused editors. Each
+ * tile is a real configurable page now; the old static cards were
+ * replaced with the per-area editors built in the operator-config
+ * sweep.
+ */
 export default function SettingsPage() {
   return (
     <PageShell
       title="Settings"
-      description="Marina identity, staff, payment processors, MCP connections, and notification rules."
+      description="Configure your marina end-to-end — identity, staff, POS catalog + locations, comm templates, connections, and picklists."
     >
       <RentalsAsk
         placeholder="Ask the agent — e.g. 'add Tiffany as a Manager' or 'connect QuickBooks'"
         suggestions={[
           "Add Tiffany as Manager",
           "Connect QuickBooks",
-          "Enable Marina Stee MCP server",
-          "Mute SMS reminders before 8am",
+          "Edit the receipt template",
+          "Add a new POS location",
         ]}
       />
 
-      {/* Customization callout — pinned at the top because it's the
-          fastest way to make the tool fit each marina's vocabulary
-          without code changes. */}
-      <Link
-        href="/settings/customization"
-        className="mt-5 flex items-center justify-between gap-4 rounded-[12px] border border-primary/30 bg-primary-soft/30 px-4 py-3 transition-colors hover:bg-primary-soft/50"
-      >
-        <div className="flex items-center gap-3">
-          <div className="flex size-9 items-center justify-center rounded-[8px] bg-primary text-on-primary">
-            <Tag className="size-4" />
-          </div>
-          <div>
-            <div className="text-[14px] font-medium text-fg">Customization</div>
-            <p className="text-[12px] text-fg-subtle">
-              Tune dropdown values — slip classes, vessel types, work-order
-              activities, and more — for your marina.{" "}
-              <span className="text-fg-tertiary">
-                {PICKLISTS.length} picklists configurable today.
-              </span>
-            </p>
-          </div>
-        </div>
-        <ChevronRight className="size-4 text-fg-subtle" />
-      </Link>
-
-      <div className="mt-5 grid grid-cols-1 gap-4 lg:grid-cols-2">
+      <div className="mt-5 grid grid-cols-1 gap-3 md:grid-cols-2">
         <MarinaIdentityCard />
 
-        <SettingsCard
+        <SettingsLink
+          href="/settings/staff"
           icon={<Users className="size-4" />}
-          title="Staff &amp; roles"
-          subtitle={`${USERS.filter((u) => u.role !== "system").length} active users`}
-          action={<Button variant="secondary" size="sm">Invite</Button>}
-        >
-          <ul className="divide-y divide-hairline">
-            {USERS.filter((u) => u.role !== "system").map((u) => (
-              <li key={u.id} className="flex items-center justify-between py-2 text-[13px]">
-                <div>
-                  <div className="text-fg">{u.name}</div>
-                  <div className="text-[11px] text-fg-tertiary capitalize">{u.role}</div>
-                </div>
-                <Badge tone="ok" size="sm">Active</Badge>
-              </li>
-            ))}
-          </ul>
-        </SettingsCard>
+          title="Staff & Roles"
+          subtitle="Invite team, assign roles, manage permission matrix"
+        />
 
-        <SettingsCard
+        <SettingsLink
+          href="/settings/pos-locations"
+          icon={<Store className="size-4" />}
+          title="POS Locations"
+          subtitle="Fuel Dock, Ship Store, Restaurant, Harbormaster — register configuration"
+        />
+
+        <SettingsLink
+          href="/ledger?tab=catalog"
+          icon={<Package className="size-4" />}
+          title="POS Catalog"
+          subtitle="Items, prices, costs, category groupings — edit from Ledger / POS → Catalog"
+        />
+
+        <SettingsLink
+          href="/settings/comm-templates"
+          icon={<Mail className="size-4" />}
+          title="Comm Templates"
+          subtitle="Receipt, contract, COI reminder, payment failure — system message copy"
+        />
+
+        <SettingsLink
+          href="/settings/connections"
           icon={<CreditCard className="size-4" />}
-          title="Payment processors"
-          subtitle="Card + ACH routing"
-        >
-          <IntegrationRow
-            name="Stripe"
-            status="connected"
-            detail="acct_1OqXyz · default for card payments"
-          />
-          <IntegrationRow
-            name="Plaid"
-            status="disconnected"
-            detail="ACH not configured"
-          />
-          <IntegrationRow
-            name="QuickBooks Online"
-            status="needs_attention"
-            detail="Re-authorize — token expires in 3 days"
-          />
-        </SettingsCard>
+          title="Connections"
+          subtitle="Stripe · Postmark · Twilio · QuickBooks · MCP"
+        />
 
-        <SettingsCard
-          icon={<CloudUpload className="size-4" />}
-          title="QuickBooks Online — deep config"
-          subtitle="GL account mapping + sync rules"
-          action={
-            <Button variant="secondary" size="sm">
-              <RefreshCw className="size-3.5" />
-              Re-authorize
-            </Button>
-          }
-        >
-          <div className="space-y-4">
-            <div>
-              <div className="mb-2 flex items-center justify-between">
-                <div className="text-[11px] font-medium uppercase tracking-wide text-fg-tertiary">
-                  GL account mapping
-                </div>
-                <span className="text-[11px] text-fg-tertiary">5 mapped</span>
-              </div>
-              <ul className="divide-y divide-hairline rounded-[8px] border border-hairline bg-surface-2">
-                <GlRow label="Fuel Sales" qbAccount="4001 · Fuel Revenue" />
-                <GlRow label="Slip Fee Revenue" qbAccount="4002 · Slip Rentals" />
-                <GlRow label="Retail Sales" qbAccount="4003 · Ship Store" />
-                <GlRow label="Restaurant" qbAccount="4004 · Restaurant Revenue" />
-                <GlRow label="A/R" qbAccount="1200 · Accounts Receivable" />
-                <GlRow label="Services" qbAccount="4005 · Services Revenue" />
-              </ul>
-            </div>
+        <SettingsLink
+          href="/settings/customization"
+          icon={<Tag className="size-4" />}
+          title="Picklists"
+          subtitle="Tune dropdown values across the tool"
+          tone="primary"
+        />
 
-            <div>
-              <div className="mb-2 flex items-center justify-between">
-                <div className="text-[11px] font-medium uppercase tracking-wide text-fg-tertiary">
-                  SKU → QuickBooks item mapping
-                </div>
-                <Button variant="ghost" size="sm">+ Map item</Button>
-              </div>
-              <ul className="divide-y divide-hairline rounded-[8px] border border-hairline bg-surface-2">
-                <SkuRow sku="FUEL-GAS" name="Gasoline" qbItem="ITEM-FUEL-87" />
-                <SkuRow sku="FUEL-DSL" name="Diesel" qbItem="ITEM-FUEL-DSL" />
-                <SkuRow sku="ROPE-50" name="Dock line 50ft" qbItem="ITEM-RETAIL-ROPE" />
-                <SkuRow sku="HOIST-FEE" name="Hoist Fee" qbItem="ITEM-SVC-HOIST" />
-                <SkuRow sku="SLIP-MONTHLY" name="Monthly slip — Standard" qbItem="ITEM-SLIP-MO" />
-              </ul>
-            </div>
-
-            <div>
-              <div className="mb-2 text-[11px] font-medium uppercase tracking-wide text-fg-tertiary">
-                Sync rules
-              </div>
-              <div className="space-y-1.5 rounded-[8px] border border-hairline bg-surface-2 px-3 py-2.5">
-                <FieldRow label="Cadence" value="Real-time + nightly reconciliation" />
-                <FieldRow label="On error" value="Retry 3× with backoff · alert manager after 24h" />
-                <FieldRow label="Customers" value="Bidirectional · Boaters ↔ QB Customers" />
-                <FieldRow label="Classes" value="POS location → QB Class (Fuel Dock / Ship Store / Restaurant / Harbormaster)" />
-                <FieldRow label="Last full sync" value="2026-05-23 18:30:00" />
-              </div>
-            </div>
-
-            <p className="text-[11px] leading-5 text-fg-tertiary">
-              Active runtime sync status lives in <span className="font-medium text-fg-muted">Ledger / POS → QuickBooks Sync</span>.
-              Mapping changes here apply to entries created after save.
-            </p>
-          </div>
-        </SettingsCard>
-
-        <SettingsCard
-          icon={<Plug className="size-4" />}
-          title="MCP connections (outbound)"
-          subtitle="What Marina Stee can talk to"
-        >
-          <IntegrationRow name="QuickBooks MCP" status="connected" detail="Used for invoice export + GL sync" />
-          <IntegrationRow name="Twilio MCP" status="connected" detail="SMS for boater comms + storm alerts" />
-          <IntegrationRow name="OpenWeather MCP" status="connected" detail="Storm-trigger workflows" />
-          <IntegrationRow name="Square MCP" status="disconnected" detail="Optional alternate POS processor" />
-        </SettingsCard>
-
-        <SettingsCard
-          icon={<Server className="size-4" />}
-          title="MCP server (inbound)"
-          subtitle="Expose Marina Stee to your desktop client"
-          action={<Button variant="secondary" size="sm">Generate token</Button>}
-        >
-          <FieldRow label="Local URL" value="mcp://marina-stee.local:9930" mono />
-          <FieldRow label="Allowed tools" value="query_boater, list_slips, send_message" />
-          <FieldRow label="Token rotation" value="Every 30 days" />
-          <p className="mt-2 text-[11px] text-fg-tertiary">
-            Owners can talk to their marina data from Claude Desktop or any MCP-aware client.
-          </p>
-        </SettingsCard>
-
-        <SettingsCard
+        <SettingsLink
+          href="/notifications"
           icon={<Bell className="size-4" />}
           title="Notification rules"
-          subtitle="Quiet hours + channel defaults"
-        >
-          <FieldRow label="Default channel" value="SMS for boaters · Email for staff" />
-          <FieldRow label="Quiet hours" value="8pm — 8am local" />
-          <FieldRow label="Storm trigger" value="≥ 25 mph sustained · auto-text" />
-          <FieldRow label="Payment reminders" value="3 / 7 / 14 days past due" />
-        </SettingsCard>
-      </div>
+          subtitle="Quiet hours, channel defaults, storm triggers, reminders"
+        />
 
-      <p className="mt-6 text-center text-[11px] text-fg-tertiary">
-        Most settings can also be changed by asking the agent — &ldquo;mute SMS reminders before 8am.&rdquo;
-      </p>
+        <SettingsLink
+          href="#"
+          icon={<Server className="size-4" />}
+          title="MCP server (inbound)"
+          subtitle="Expose Marina Stee to your desktop client · coming soon"
+          disabled
+        />
+      </div>
     </PageShell>
   );
 }
 
-function SettingsCard({
+function SettingsLink({
+  href,
   icon,
   title,
   subtitle,
-  action,
-  children,
+  tone,
+  disabled,
 }: {
+  href: string;
   icon: React.ReactNode;
   title: string;
-  subtitle?: string;
-  action?: React.ReactNode;
-  children: React.ReactNode;
+  subtitle: string;
+  tone?: "primary";
+  disabled?: boolean;
 }) {
-  return (
-    <section className="rounded-[12px] border border-hairline bg-surface-1">
-      <header className="flex items-center justify-between gap-3 border-b border-hairline px-4 py-3">
-        <div className="flex items-center gap-2">
-          <div className="flex size-7 items-center justify-center rounded-[6px] bg-surface-3 text-primary">
-            {icon}
-          </div>
-          <div>
-            <h3 className="text-[14px] font-medium text-fg">{title}</h3>
-            {subtitle && <p className="text-[11px] text-fg-tertiary">{subtitle}</p>}
-          </div>
+  const body = (
+    <div className="flex items-center justify-between gap-3">
+      <div className="flex items-center gap-3">
+        <div
+          className={
+            tone === "primary"
+              ? "flex size-9 items-center justify-center rounded-[8px] bg-primary text-on-primary"
+              : "flex size-9 items-center justify-center rounded-[8px] bg-surface-3 text-primary"
+          }
+        >
+          {icon}
         </div>
-        {action}
-      </header>
-      <div className="p-4">{children}</div>
-    </section>
-  );
-}
-
-function FieldRow({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
-  return (
-    <div className="flex items-center justify-between py-1.5 text-[13px]">
-      <span className="text-fg-tertiary">{label}</span>
-      <span className={"text-fg " + (mono ? "font-mono text-[12px]" : "")}>{value}</span>
+        <div>
+          <div className="text-[14px] font-medium text-fg">{title}</div>
+          <p className="text-[12px] text-fg-subtle">{subtitle}</p>
+        </div>
+      </div>
+      <ChevronRight className="size-4 text-fg-subtle" />
     </div>
   );
-}
 
-function GlRow({ label, qbAccount }: { label: string; qbAccount: string }) {
-  return (
-    <li className="flex items-center justify-between gap-3 px-3 py-2 text-[13px]">
-      <span className="text-fg">{label}</span>
-      <div className="flex items-center gap-2">
-        <span className="text-fg-tertiary">→</span>
-        <span className="font-mono text-[12px] text-fg-subtle">{qbAccount}</span>
-        <Badge tone="ok" size="sm">mapped</Badge>
-      </div>
-    </li>
-  );
-}
+  const baseClass =
+    tone === "primary"
+      ? "rounded-[12px] border border-primary/30 bg-primary-soft/30 px-4 py-3 transition-colors hover:bg-primary-soft/50"
+      : "rounded-[12px] border border-hairline bg-surface-1 px-4 py-3 transition-colors hover:border-hairline-strong hover:bg-surface-2";
 
-function SkuRow({
-  sku,
-  name,
-  qbItem,
-}: {
-  sku: string;
-  name: string;
-  qbItem: string;
-}) {
+  if (disabled) {
+    return <div className={`${baseClass} opacity-50`}>{body}</div>;
+  }
   return (
-    <li className="flex items-center justify-between gap-3 px-3 py-2 text-[13px]">
-      <div className="min-w-0">
-        <div className="text-fg">{name}</div>
-        <div className="font-mono text-[10px] text-fg-tertiary">{sku}</div>
-      </div>
-      <div className="flex items-center gap-2">
-        <span className="text-fg-tertiary">→</span>
-        <span className="font-mono text-[12px] text-fg-subtle">{qbItem}</span>
-      </div>
-    </li>
-  );
-}
-
-function IntegrationRow({
-  name,
-  status,
-  detail,
-}: {
-  name: string;
-  status: "connected" | "disconnected" | "needs_attention";
-  detail: string;
-}) {
-  const tone =
-    status === "connected" ? "ok"
-    : status === "needs_attention" ? "warn"
-    : "neutral";
-  const icon =
-    status === "connected" ? <CheckCircle2 className="size-3" />
-    : status === "needs_attention" ? <AlertCircle className="size-3" />
-    : null;
-  return (
-    <div className="flex items-center justify-between border-b border-hairline py-2 last:border-b-0 text-[13px]">
-      <div className="min-w-0">
-        <div className="text-fg">{name}</div>
-        <div className="truncate text-[11px] text-fg-tertiary">{detail}</div>
-      </div>
-      <Badge tone={tone} size="sm">
-        {icon}
-        {status.replace("_", " ")}
-      </Badge>
-    </div>
+    <Link href={href} className={baseClass}>
+      {body}
+    </Link>
   );
 }

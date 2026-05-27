@@ -1,13 +1,14 @@
 "use client";
 
 import * as React from "react";
-import { Banknote, CloudUpload, CreditCard, FileText, ScrollText } from "lucide-react";
+import { Banknote, CloudUpload, CreditCard, FileText, Package, ScrollText } from "lucide-react";
 import { PageShell } from "@/components/page-shell";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PosTerminal } from "@/components/pos/pos-terminal";
 import { PosOrders } from "@/components/pos/pos-orders";
 import { ArAging } from "@/components/pos/ar-aging";
 import { BillingRuns } from "@/components/pos/billing-runs";
+import { CatalogManager } from "@/components/pos/catalog-manager";
 import { QbSync } from "@/components/pos/qb-sync";
 import { RentalsAsk } from "@/components/rentals/rentals-ask";
 
@@ -46,6 +47,10 @@ export default function LedgerPage() {
               <Banknote className="size-3.5" />
               A/R
             </TabsTrigger>
+            <TabsTrigger value="catalog">
+              <Package className="size-3.5" />
+              Catalog
+            </TabsTrigger>
             <TabsTrigger value="qb">
               <CloudUpload className="size-3.5" />
               QuickBooks Sync
@@ -63,6 +68,9 @@ export default function LedgerPage() {
           </TabsContent>
           <TabsContent value="ar">
             <ArAging />
+          </TabsContent>
+          <TabsContent value="catalog">
+            <CatalogManager />
           </TabsContent>
           <TabsContent value="qb">
             <QbSync />
