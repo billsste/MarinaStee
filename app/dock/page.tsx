@@ -24,7 +24,6 @@ import {
   BOATERS,
   FUEL_INVENTORY,
   METER_READINGS,
-  POS_LOCATIONS,
   RENTAL_GROUPS,
   RENTAL_SPACES,
   formatMoney,
@@ -47,6 +46,7 @@ import {
   nextPosOrderId,
   nextPosOrderNumber,
   useBoatRentals,
+  usePosLocations,
   useRentalBoats,
   useStore,
 } from "@/lib/client-store";
@@ -502,6 +502,7 @@ function FuelView({ onDone }: { onDone: (m: string) => void }) {
   const [boaterId, setBoaterId] = React.useState<string>("");
   const [fuelType, setFuelType] = React.useState<"gasoline" | "diesel">("gasoline");
   const [gallons, setGallons] = React.useState<string>("");
+  const locations = usePosLocations();
 
   const inv = FUEL_INVENTORY.find((i) => i.fuel_type === fuelType);
   const boater = BOATERS.find((b) => b.id === boaterId);
@@ -515,7 +516,8 @@ function FuelView({ onDone }: { onDone: (m: string) => void }) {
     const orderNumber = nextPosOrderNumber();
     const invoiceId = nextLedgerId();
     const invoiceNum = nextInvoiceNumber();
-    const fuelLoc = POS_LOCATIONS.find((l) => l.key === "fuel_dock")!;
+    const fuelLoc = locations.find((l) => l.key === "fuel_dock") ?? locations[0];
+    if (!fuelLoc) return;
 
     const order: PosOrder = {
       id: orderId,

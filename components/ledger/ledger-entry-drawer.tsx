@@ -21,11 +21,10 @@ import { Button } from "@/components/ui/button";
 import { QbSyncBadge } from "@/components/pos/qb-sync-badge";
 import {
   BOATERS,
-  POS_LOCATIONS,
   WORK_ORDERS,
   formatMoney,
 } from "@/lib/mock-data";
-import { usePicklistLabel, useStore } from "@/lib/client-store";
+import { usePicklistLabel, usePosLocations, useStore } from "@/lib/client-store";
 import { EnterPaymentSheet } from "@/components/financials/enter-payment-sheet";
 import type { LedgerEntry, LedgerEntryType, PosOrder } from "@/lib/types";
 
@@ -124,6 +123,7 @@ function Body({
   const Icon = TYPE_ICON[entry.type];
   const boater = BOATERS.find((b) => b.id === entry.boater_id);
   const [paymentOpen, setPaymentOpen] = React.useState(false);
+  const locations = usePosLocations();
 
   function handlePrint() {
     // Browser's native print — uses the page's print stylesheet. Production
@@ -148,7 +148,7 @@ function Body({
     ? posOrders.find((o) => o.id === entry.linked_pos_order_id)
     : undefined;
   const posLocation = posOrder
-    ? POS_LOCATIONS.find((l) => l.id === posOrder.location_id)
+    ? locations.find((l) => l.id === posOrder.location_id)
     : undefined;
   const appliedTo = (entry.applied_to_invoice_ids ?? [])
     .map((id) => ledger.find((l) => l.id === id))

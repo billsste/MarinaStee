@@ -4,15 +4,15 @@ import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import {
   BOATERS,
-  POS_LOCATIONS,
   formatMoney,
 } from "@/lib/mock-data";
-import { usePosOrders } from "@/lib/client-store";
+import { usePosLocations, usePosOrders } from "@/lib/client-store";
 import { useLedgerDrawer } from "@/components/ledger/ledger-entry-drawer";
 import { QbSyncBadge } from "./qb-sync-badge";
 
 export function PosOrders() {
   const orders = usePosOrders();
+  const locations = usePosLocations();
   const { openLedgerEntry } = useLedgerDrawer();
   const sorted = [...orders].sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
 
@@ -41,7 +41,7 @@ export function PosOrders() {
           </thead>
           <tbody>
             {sorted.map((o) => {
-              const loc = POS_LOCATIONS.find((l) => l.id === o.location_id);
+              const loc = locations.find((l) => l.id === o.location_id);
               const boater = o.boater_id ? BOATERS.find((b) => b.id === o.boater_id) : null;
               const hasLinkedLedger = !!o.linked_ledger_entry_id;
               return (
