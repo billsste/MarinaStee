@@ -1,18 +1,19 @@
-import { ClipboardList, LayoutGrid } from "lucide-react";
 import { RentalsAsk } from "@/components/rentals/rentals-ask";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { RosterView } from "@/components/rentals/roster-view";
-import { InventoryView } from "@/components/rentals/inventory-view";
 
 export const metadata = { title: "Slips — Marina Stee Docks" };
 
 /*
- * Spaces is now ROSTER-first for the annual-holder marina.
- * Default view = who occupies every slip this season (the harbormaster's
- * morning screen). Inventory (the physical slip table by dock) becomes a
- * sub-view.
+ * /slips/roster — the unified slip page.
+ *
+ * Previously split into Status (operational) + Layout (inventory) tabs.
+ * Merged: the Roster table already shows everything operationally
+ * important; the slip-edit pencil exposes inventory fields. Adding new
+ * slips happens via the toolbar "+ Add slip" action. The dock filter
+ * chips effectively give the per-dock grouping the Layout view used to
+ * provide.
  */
-export default function SpacesPage() {
+export default function SlipsPage() {
   return (
     <div className="space-y-5">
       <RentalsAsk
@@ -24,29 +25,7 @@ export default function SpacesPage() {
           "Lapsed contracts — who needs to renew?",
         ]}
       />
-
-      {/* "Status" = list table (one row per slip with current holder +
-          expiry signal). "Layout" = the physical dock map. Avoiding
-          "Roster" since these are slips, not people. */}
-      <Tabs defaultValue="roster" className="w-full">
-        <TabsList>
-          <TabsTrigger value="roster">
-            <ClipboardList className="size-3.5" />
-            Status
-          </TabsTrigger>
-          <TabsTrigger value="inventory">
-            <LayoutGrid className="size-3.5" />
-            Layout
-          </TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="roster">
-          <RosterView />
-        </TabsContent>
-        <TabsContent value="inventory">
-          <InventoryView />
-        </TabsContent>
-      </Tabs>
+      <RosterView />
     </div>
   );
 }

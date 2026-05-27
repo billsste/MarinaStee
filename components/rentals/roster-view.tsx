@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { Pencil, Search, Sparkles, UserPlus } from "lucide-react";
+import { Pencil, Plus, Search, Sparkles, UserPlus } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { RecordEditDialog, type FieldSpec } from "@/components/record-edit-dialog";
@@ -187,8 +187,21 @@ export function RosterView() {
 
   return (
     <div className="space-y-4">
-      {/* Day-pass toolbar (kept above the roster for walk-up flow) */}
-      <SpacesToolbar />
+      {/* Toolbar — Day pass for walk-ups, + Add slip for inventory growth */}
+      <div className="flex items-center justify-between gap-3">
+        <SpacesToolbar />
+        <Button
+          variant="secondary"
+          size="md"
+          onClick={() => {
+            setEditingSlip(undefined);
+            setSlipEditOpen(true);
+          }}
+        >
+          <Plus className="size-3.5" />
+          Add slip
+        </Button>
+      </div>
 
       {/* Filter row */}
       <div className="space-y-2 rounded-[12px] border border-hairline bg-surface-1 p-3">
@@ -298,12 +311,43 @@ export function RosterView() {
         title={
           editingSlip
             ? `Edit slip ${editingSlip.id}`
-            : "Edit slip"
+            : "Add slip"
         }
-        description="Slip defaults flow into the assignment wizard for any new contract on this slip. Existing contracts keep what they were signed at."
+        description={
+          editingSlip
+            ? "Slip defaults flow into the assignment wizard for any new contract on this slip. Existing contracts keep what they were signed at."
+            : "New slip — pick a dock, number, class, and dimensions. New dock names auto-create a dock; existing ones get the new slip appended."
+        }
         fields={SLIP_FIELDS}
         record={editingSlip}
-        onSave={(values) => upsertSlip(values)}
+        onSave={(values) => {
+          // Generate a synthetic id for new slips. Convention: short
+          // dock prefix + slip number — keeps demo IDs readable
+          // (e.g. "DSM-15"). Falls back to a timestamp if dock/number
+          // missing so we still get a unique id.
+          const dockPrefix = (values.dock || "SLP")
+            .replace(/[^A-Za-z]/g, "")
+            .toUpperCase()
+            .slice(0, 3);
+          const number = values.number || "1";
+          const generatedId =
+            !values.id || values.id === ""
+              ? `${dockPrefix}-${number}`
+              : values.id;
+          upsertSlip({
+            ...values,
+            id: generatedId,
+            number: values.number || "1",
+            dock: values.dock || "Unsorted",
+            slip_class: values.slip_class || "uncovered",
+            max_loa_inches: Number(values.max_loa_inches) || 0,
+            max_beam_inches: Number(values.max_beam_inches) || 0,
+            has_power: Boolean(values.has_power),
+            has_water: Boolean(values.has_water),
+            default_annual_rate: Number(values.default_annual_rate) || 0,
+            invoice_category: values.invoice_category || "Marina Slip Fees",
+          });
+        }}
       />
     </div>
   );
