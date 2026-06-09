@@ -1,0 +1,62 @@
+# Marina Stee — production docker-compose (droplet).
+#
+# Bind 127.0.0.1:3600:3000 so only Cloudflare/Nginx talks to the app.
+# Public traffic terminates at Cloudflare; the droplet exposes nothing
+# directly to the open internet.
+#
+# Port 3600 is reserved for marina-stee in the workspace App Registry
+# (CLAUDE.md §8). If another app claims it, update the App Registry
+# table AND this file in lockstep.
+#
+# The image is shipped to GHCR by CI. The droplet doesn't pull from
+# GHCR — Pattern A in CLAUDE.md §7.5 uses `docker save | ssh docker
+# load`, so this file only references the local-loaded image tag.
+#
+# Marina Stee is currently a mock-data app; no database service. When
+# the Convex flip-the-tenant moment lands, add NEXT_PUBLIC_CONVEX_URL
+# + CONVEX_DEPLOYMENT to the env block — Convex is hosted, no extra
+# container needed.
+
+services:
+  app:
+    image: ${APP_IMAGE:-marina-stee-local}
+    restart: always
+    ports:
+      # 127.0.0.1 not 0.0.0.0 — Cloudflare-or-nothing.
+      - "127.0.0.1:3600:3000"
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      HOSTNAME: "0.0.0.0"
+
+      # ── Anthropic / Claude agent (optional)
+      # When unset, /api/agent falls back to the deterministic
+      # simulated agent — the demo still works.
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+
+      # ── Convex (optional during demo deploy)
+      # When unset, ConvexClerkProvider stays out of the way and the
+      # app reads from lib/mock-data.ts. Set both vars to flip into
+      # live Convex mode.
+      NEXT_PUBLIC_CONVEX_URL: ${NEXT_PUBLIC_CONVEX_URL}
+      CONVEX_DEPLOYMENT: ${CONVEX_DEPLOYMENT}
+
+      # ── Clerk (optional during demo deploy)
+      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}
+      CLERK_SECRET_KEY: ${CLERK_SECRET_KEY}
+      CLERK_JWT_ISSUER_DOMAIN: ${CLERK_JWT_ISSUER_DOMAIN}
+
+      # ── Outbound providers (optional)
+      POSTMARK_API_KEY: ${POSTMARK_API_KEY}
+      POSTMARK_FROM_ADDRESS: ${POSTMARK_FROM_ADDRESS}
+      POSTMARK_WEBHOOK_SECRET: ${POSTMARK_WEBHOOK_SECRET}
+      POSTMARK_INBOUND_SECRET: ${POSTMARK_INBOUND_SECRET}
+      TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID}
+      TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN}
+      TWILIO_FROM_NUMBER: ${TWILIO_FROM_NUMBER}
+      TWILIO_WEBHOOK_SECRET: ${TWILIO_WEBHOOK_SECRET}
+
+      # Public URL used by webhook + email templates. For the initial
+      # stee-suite-subdomain deploy this is https://marina.stee-suite.com;
+      # swap to marinastee.com when the marketing domain flips.
+      NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL}

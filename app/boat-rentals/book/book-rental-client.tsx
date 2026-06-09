@@ -396,15 +396,15 @@ export function BookRentalClient({
               active={draft.customerKind === "holder"}
               onClick={() => setDraft((d) => ({ ...d, customerKind: "holder" }))}
               icon={<User className="size-3.5" />}
-              label="Existing holder"
-              hint="Annual slip holder renting for the day."
+              label="Existing member"
+              hint="Annual slip member renting for the day."
             />
           </div>
 
           {draft.customerKind === "holder" ? (
             <FieldLabel
-              label="Holder"
-              hint="Use the same charge-to-account setup the holder already has."
+              label="Member"
+              hint="Use the same charge-to-account setup the member already has."
             >
               <Combobox
                 value={draft.boaterId}
@@ -414,38 +414,9 @@ export function BookRentalClient({
                   label: b.display_name,
                   hint: b.code ? `· ${b.code}` : undefined,
                 }))}
-                placeholder="Pick a holder…"
+                placeholder="Pick a member…"
                 searchPlaceholder="Search by name, code…"
               />
-              {selectedBoater && (
-                <div className="mt-3 rounded-[10px] border border-hairline bg-surface-2 p-3">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <div className="text-[14px] font-medium text-fg">
-                        {selectedBoater.display_name}
-                      </div>
-                      <div className="text-[12px] text-fg-subtle">
-                        {selectedBoater.primary_contact.email ??
-                          selectedBoater.primary_contact.phone ??
-                          "—"}
-                      </div>
-                      <div className="mt-1">
-                        <Badge tone="info" size="sm">
-                          {selectedBoater.billing_cadence}
-                        </Badge>
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setDraft((d) => ({ ...d, boaterId: "" }))}
-                      className="text-[11px] text-fg-subtle hover:text-fg"
-                      aria-label="Clear holder"
-                    >
-                      <X className="size-4" />
-                    </button>
-                  </div>
-                </div>
-              )}
             </FieldLabel>
           ) : (
             <div className="space-y-3">
@@ -656,7 +627,7 @@ const STEP_TITLES = [
 
 const STEP_SUBTITLES = [
   "Pick from the available fleet — boats in maintenance are hidden.",
-  "An existing annual holder can charge against their account; walk-ins get a one-off pickup link.",
+  "An existing annual member can charge against their account; walk-ins get a one-off pickup link.",
   "Set the window + pick a rate kind. The customer will see the same totals when they open the link.",
   "Confirm the booking — clicking Book mints a pickup link and dispatches it to the customer.",
 ];

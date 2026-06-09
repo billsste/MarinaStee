@@ -1,0 +1,141 @@
+# Marina Stee — production deploy workflow.
+#
+# Pattern A from CLAUDE.md §7.5. Push to `main` →
+#   1. GHA builds the Docker image
+#   2. Pushes to GitHub Container Registry (ghcr.io) under :latest + :<sha>
+#   3. SCPs docker-compose.yml to the droplet
+#   4. `docker save :latest | ssh root@droplet "docker load"` — droplet
+#      never pulls from GHCR, no registry auth on the box.
+#   5. `docker compose up -d --force-recreate app` swaps the container
+#   6. SCPs scripts/smoke.sh up, runs it ON THE DROPLET (CF blocks
+#      GHA runner IPs at the edge so smoke FROM the runner fails).
+#
+# Required GH repo secrets:
+#   SSH_PRIVATE_KEY — deploy key authorized for root@<droplet>
+#   SERVER_HOST      — droplet IP
+#   GITHUB_TOKEN     — auto-provided by GHA, used for ghcr push
+#
+# Droplet layout (set up by hand once):
+#   /opt/apps/marina-stee/docker-compose.yml   ← shipped each deploy
+#   /opt/apps/marina-stee/.env                  ← hand-managed on box
+#
+# Per-app .env is NOT shipped from GHA. Adding a new env var:
+#   1. add to docker-compose.yml here
+#   2. SSH the box, edit .env
+#   3. `docker compose up -d` on the droplet to pick up the new env
+
+name: Build & Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Cancel any in-flight deploy when a newer commit lands. Without this
+# two simultaneous pushes can race each other to the droplet and the
+# loser ships a stale image.
+concurrency:
+  group: deploy
+  cancel-in-progress: true
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute image tags
+        id: tags
+        run: |
+          # ghcr requires lowercase image refs; force-lowercase the repo
+          # so `Steeven-Bills/Marina-Stee` style names still work.
+          REPO_LC=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+          echo "image_latest=ghcr.io/${REPO_LC}:latest" >> "$GITHUB_OUTPUT"
+          echo "image_sha=ghcr.io/${REPO_LC}:${{ github.sha }}" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: Dockerfile
+          # no-cache + CACHEBUST ARG = build emits a fresh layer every
+          # commit so `next build` actually re-runs against changed
+          # source instead of pulling a stale standalone bundle from
+          # the BuildKit cache.
+          no-cache: true
+          build-args: |
+            CACHEBUST=${{ github.sha }}
+          push: true
+          tags: |
+            ${{ steps.tags.outputs.image_latest }}
+            ${{ steps.tags.outputs.image_sha }}
+
+      - name: Set up SSH
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+      - name: Trust droplet host
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -H ${{ secrets.SERVER_HOST }} >> ~/.ssh/known_hosts
+
+      - name: SCP compose file
+        run: |
+          scp -o StrictHostKeyChecking=accept-new \
+            docker-compose.yml \
+            root@${{ secrets.SERVER_HOST }}:/opt/apps/marina-stee/docker-compose.yml
+
+      - name: Ship image inline via docker save | docker load
+        run: |
+          # Save the image we just pushed, pipe it over SSH into a
+          # `docker load` on the droplet. Avoids the droplet needing
+          # GHCR auth and guarantees the box runs EXACTLY the image
+          # CI built (not whatever ghcr resolves :latest to at the
+          # moment compose pulls it).
+          docker pull ${{ steps.tags.outputs.image_latest }}
+          docker save ${{ steps.tags.outputs.image_latest }} | \
+            ssh root@${{ secrets.SERVER_HOST }} "docker load"
+
+      - name: Swap container + prune
+        run: |
+          ssh root@${{ secrets.SERVER_HOST }} bash <<EOF
+          set -euo pipefail
+          cd /opt/apps/marina-stee
+          export APP_IMAGE="${{ steps.tags.outputs.image_latest }}"
+          docker compose up -d --force-recreate app
+          docker image prune -f
+          EOF
+
+      - name: SCP smoke script
+        run: |
+          scp -o StrictHostKeyChecking=accept-new \
+            scripts/smoke.sh \
+            root@${{ secrets.SERVER_HOST }}:/tmp/marina-stee-smoke.sh
+
+      - name: Smoke test on droplet
+        run: |
+          # Run smoke FROM the droplet — Cloudflare blocks GHA runner
+          # IPs at the edge so a curl from here would get a bot
+          # challenge HTML even when the app is healthy.
+          ssh root@${{ secrets.SERVER_HOST }} \
+            "chmod +x /tmp/marina-stee-smoke.sh && PORT=3600 /tmp/marina-stee-smoke.sh"
+
+      - name: Report image hash
+        if: always()
+        run: |
+          ssh root@${{ secrets.SERVER_HOST }} \
+            "docker inspect \$(docker compose -f /opt/apps/marina-stee/docker-compose.yml ps -q app) --format '{{.Image}}'"

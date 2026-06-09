@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Combobox } from "@/components/ui/combobox";
 import { NewBoaterSheet } from "@/components/boaters/new-boater-sheet";
 import { BOATERS, CONTRACT_TEMPLATES, RENTAL_SPACES, SLIPS, VESSELS } from "@/lib/mock-data";
-import { useBoaters, useFees } from "@/lib/client-store";
+import { updateContract, useBoaters, useFees } from "@/lib/client-store";
 import type { ContractTemplate } from "@/lib/types";
 
 /**
@@ -145,9 +145,9 @@ export function NewContractSheet({
     end.length > 0 &&
     start <= end;
 
-  function submit() {
+  async function submit() {
     if (!canSubmit) return;
-    executeAgentAction({
+    const result = executeAgentAction({
       kind: "create_contract",
       label: "",
       boater_id: boaterId,
@@ -169,6 +169,74 @@ export function NewContractSheet({
         : undefined,
     });
     onOpenChange(false);
+
+    // Fire-and-forget: call /api/draft-contract to pre-fill the template
+    // body so the ContractDraftPanel has something to show immediately.
+    // Runs after the sheet closes so it doesn't block the UX.
+    const tpl = CONTRACT_TEMPLATES.find((t) => t.id === templateId);
+    if (result.ok && result.createdId && tpl?.body_markdown) {
+      const contractId = result.createdId;
+      const boater = boaters.find((b) => b.id === boaterId);
+      const vessel = vesselId ? VESSELS.find((v) => v.id === vesselId) : null;
+      try {
+        const res = await fetch("/api/draft-contract", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            template_name: tpl.name,
+            template_body: tpl.body_markdown,
+            context: {
+              boater: boater
+                ? {
+                    display_name: boater.display_name,
+                    code: boater.code ?? "",
+                    legal_name: boater.display_name,
+                    primary_contact: boater.primary_contact,
+                    address: boater.address,
+                  }
+                : null,
+              slip: slipId
+                ? (() => {
+                    const s =
+                      SLIPS.find((x) => x.id === slipId) ??
+                      RENTAL_SPACES.find((x) => x.id === slipId);
+                    return s
+                      ? { number: (s as { number?: string }).number ?? slipId, dock: (s as { dock?: string }).dock ?? "" }
+                      : null;
+                  })()
+                : null,
+              vessel: vessel
+                ? {
+                    name: vessel.name,
+                    year: vessel.year ?? "",
+                    make: vessel.make ?? "",
+                    model: vessel.model ?? "",
+                  }
+                : null,
+              contract: {
+                effective_start: start,
+                effective_end: end,
+                annual_rate: annualRate ? Number(annualRate) : null,
+                billing_cadence: cadence,
+                services: [],
+              },
+            },
+          }),
+        });
+        if (res.ok) {
+          const json = (await res.json()) as { drafted_body_markdown?: string };
+          if (json.drafted_body_markdown) {
+            updateContract(contractId, {
+              drafted_body_markdown: json.drafted_body_markdown,
+              drafted_at: new Date().toISOString(),
+            });
+          }
+        }
+      } catch {
+        // Non-fatal — draft panel will show a blank body and the agent
+        // feedback loop can generate content from there.
+      }
+    }
   }
 
   function fmtSize(bytes: number): string {

@@ -7,16 +7,17 @@ import {
   Wrench,
   MessageSquare,
   ArrowRight,
+  Sailboat,
 } from "lucide-react";
 import {
   BOATERS,
   WORK_ORDERS,
   formatMoney,
 } from "@/lib/mock-data";
-import { useStore } from "@/lib/client-store";
+import { useClubBookings, useStore } from "@/lib/client-store";
 import { useLedgerDrawer } from "@/components/ledger/ledger-entry-drawer";
 
-type Kind = "comm" | "ledger" | "wo";
+type Kind = "comm" | "ledger" | "wo" | "club";
 
 type Activity = {
   kind: Kind;
@@ -30,6 +31,10 @@ type Activity = {
 export function ActivityFeed() {
   // Live ledger + comms from store; work orders are static for now.
   const { ledger, communications } = useStore();
+  // Club bookings — surfaces requested/confirmed/checked-in days so the
+  // dashboard reflects the full operational picture. Cancelled bookings
+  // are skipped (not useful as activity).
+  const clubBookings = useClubBookings();
   const { openLedgerEntry } = useLedgerDrawer();
 
   // Mount guard: relative-time strings ("15m", "2h") drift between server
@@ -71,6 +76,30 @@ export function ActivityFeed() {
       title: `${w.number} ${w.subject}`,
       subtitle: `${w.status.replace("_", " ")} · ${w.priority}`,
     })),
+    ...clubBookings
+      .filter((b) => b.status !== "cancelled")
+      .map((b) => ({
+        kind: "club" as const,
+        // Use created_at for sort so a brand-new request shows at the
+        // top even when the day itself is far in the future.
+        ts: b.created_at,
+        id: b.id,
+        boater_id: b.boater_id,
+        title:
+          b.status === "checked_in"
+            ? `Club check-in · ${new Date(b.date).toLocaleDateString(undefined, { month: "short", day: "numeric" })}`
+            : b.status === "completed"
+            ? `Club day completed · ${new Date(b.date).toLocaleDateString(undefined, { month: "short", day: "numeric" })}`
+            : b.status === "requested"
+            ? `Club day requested · ${new Date(b.date).toLocaleDateString(undefined, { month: "short", day: "numeric" })}`
+            : `Club day booked · ${new Date(b.date).toLocaleDateString(undefined, { month: "short", day: "numeric" })}`,
+        subtitle:
+          b.status === "requested"
+            ? "Needs confirmation"
+            : b.status === "checked_in"
+            ? "On the water"
+            : b.status.replace("_", " "),
+      })),
   ].sort((a, b) => (a.ts < b.ts ? 1 : -1));
 
   return (
@@ -98,6 +127,7 @@ export function ActivityFeed() {
         const icon =
           a.kind === "comm" ? <MessageSquare className="size-3" />
           : a.kind === "ledger" ? <Receipt className="size-3" />
+          : a.kind === "club" ? <Sailboat className="size-3" />
           : <Wrench className="size-3" />;
 
         const rowInner = (
@@ -126,7 +156,17 @@ export function ActivityFeed() {
               </button>
             ) : (
               <Link
-                href={a.kind === "wo" ? `/work-orders/${a.id}` : boater ? `/holders/${boater.id}` : "#"}
+                href={
+                  a.kind === "wo"
+                    ? `/work-orders/${a.id}`
+                    : a.kind === "club"
+                    ? `/members`
+                    : boater
+                    ? `/members/${boater.id}`
+                    // Stable fallback — never "#" which changes between
+                    // SSR (no boater) and client (boater resolved from store)
+                    : "/members"
+                }
                 className="group flex min-w-0 flex-1 items-start gap-2.5"
               >
                 {rowInner}

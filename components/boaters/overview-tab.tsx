@@ -33,17 +33,23 @@ import {
 import {
   addCommunication,
   mintContractSignatureToken,
+  updateBoater,
   upsertBoater,
   upsertContract,
   useBoatRentalsForBoater,
+  useClubBookingsForBoater,
+  useClubSubscriptionForBoater,
   useCommunicationsForBoater,
   useContractsForBoater,
   useLedgerForBoater,
   usePicklistLabelMap,
   useRentalBoats,
+  useEffectivePlanFor,
   useReservationsForBoater,
 } from "@/lib/client-store";
+import { InlineEditCell } from "@/components/ui/inline-edit-cell";
 import { StaffNotesCard } from "@/components/notes/staff-notes-card";
+import { AttachedFeesList } from "@/components/financials/attached-fees-list";
 import type {
   BoatRental,
   Boater,
@@ -59,7 +65,8 @@ import type {
 type Activity =
   | { kind: "communication"; ts: string; data: Communication }
   | { kind: "ledger"; ts: string; data: LedgerEntry }
-  | { kind: "work_order"; ts: string; data: WorkOrder };
+  | { kind: "work_order"; ts: string; data: WorkOrder }
+  | { kind: "club_booking"; ts: string; data: import("@/lib/types").ClubBooking };
 
 export function OverviewTab({
   boater,
@@ -79,6 +86,11 @@ export function OverviewTab({
   const boaterReservations = useReservationsForBoater(boater.id);
   const boaterRentals = useBoatRentalsForBoater(boater.id);
   const rentalFleet = useRentalBoats();
+  // Club membership lookup — surfaces an inline panel + activity rows
+  // when this member is a Rental Club subscriber. Slip-only holders see
+  // nothing about the club, keeping their detail page focused.
+  const clubSubscription = useClubSubscriptionForBoater(boater.id);
+  const clubBookings = useClubBookingsForBoater(boater.id);
   const contactRoleLabels = usePicklistLabelMap("contact_role");
   // Active rentals are anything not closed/cancelled — appears at the
   // top so staff can see "is this customer currently on the water?" at
@@ -95,6 +107,9 @@ export function OverviewTab({
   const isSeasonal = boater.billing_cadence === "seasonal";
   const showContractPanel = isAnnual || isSeasonal;
   const activeContract = boaterContracts.find((c) => c.status === "active");
+  // Draft contract — needs human review before it goes to the boater.
+  // Surfaces as a prominent inline review panel above everything else.
+  const draftContract = boaterContracts.find((c) => c.status === "draft");
   // Onboarding-in-flight: any contract that's been sent/signed but isn't
   // active yet. Drives the live progress rail so staff sees what step
   // the holder is on.
@@ -134,6 +149,13 @@ export function OverviewTab({
       kind: "work_order" as const,
       ts: w.start_date || w.due_date || w.end_date || "1970-01-01",
       data: w,
+    })),
+    // Club bookings — use the booking date as the timestamp so they
+    // interleave with other activity chronologically.
+    ...clubBookings.map((b) => ({
+      kind: "club_booking" as const,
+      ts: b.date,
+      data: b,
     })),
   ].sort((a, b) => (a.ts < b.ts ? 1 : -1));
 
@@ -183,6 +205,14 @@ export function OverviewTab({
   // identity context (contact, contract, slip detail) on the left + activity
   // and operational lists on the right.
   return (
+    <div className="space-y-4">
+      {/* Draft contract review — full-width, above everything else.
+          Operator must review, iterate, then Send or Defer before the
+          contract reaches the boater. Disappears once sent or discarded. */}
+      {draftContract && (
+        <ContractDraftPanel contract={draftContract} boater={boater} />
+      )}
+
     <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
       {/* Identity rail — narrower left column on desktop */}
       <div className="space-y-4 lg:col-span-5">
@@ -196,14 +226,66 @@ export function OverviewTab({
             fleet={rentalFleet}
           />
         )}
-        <Panel title="Contact" onEdit={() => setEditContactOpen(true)}>
+        {clubSubscription && (
+          <ClubMembershipPanel
+            subscription={clubSubscription}
+            bookings={clubBookings}
+          />
+        )}
+        <Panel title="Contact">
           <div className="space-y-1">
-            <ContactRow icon={<Mail className="size-3.5" />} label="Email" value={boater.primary_contact.email} />
-            <ContactRow icon={<Phone className="size-3.5" />} label="Phone" value={formatPhone(boater.primary_contact.phone)} />
+            <ContactRow
+              icon={<Mail className="size-3.5" />}
+              label="Email"
+              value={boater.primary_contact.email}
+              placeholder="add email"
+              onSave={(next) =>
+                updateBoater(boater.id, {
+                  primary_contact: { ...boater.primary_contact, email: next },
+                })
+              }
+            />
+            <ContactRow
+              icon={<Phone className="size-3.5" />}
+              label="Phone"
+              value={boater.primary_contact.phone ?? ""}
+              format={(v) => formatPhone(v) ?? v}
+              placeholder="add phone"
+              onSave={(next) =>
+                updateBoater(boater.id, {
+                  primary_contact: { ...boater.primary_contact, phone: next },
+                })
+              }
+            />
             <ContactRow
               icon={<MapPin className="size-3.5" />}
-              label="Address"
-              value={`${boater.address.line1}, ${boater.address.city}, ${boater.address.state} ${boater.address.zip}`}
+              label="Street"
+              value={boater.address.line1}
+              onSave={(next) =>
+                updateBoater(boater.id, {
+                  address: { ...boater.address, line1: next },
+                })
+              }
+            />
+            <ContactRow
+              icon={<MapPin className="size-3.5 opacity-0" />}
+              label="City / State / Zip"
+              value={`${boater.address.city}, ${boater.address.state} ${boater.address.zip}`}
+              placeholder="add city, state zip"
+              onSave={(next) => {
+                // Parse "City, ST Zip" — best-effort, falls back to leaving
+                // the current values when the format doesn't match.
+                const m = next.match(/^\s*([^,]+?)\s*,\s*([A-Za-z]{2})\s+(\S+)\s*$/);
+                if (!m) return;
+                updateBoater(boater.id, {
+                  address: {
+                    ...boater.address,
+                    city: m[1],
+                    state: m[2].toUpperCase(),
+                    zip: m[3],
+                  },
+                });
+              }}
             />
           </div>
           {boater.additional_contacts.length > 0 && (
@@ -238,7 +320,7 @@ export function OverviewTab({
           >
             <div className="flex flex-wrap items-baseline gap-2">
               <Link
-                href={`/slips/contracts/${activeContract.id}`}
+                href={`/services/contracts/${activeContract.id}`}
                 className="font-mono text-[15px] font-medium text-primary hover:underline"
               >
                 {activeContract.number}
@@ -246,7 +328,7 @@ export function OverviewTab({
               <Badge tone="ok" size="sm">{activeContract.status}</Badge>
               {successorContract && (
                 <Link
-                  href={`/slips/contracts/${successorContract.id}`}
+                  href={`/services/contracts/${successorContract.id}`}
                   className="inline-flex"
                 >
                   <Badge tone="primary" size="sm">
@@ -284,6 +366,21 @@ export function OverviewTab({
                 <dd className="capitalize text-fg">{activeContract.billing_cadence}</dd>
               </div>
             </dl>
+            {(activeContract.attached_fee_ids?.length ?? 0) > 0 && (
+              <div className="mt-3 border-t border-hairline pt-3">
+                <div className="mb-2 text-[10px] uppercase tracking-wide text-fg-tertiary">
+                  Service fees
+                </div>
+                <AttachedFeesList
+                  feeIds={activeContract.attached_fee_ids ?? []}
+                  termMonths={overviewContractTermMonths(
+                    activeContract.effective_start,
+                    activeContract.effective_end,
+                  )}
+                  dense
+                />
+              </div>
+            )}
           </Panel>
         )}
 
@@ -344,7 +441,7 @@ export function OverviewTab({
             <ol className="relative border-l border-hairline pl-4">
               {activity.slice(0, 8).map((a) => (
                 <TimelineItem
-                  key={`${a.kind}-${a.kind === "communication" ? a.data.id : a.kind === "ledger" ? a.data.id : a.data.id}`}
+                  key={`${a.kind}-${a.data.id}`}
                   a={a}
                 />
               ))}
@@ -381,6 +478,7 @@ export function OverviewTab({
 
         <StaffNotesCard boaterId={boater.id} />
       </div>
+    </div>
 
       <RecordEditDialog<BoaterContactForm>
         open={editContactOpen}
@@ -506,6 +604,219 @@ const CONTRACT_FIELDS: FieldSpec<Contract>[] = [
   },
 ];
 
+/**
+ * Contract Draft Review Panel — full-width, surfaces above the two-column
+ * overview when a contract has status="draft".
+ *
+ * Operator can:
+ *   1. Read the rendered contract body
+ *   2. Type feedback → agent rewrites specific clauses inline
+ *   3. Send to boater (mints signature token + updates status to "sent")
+ *   4. Defer (leaves as draft, dismisses the panel until next page load)
+ *   5. Discard (voids the draft)
+ */
+function ContractDraftPanel({
+  contract,
+  boater,
+}: {
+  contract: Contract;
+  boater: Boater;
+}) {
+  const [dismissed, setDismissed] = React.useState(false);
+  const [feedback, setFeedback] = React.useState("");
+  const [streaming, setStreaming] = React.useState(false);
+  const [body, setBody] = React.useState(
+    contract.drafted_body_markdown ?? "*No body drafted yet.*"
+  );
+  const [sent, setSent] = React.useState(false);
+  const textareaRef = React.useRef<HTMLTextAreaElement>(null);
+
+  if (dismissed || sent) return null;
+
+  async function applyFeedback() {
+    const fb = feedback.trim();
+    if (!fb || streaming) return;
+    setStreaming(true);
+    setFeedback("");
+    try {
+      const { streamAgent } = await import("@/lib/agent-fetch");
+      const prompt = `You are revising a marina slip contract draft. The current contract body is:\n\n${body}\n\n---\n\nOperator feedback: ${fb}\n\nRewrite only the affected clauses and return the full updated contract body in markdown. Do not add commentary — output only the contract text.`;
+      let updated = "";
+      for await (const ev of streamAgent(prompt, [])) {
+        if (ev.kind === "text") updated += ev.text;
+      }
+      if (updated.trim()) {
+        setBody(updated.trim());
+        upsertContract({ ...contract, drafted_body_markdown: updated.trim() });
+      }
+    } catch {
+      // Fallback: just append the feedback as a note in the body
+      setBody((prev) => `${prev}\n\n> **Operator note:** ${fb}`);
+    } finally {
+      setStreaming(false);
+    }
+  }
+
+  function sendToBoater() {
+    const token = mintContractSignatureToken(contract.id) ?? undefined;
+    upsertContract({ ...contract, status: "sent", signature_token: token });
+    // Log the dispatch as an outbound communication.
+    addCommunication({
+      id: `comm_draft_send_${contract.id}`,
+      boater_id: contract.boater_id,
+      type: "email",
+      subject: `Your contract is ready to review — ${contract.number}`,
+      body_preview: `Hi ${boater.first_name}, your contract ${contract.number} is ready to sign.`,
+      direction: "outbound",
+      status: "delivered",
+      sent_at: new Date().toISOString(),
+      sender_label: "Marina Stee",
+      sender_is_system: true,
+      recipient: boater.primary_contact.email ?? boater.display_name,
+    });
+    setSent(true);
+  }
+
+  function discard() {
+    if (!window.confirm("Discard this draft? It will be marked void.")) return;
+    upsertContract({ ...contract, status: "terminated" });
+    setSent(true); // hides the panel
+  }
+
+  return (
+    <div className="rounded-[14px] border border-primary/30 bg-surface-1 shadow-sm">
+      {/* Header */}
+      <div className="flex items-center justify-between gap-3 border-b border-hairline px-5 py-3">
+        <div className="flex items-center gap-2">
+          <div className="flex size-6 items-center justify-center rounded-full bg-status-warn/20 text-status-warn">
+            <Signature className="size-3.5" />
+          </div>
+          <div>
+            <span className="text-[13px] font-semibold text-fg">
+              Contract draft — {contract.number}
+            </span>
+            <span className="ml-2 text-[11px] text-fg-tertiary">
+              Review and refine before sending to {boater.first_name}
+            </span>
+          </div>
+          <Badge tone="warn" size="sm">Draft</Badge>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={discard}
+            className="rounded-[6px] px-2 py-1 text-[11px] text-status-danger hover:bg-status-danger/10"
+          >
+            Discard
+          </button>
+          <button
+            type="button"
+            onClick={() => setDismissed(true)}
+            className="rounded-[6px] px-2 py-1 text-[11px] text-fg-subtle hover:bg-surface-2 hover:text-fg"
+          >
+            Defer
+          </button>
+          <button
+            type="button"
+            onClick={sendToBoater}
+            className="inline-flex items-center gap-1.5 rounded-[8px] bg-primary px-3 py-1.5 text-[12px] font-medium text-on-primary hover:bg-primary-hover"
+          >
+            <Send className="size-3" />
+            Send to {boater.first_name}
+          </button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 gap-0 lg:grid-cols-2">
+        {/* Contract body preview */}
+        <div className="overflow-y-auto border-b border-hairline p-5 lg:max-h-[420px] lg:border-b-0 lg:border-r">
+          <div className="mb-2 text-[10px] font-medium uppercase tracking-wide text-fg-tertiary">
+            Contract body
+          </div>
+          <div className="prose prose-sm max-w-none text-[13px] leading-relaxed text-fg">
+            {body.split("\n").map((line, i) => {
+              if (line.startsWith("# ")) return <h2 key={i} className="mt-3 text-[14px] font-semibold text-fg first:mt-0">{line.slice(2)}</h2>;
+              if (line.startsWith("## ")) return <h3 key={i} className="mt-2 text-[13px] font-semibold text-fg">{line.slice(3)}</h3>;
+              if (line.startsWith("**") && line.endsWith("**")) return <p key={i} className="font-semibold text-fg">{line.slice(2, -2)}</p>;
+              if (line.startsWith("> ")) return <blockquote key={i} className="border-l-2 border-primary/40 pl-3 text-fg-subtle italic">{line.slice(2)}</blockquote>;
+              if (line === "") return <div key={i} className="h-2" />;
+              return <p key={i} className="text-fg-subtle">{line}</p>;
+            })}
+          </div>
+        </div>
+
+        {/* Agent feedback loop */}
+        <div className="flex flex-col gap-3 p-5">
+          <div className="text-[10px] font-medium uppercase tracking-wide text-fg-tertiary">
+            Refine with the agent
+          </div>
+          <p className="text-[12px] text-fg-subtle">
+            Tell the agent what to change — it rewrites the affected clauses and you see the result immediately. Keep iterating until it's ready to send.
+          </p>
+
+          {/* Suggested prompts */}
+          <div className="flex flex-wrap gap-1.5">
+            {[
+              "Make the late fee clause stricter",
+              "Add a storm/hurricane haul-out clause",
+              "Simplify the language — plain English",
+              "Add a pet policy section",
+            ].map((s) => (
+              <button
+                key={s}
+                type="button"
+                onClick={() => setFeedback(s)}
+                className="rounded-full border border-hairline bg-surface-2 px-2 py-0.5 text-[11px] text-fg-subtle hover:border-primary/40 hover:bg-primary-soft hover:text-primary"
+              >
+                {s}
+              </button>
+            ))}
+          </div>
+
+          <textarea
+            ref={textareaRef}
+            value={feedback}
+            onChange={(e) => setFeedback(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                e.preventDefault();
+                void applyFeedback();
+              }
+            }}
+            placeholder="e.g. Move the liability section before payment terms…"
+            rows={4}
+            disabled={streaming}
+            className="resize-none rounded-[8px] border border-hairline bg-surface-2 px-3 py-2 text-[13px] text-fg placeholder:text-fg-tertiary focus:border-primary focus:outline-none disabled:opacity-60"
+          />
+          <button
+            type="button"
+            onClick={() => void applyFeedback()}
+            disabled={!feedback.trim() || streaming}
+            className={cn(
+              "inline-flex items-center justify-center gap-1.5 rounded-[8px] px-3 py-2 text-[13px] font-medium transition-colors",
+              feedback.trim() && !streaming
+                ? "bg-primary text-on-primary hover:bg-primary-hover"
+                : "cursor-not-allowed bg-surface-3 text-fg-tertiary"
+            )}
+          >
+            {streaming ? (
+              <>
+                <span className="inline-block size-3 animate-spin rounded-full border-2 border-on-primary/30 border-t-on-primary" />
+                Rewriting…
+              </>
+            ) : (
+              "Apply feedback"
+            )}
+          </button>
+          <p className="text-[10px] text-fg-tertiary">
+            ⌘ + Enter to apply · Changes save automatically
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function Panel({
   title,
   children,
@@ -540,17 +851,38 @@ function ContactRow({
   icon,
   label,
   value,
+  onSave,
+  format,
+  placeholder = "add",
 }: {
   icon: React.ReactNode;
   label: string;
   value?: string;
+  /** Click-cell-to-edit. When omitted the cell is read-only. */
+  onSave?: (next: string) => void;
+  /** Display formatter (e.g. phone formatter). The raw `value` is what's edited. */
+  format?: (v: string) => string;
+  placeholder?: string;
 }) {
   return (
-    <div className="flex items-start gap-2 py-1 text-[13px]">
+    <div className="group flex items-start gap-2 py-1 text-[13px]">
       <span className="mt-0.5 text-fg-tertiary">{icon}</span>
       <div className="min-w-0 flex-1">
         <div className="text-[11px] text-fg-tertiary">{label}</div>
-        <div className="truncate text-fg">{value ?? "—"}</div>
+        <div className="text-fg">
+          {onSave ? (
+            <InlineEditCell
+              value={value ?? ""}
+              placeholder={placeholder}
+              onSave={(next) => onSave(String(next))}
+              format={(v) => (v ? (format ? format(String(v)) : String(v)) : placeholder)}
+              inputClassName="w-full max-w-[280px]"
+              className="text-[13px] text-fg"
+            />
+          ) : (
+            <span className="truncate">{value ?? "—"}</span>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -719,7 +1051,7 @@ function OnboardingProgressPanel({
 
         {/* Contract reference */}
         <Link
-          href={`/slips/contracts/${contract.id}`}
+          href={`/services/contracts/${contract.id}`}
           className="block rounded-[8px] border border-hairline bg-surface-1 px-2.5 py-1.5 text-[11px] transition-colors hover:border-hairline-strong hover:bg-surface-2"
         >
           <span className="text-fg-tertiary">Contract </span>
@@ -799,6 +1131,152 @@ function OnboardingProgressPanel({
  * staff sees the full picture: contract + slip + active rental in one
  * place.
  */
+
+/*
+ * Cross-entity panel — when this member is a Rental Club subscriber,
+ * surface the membership state on their Overview tab. Mirrors the
+ * data the member sees on /portal but compressed for the staff view.
+ * Links through to the full /members → Rental Club module so staff
+ * can act on bookings without losing context.
+ */
+function ClubMembershipPanel({
+  subscription,
+  bookings,
+}: {
+  subscription: import("@/lib/types").ClubSubscription;
+  bookings: import("@/lib/types").ClubBooking[];
+}) {
+  const plan = useEffectivePlanFor(subscription);
+  const now = new Date();
+  const thisMonthPrefix = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  const todayIso = now.toISOString().slice(0, 10);
+  const usedThisMonth = bookings.filter(
+    (b) =>
+      b.date.startsWith(thisMonthPrefix) &&
+      b.status !== "cancelled" &&
+      b.status !== "no_show"
+  ).length;
+  const upcoming = bookings
+    .filter(
+      (b) =>
+        b.date >= todayIso &&
+        (b.status === "confirmed" || b.status === "requested")
+    )
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .slice(0, 3);
+  const pendingCount = bookings.filter((b) => b.status === "requested").length;
+
+  const tone =
+    subscription.status === "active"
+      ? "ok"
+      : subscription.status === "past_due"
+      ? "warn"
+      : subscription.status === "paused"
+      ? "neutral"
+      : "danger";
+
+  return (
+    <div className="rounded-[12px] border border-hairline bg-surface-1">
+      <div className="flex items-center justify-between border-b border-hairline px-4 py-2.5">
+        <div className="inline-flex items-center gap-1.5 text-[13px] font-medium text-fg">
+          <Sailboat className="size-3.5 text-primary" />
+          Rental Club
+          <Badge tone={tone} size="sm">
+            {subscription.status === "active"
+              ? "Active"
+              : subscription.status === "past_due"
+              ? "Past due"
+              : subscription.status === "paused"
+              ? "Paused"
+              : "Cancelled"}
+          </Badge>
+        </div>
+        <Link
+          href="/members"
+          className="text-[11px] text-fg-subtle hover:text-fg"
+        >
+          Manage →
+        </Link>
+      </div>
+      <div className="grid grid-cols-3 gap-3 px-4 py-3 text-center">
+        <Stat label="Plan" value={plan?.plan_name ?? "—"} />
+        <Stat label="Monthly" value={formatMoney(plan?.monthly_fee ?? 0)} />
+        <Stat
+          label="Days this month"
+          value={`${usedThisMonth} / ${plan?.days_per_month ?? 0}`}
+        />
+      </div>
+      {pendingCount > 0 && (
+        <div className="border-t border-hairline bg-status-warn/5 px-4 py-2 text-[11px] text-status-warn">
+          {pendingCount} pending request{pendingCount === 1 ? "" : "s"} —
+          confirm in Members → Rental Club.
+        </div>
+      )}
+      {upcoming.length > 0 && (
+        <ul className="divide-y divide-hairline border-t border-hairline">
+          {upcoming.map((b) => (
+            <li
+              key={b.id}
+              className="flex items-center justify-between px-4 py-2 text-[12px]"
+            >
+              <span className="text-fg">
+                {new Date(b.date).toLocaleDateString(undefined, {
+                  weekday: "short",
+                  month: "short",
+                  day: "numeric",
+                })}
+              </span>
+              <Badge
+                tone={b.status === "confirmed" ? "ok" : "warn"}
+                size="sm"
+              >
+                {b.status === "confirmed" ? "Confirmed" : "Pending"}
+              </Badge>
+            </li>
+          ))}
+        </ul>
+      )}
+      {(subscription.attached_fee_ids?.length ?? 0) > 0 && (
+        <div className="border-t border-hairline px-4 py-3">
+          <div className="mb-2 text-[10px] uppercase tracking-wide text-fg-tertiary">
+            Service fees
+          </div>
+          <AttachedFeesList
+            feeIds={subscription.attached_fee_ids ?? []}
+            termMonths={1}
+            dense
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Stat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-[8px] bg-surface-2 p-2">
+      <div className="text-[10px] uppercase tracking-wide text-fg-tertiary">
+        {label}
+      </div>
+      <div className="money-display mt-0.5 text-[14px] text-fg">{value}</div>
+    </div>
+  );
+}
+
+function titleCase(s: string): string {
+  return s ? s[0].toUpperCase() + s.slice(1) : s;
+}
+
+// Match the helper in contract-detail.tsx — annual / seasonal terms
+// round to whole months so monthly + annual fees prorate consistently.
+function overviewContractTermMonths(start: string, end: string): number {
+  const a = new Date(start).getTime();
+  const b = new Date(end).getTime();
+  if (!Number.isFinite(a) || !Number.isFinite(b) || b <= a) return 1;
+  const days = (b - a) / (1000 * 60 * 60 * 24);
+  return Math.max(1, Math.round(days / 30));
+}
+
 function BoatRentalsStrip({
   active,
   closed,
@@ -917,6 +1395,8 @@ function TimelineItem({ a }: { a: Activity }) {
       <MessageSquare className="size-3" />
     ) : a.kind === "ledger" ? (
       <Receipt className="size-3" />
+    ) : a.kind === "club_booking" ? (
+      <Sailboat className="size-3" />
     ) : (
       <Wrench className="size-3" />
     );
@@ -943,6 +1423,23 @@ function TimelineItem({ a }: { a: Activity }) {
       subtitle = `${a.data.status}`;
       tone = a.data.status === "open" ? "warn" : "neutral";
     }
+  } else if (a.kind === "club_booking") {
+    title = `Club day · ${new Date(a.data.date).toLocaleDateString(undefined, {
+      weekday: "short",
+      month: "short",
+      day: "numeric",
+    })}`;
+    subtitle = `${a.data.status.replace("_", " ")}${
+      a.data.notes ? ` · ${a.data.notes.slice(0, 40)}` : ""
+    }`;
+    tone =
+      a.data.status === "confirmed" || a.data.status === "completed"
+        ? "ok"
+        : a.data.status === "requested"
+        ? "warn"
+        : a.data.status === "cancelled" || a.data.status === "no_show"
+        ? "danger"
+        : "neutral";
   } else {
     title = a.data.subject;
     subtitle = `${a.data.status.replace("_", " ")} · ${a.data.priority}`;
@@ -950,7 +1447,7 @@ function TimelineItem({ a }: { a: Activity }) {
   }
 
   return (
-    <li className="relative mb-3 last:mb-0">
+    <li className="relative mb-3 pl-4 last:mb-0">
       <span className="absolute -left-[19px] flex size-5 items-center justify-center rounded-full border border-hairline bg-surface-2 text-fg-subtle">
         {icon}
       </span>

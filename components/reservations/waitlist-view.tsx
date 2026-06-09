@@ -175,7 +175,7 @@ function WaitlistRow({ entry }: { entry: WaitlistEntry }) {
         <div className="flex flex-wrap items-center gap-1.5">
           {boater ? (
             <Link
-              href={`/holders/${boater.id}`}
+              href={`/members/${boater.id}`}
               className="text-[13px] font-medium text-fg hover:text-primary"
             >
               {displayName}

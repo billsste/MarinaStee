@@ -3,6 +3,7 @@
 import * as React from "react";
 import { AlertTriangle, Pencil } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { LocalTime } from "@/components/ui/local-time";
 import { RecordEditDialog, type FieldSpec } from "@/components/record-edit-dialog";
 import { useFuelInventory, upsertFuelInventory } from "@/lib/client-store";
 import { formatMoney, fuelMargin, fuelPct } from "@/lib/mock-data";
@@ -96,7 +97,7 @@ function TankCard({ inv, onEdit }: { inv: FuelInventory; onEdit: () => void }) {
             <Pencil className="size-3 text-fg-tertiary opacity-0 transition-opacity group-hover:opacity-100" />
           </h3>
           <p className="text-[11px] text-fg-tertiary">
-            Last updated {new Date(inv.last_updated_at).toLocaleString()}
+            Last updated <LocalTime iso={inv.last_updated_at} fmt="datetime" />
           </p>
         </div>
         {lowFuel && (

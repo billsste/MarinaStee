@@ -17,6 +17,7 @@ import {
 import { BroadcastSheet } from "@/components/comms/broadcast-sheet";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { LocalTime } from "@/components/ui/local-time";
 import { useBoaters, useStore } from "@/lib/client-store";
 import { executeAgentAction } from "@/lib/agent-actions";
 import { cn, formatPhone } from "@/lib/utils";
@@ -38,7 +39,7 @@ function relatedEntityLink(
   if (re.type === "contract") {
     const c = contracts.get(re.id);
     return {
-      href: `/slips/contracts/${re.id}`,
+      href: `/services/contracts/${re.id}`,
       label: c ? `Contract ${c.number}` : "Contract",
     };
   }
@@ -513,7 +514,7 @@ function ThreadView({
       <header className="flex items-start justify-between gap-3 border-b border-hairline px-4 py-3">
         <div>
           <Link
-            href={`/holders/${boater.id}`}
+            href={`/members/${boater.id}`}
             className="text-[15px] font-medium text-fg hover:text-primary"
           >
             {boater.display_name}
@@ -537,7 +538,7 @@ function ThreadView({
             </Button>
           )}
           <Button variant="secondary" size="sm" asChild>
-            <Link href={`/holders/${boater.id}`}>Open profile →</Link>
+            <Link href={`/members/${boater.id}`}>Open profile →</Link>
           </Button>
         </div>
       </header>
@@ -566,7 +567,7 @@ function ThreadView({
                 <ChannelDot type={m.type} />
                 <span className="font-medium text-fg-subtle">{m.sender_label}</span>
                 <span>·</span>
-                <span>{new Date(m.sent_at).toLocaleString()}</span>
+                <LocalTime iso={m.sent_at} fmt="datetime" />
                 {linked && (
                   <Link
                     href={linked.href}
@@ -668,6 +669,9 @@ function Stat({ label, value, tone = "neutral" }: { label: string; value: string
   );
 }
 
+// String-returning relative-time helper — can't be replaced with
+// <LocalTime> because the final fallback feeds a non-JSX context.
+// <LocalTime> is the right choice for absolute date renders in JSX.
 function formatRelative(iso: string): string {
   const t = new Date(iso).getTime();
   const now = Date.now();

@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { Anchor, Plus, Trash2 } from "lucide-react";
+import { anyApi } from "convex/server";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { RecordEditDialog, type FieldSpec } from "@/components/record-edit-dialog";
@@ -14,6 +15,8 @@ import {
   useSlips,
 } from "@/lib/client-store";
 import type { Dock } from "@/lib/types";
+import { useTenantMutation } from "@/lib/use-tenant-mutation";
+import { useTenantQuery } from "@/lib/use-tenant-query";
 
 /*
  * Settings → Docks. Operator manages the dock list: name, short_name,
@@ -22,7 +25,46 @@ import type { Dock } from "@/lib/types";
  *
  * Deleting a dock is blocked if any slip still references it (the
  * store mutation throws and we catch + alert).
+ *
+ * Phase 3 migration target (see docs/architecture-convex.md +
+ * docs/migration-page-recipe.md). Reads route through `useTenantQuery`,
+ * which transparently falls back to the mock store when Convex isn't
+ * online (NEXT_PUBLIC_CONVEX_URL unset). Writes still go to the mock
+ * store until Phase 4 — `convex/docks.ts` already exposes `create`,
+ * `update`, and `archive` mutations ready to wire.
  */
+
+// Shape returned by `convex/docks.ts:list`. Differs from the mock
+// `Dock` only in the id field names (Convex doc convention uses `_id`
+// + `tenantId`). The adapter below reshapes Convex rows back to the
+// mock-friendly shape the component already consumes.
+interface ConvexDock {
+  _id: string;
+  tenantId: string;
+  name: string;
+  short_name: string;
+  prefix?: string;
+  sort_order: number;
+  active: boolean;
+  notes?: string;
+}
+
+function convexDocksToMock(rows: ConvexDock[]): Dock[] {
+  return rows.map((r) => ({
+    id: r._id,
+    tenant_id: r.tenantId,
+    name: r.name,
+    short_name: r.short_name,
+    prefix: r.prefix,
+    sort_order: r.sort_order,
+    active: r.active,
+    notes: r.notes,
+  }));
+}
+
+// Stable empty args — referential identity matters to Convex's
+// useQuery dedupe.
+const EMPTY_ARGS = {} as const;
 
 const DOCK_FIELDS: FieldSpec<Dock>[] = [
   { key: "name", label: "Dock name", kind: "text", required: true, col: 2, placeholder: "Damsite A Dock" },
@@ -34,10 +76,56 @@ const DOCK_FIELDS: FieldSpec<Dock>[] = [
 ];
 
 export function DocksView() {
-  const docks = useDocks();
+  // Mock subscription stays unconditional so React's hook order is
+  // stable regardless of whether Convex is online. `useTenantQuery`
+  // picks between the two sources at return time.
+  const mockDocks = useDocks();
+  const docks = useTenantQuery<Dock[], ConvexDock[]>({
+    mock: mockDocks,
+    convexRef: anyApi.docks.list,
+    convexArgs: EMPTY_ARGS,
+    convexAdapter: convexDocksToMock,
+  });
   const slips = useSlips();
   const [open, setOpen] = React.useState(false);
   const [editing, setEditing] = React.useState<Dock | undefined>();
+
+  // Phase 4 — write routing. Create / edit / delete each branch
+  // between Convex and the mock store via `useTenantMutation`. Mock
+  // semantics preserved: `upsertDock` cascades to `slips.dock` and
+  // `updateDock` does the same, so we keep both as separate callsites
+  // (mirroring the original branching on `editing`).
+  const createDock = useTenantMutation<Dock, void>({
+    mock: (d) => upsertDock(d),
+    convexRef: anyApi.docks.create,
+    convexArgsAdapter: (d) => ({
+      name: d.name,
+      short_name: d.short_name,
+      prefix: d.prefix,
+      sort_order: d.sort_order,
+      active: d.active,
+    }),
+  });
+  const editDock = useTenantMutation<Dock, void>({
+    mock: (d) => updateDock(d.id, d),
+    convexRef: anyApi.docks.update,
+    convexArgsAdapter: (d) => ({
+      id: d.id,
+      patch: {
+        name: d.name,
+        short_name: d.short_name,
+        prefix: d.prefix,
+        sort_order: d.sort_order,
+        active: d.active,
+        notes: d.notes,
+      },
+    }),
+  });
+  const removeDock = useTenantMutation<string, void>({
+    mock: (id) => deleteDock(id),
+    convexRef: anyApi.docks.remove,
+    convexArgsAdapter: (id) => ({ id }),
+  });
 
   function openAdd() {
     setEditing(undefined);
@@ -52,9 +140,9 @@ export function DocksView() {
     if (editing) {
       // Edit existing — flow through updateDock so it cascades the
       // denormalized slip.dock string update.
-      updateDock(id, values);
+      void editDock({ ...values, id });
     } else {
-      upsertDock({
+      void createDock({
         ...values,
         id,
         tenant_id: values.tenant_id || docks[0]?.tenant_id || "",
@@ -72,17 +160,15 @@ export function DocksView() {
       );
       return;
     }
-    deleteDock(d.id);
+    // `removeDock` throws on the same condition server-side when on
+    // Convex; the local guard above keeps the mock path's UX nice
+    // (alert beats a console error).
+    void removeDock(d.id);
   }
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-between">
-        <p className="text-[12px] text-fg-tertiary">
-          Docks group your slips. Renaming a dock here updates every slip on
-          it. The prefix drives auto-generated slip ids when adding new slips
-          (e.g. prefix &quot;A&quot; → ids A01, A02…).
-        </p>
+      <div className="flex items-center justify-end">
         <Button variant="primary" size="sm" onClick={openAdd}>
           <Plus className="size-3.5" />
           New dock

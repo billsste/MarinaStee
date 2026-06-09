@@ -5,6 +5,7 @@ import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { Lock, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Field, NumberInput, Select, TextInput, Textarea } from "@/components/create-sheet";
+import { Combobox } from "@/components/ui/combobox";
 import { cn } from "@/lib/utils";
 import { useCurrentUser, can, ROLE_META, type Entity } from "@/lib/auth";
 import { usePicklistValues, usePicklistLabel } from "@/lib/client-store";
@@ -18,14 +19,14 @@ import type { PicklistFieldKey } from "@/lib/types";
  * onSave(values) when the user clicks Save. Also handles Add (no initial)
  * and Delete (when onDelete is provided and a record was passed in).
  *
- * Used by /slips/rates, /slips/fees, and (eventually) every other
+ * Used by /services/rates, /services/fees, and (eventually) every other
  * list view that has editable rows — fulfills the user's mandate:
  *   "On any of these pages, I should be able to Edit/Remove/Add any row
  *    of data for any data type ... select the row & edit the row data
  *    via a pop up box"
  */
 
-export type FieldKind = "text" | "number" | "money" | "date" | "select" | "textarea" | "boolean" | "file";
+export type FieldKind = "text" | "number" | "money" | "date" | "select" | "multiselect" | "textarea" | "boolean" | "file";
 
 export type FieldSpec<T> = {
   /** Property name on the record */
@@ -95,7 +96,13 @@ export function RecordEditDialog<T>({
     const seed: Record<string, unknown> = {};
     for (const f of fields) {
       const v = record ? (record as unknown as Record<string, unknown>)[f.key] : undefined;
-      seed[f.key] = v === undefined || v === null ? (f.kind === "boolean" ? false : "") : v;
+      if (v === undefined || v === null) {
+        if (f.kind === "boolean") seed[f.key] = false;
+        else if (f.kind === "multiselect") seed[f.key] = [];
+        else seed[f.key] = "";
+      } else {
+        seed[f.key] = v;
+      }
     }
     setValues(seed);
     setDeleteConfirming(false);
@@ -268,6 +275,46 @@ function FieldRenderer<T>({
     return <SelectField field={field} value={v} onChange={onChange} disabled={disabled} />;
   }
 
+  if (field.kind === "multiselect") {
+    const selected = Array.isArray(value) ? (value as string[]) : [];
+    const opts = field.options ?? [];
+    return (
+      <Field label={field.label} required={field.required} hint={field.hint}>
+        <div className="flex flex-wrap gap-2">
+          {opts.map((o) => {
+            const checked = selected.includes(o.value);
+            return (
+              <label
+                key={o.value}
+                className={cn(
+                  "flex cursor-pointer items-center gap-1.5 rounded-[8px] border px-2 py-1 text-[12px] transition-colors",
+                  checked
+                    ? "border-fg-subtle bg-surface-3 text-fg"
+                    : "border-hairline bg-surface-1 text-fg-subtle hover:bg-surface-2",
+                  disabled && "pointer-events-none opacity-60"
+                )}
+              >
+                <input
+                  type="checkbox"
+                  className="size-3"
+                  checked={checked}
+                  disabled={disabled}
+                  onChange={(e) => {
+                    const next = e.target.checked
+                      ? [...selected, o.value]
+                      : selected.filter((s) => s !== o.value);
+                    onChange(next);
+                  }}
+                />
+                {o.label}
+              </label>
+            );
+          })}
+        </div>
+      </Field>
+    );
+  }
+
   if (field.kind === "textarea") {
     return (
       <Field label={field.label} required={field.required} hint={field.hint}>
@@ -409,6 +456,13 @@ function FieldRenderer<T>({
  * even if it was archived since the record was last edited; the
  * label gets an "(archived)" suffix so staff knows.
  */
+// Threshold for switching from a plain native select to the
+// search-as-you-type Combobox. Per CLAUDE.md §6.3: any dropdown
+// with more than 5 options must be a combobox. Applied uniformly
+// here so every RecordEditDialog field upgrades in one place
+// instead of needing per-callsite migration.
+const COMBOBOX_THRESHOLD = 5;
+
 function SelectField<T>({
   field,
   value,
@@ -434,6 +488,24 @@ function SelectField<T>({
     const showStale =
       current &&
       !picklistOptions.some((o) => o.value === current);
+    const comboOptions = [
+      ...picklistOptions.map((o) => ({ value: o.value, label: o.label })),
+      ...(showStale ? [{ value: current, label: currentLabel ?? current }] : []),
+    ];
+    if (comboOptions.length > COMBOBOX_THRESHOLD) {
+      return (
+        <Field label={field.label} required={field.required} hint={field.hint}>
+          <Combobox
+            value={current}
+            onChange={(v) => onChange(v)}
+            options={comboOptions}
+            placeholder={field.required ? "Pick one…" : "—"}
+            searchPlaceholder={`Search ${field.label.toLowerCase()}…`}
+            disabled={disabled}
+          />
+        </Field>
+      );
+    }
     return (
       <Field label={field.label} required={field.required} hint={field.hint}>
         <Select value={current} onChange={onChange} disabled={disabled}>
@@ -451,11 +523,26 @@ function SelectField<T>({
     );
   }
   // Legacy path — hard-coded options array
+  const opts = field.options ?? [];
+  if (opts.length > COMBOBOX_THRESHOLD) {
+    return (
+      <Field label={field.label} required={field.required} hint={field.hint}>
+        <Combobox
+          value={String(value ?? "")}
+          onChange={(v) => onChange(v)}
+          options={opts.map((o) => ({ value: o.value, label: o.label }))}
+          placeholder={field.required ? "Pick one…" : "—"}
+          searchPlaceholder={`Search ${field.label.toLowerCase()}…`}
+          disabled={disabled}
+        />
+      </Field>
+    );
+  }
   return (
     <Field label={field.label} required={field.required} hint={field.hint}>
       <Select value={String(value ?? "")} onChange={onChange} disabled={disabled}>
         {!field.required && <option value="">—</option>}
-        {field.options?.map((o) => (
+        {opts.map((o) => (
           <option key={o.value} value={o.value}>
             {o.label}
           </option>

@@ -21,10 +21,19 @@ export function WizardProgress({
   steps,
   currentIdx,
   onStepClick,
+  clickAny = false,
 }: {
   steps: WizardStep[];
   currentIdx: number;
   onStepClick?: (idx: number) => void;
+  /**
+   * When true, every step (including future ones) is clickable.
+   * Default behavior locks future steps until the operator reaches
+   * them via Continue — appropriate for creation flows. Edit flows
+   * should pass `clickAny` since the underlying record is already
+   * valid and any section can be jumped to in any order.
+   */
+  clickAny?: boolean;
 }) {
   return (
     <div className="space-y-2">
@@ -50,20 +59,24 @@ export function WizardProgress({
           const isCurrent = idx === currentIdx;
           const isVisited = idx < currentIdx;
           const isFuture = idx > currentIdx;
+          // clickAny: edit-flow callers (data already valid) want any
+          // step reachable. clickable = visited (always) OR future-and-
+          // clickAny (edit mode).
+          const clickable = isVisited || (clickAny && !isCurrent);
           const baseCls = cn(
             "flex-1 truncate text-[11px] uppercase tracking-wide transition-colors",
             isCurrent && "font-medium text-fg",
-            isVisited && "text-fg-subtle hover:text-fg cursor-pointer",
-            isFuture && "text-fg-tertiary"
+            clickable && !isCurrent && "text-fg-subtle hover:text-fg cursor-pointer",
+            isFuture && !clickable && "text-fg-tertiary"
           );
-          if (isVisited && s.href) {
+          if (clickable && s.href) {
             return (
               <Link key={s.id} href={s.href} className={baseCls}>
                 {s.label}
               </Link>
             );
           }
-          if (isVisited && onStepClick) {
+          if (clickable && onStepClick) {
             return (
               <button
                 key={s.id}

@@ -1,6 +1,5 @@
 import { FilePlus2, FileText, Workflow } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { RentalsAsk } from "@/components/rentals/rentals-ask";
 import { RenewalPipelineView } from "@/components/contracts/renewal-pipeline-view";
 import { ContractsView } from "@/components/contracts/contracts-view";
 
@@ -14,16 +13,6 @@ export const metadata = { title: "Contracts — Marina Stee Docks" };
 export default function ContractsPage() {
   return (
     <div className="space-y-5">
-      <RentalsAsk
-        placeholder="Ask the renewal pipeline — e.g. 'draft 2027 renewals for everyone on D Dock at +5%'"
-        suggestions={[
-          "Draft 2027 renewals for everyone expiring this fall",
-          "Who hasn't returned a signed 2027 contract yet?",
-          "Update the annual slip template — add pet clause",
-          "Send a friendly nudge to all sent-but-unsigned",
-        ]}
-      />
-
       <Tabs defaultValue="pipeline" className="w-full">
         <TabsList>
           <TabsTrigger value="pipeline">

@@ -1,14 +1,14 @@
 "use client";
 
 import * as React from "react";
-import { MessageSquarePlus, Wrench, CalendarPlus, MoreHorizontal } from "lucide-react";
+import { MessageSquarePlus, Wrench, CalendarPlus } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { formatMoney, initialsOf } from "@/lib/mock-data";
 import { useLedgerForBoater } from "@/lib/client-store";
 import { NewMessageSheet } from "@/components/comms/new-message-sheet";
-import { NewWorkOrderSheet } from "@/components/work-orders/new-work-order-sheet";
+import { NewWorkOrderWizard } from "@/components/work-orders/new-work-order-wizard";
 import { NewReservationSheet } from "@/components/reservations/new-reservation-sheet";
 import type { Boater, Reservation } from "@/lib/types";
 
@@ -88,14 +88,11 @@ export function BoaterIdentityBar({
           <Button variant="primary" size="md" onClick={() => setResOpen(true)}>
             <CalendarPlus className="size-4" /> Reservation
           </Button>
-          <Button variant="ghost" size="icon" aria-label="More actions">
-            <MoreHorizontal className="size-4" />
-          </Button>
         </div>
       </div>
 
       <NewMessageSheet open={msgOpen} onOpenChange={setMsgOpen} defaultBoaterId={boater.id} />
-      <NewWorkOrderSheet open={woOpen} onOpenChange={setWoOpen} defaultBoaterId={boater.id} />
+      <NewWorkOrderWizard open={woOpen} onOpenChange={setWoOpen} defaultBoaterId={boater.id} />
       <NewReservationSheet open={resOpen} onOpenChange={setResOpen} defaultBoaterId={boater.id} />
     </div>
   );

@@ -225,7 +225,7 @@ export function BoatRentalDetail({
               )}
               {boater && (
                 <Link
-                  href={`/holders/${boater.id}`}
+                  href={`/members/${boater.id}`}
                   className="inline-block text-[11px] text-primary hover:underline"
                 >
                   Open holder profile →

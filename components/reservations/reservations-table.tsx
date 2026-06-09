@@ -82,7 +82,7 @@ export function ReservationsTable() {
             <thead>
               <tr className="border-b border-hairline text-[11px] uppercase tracking-wide text-fg-tertiary">
                 <Th>Number</Th>
-                <Th>Holder</Th>
+                <Th>Member</Th>
                 <Th>Slip</Th>
                 <Th>Arrival</Th>
                 <Th>Departure</Th>
@@ -115,7 +115,7 @@ export function ReservationsTable() {
                       <Td>
                         {boater ? (
                           <Link
-                            href={`/holders/${boater.id}`}
+                            href={`/members/${boater.id}`}
                             className="text-primary hover:underline"
                             onClick={(e) => e.stopPropagation()}
                           >

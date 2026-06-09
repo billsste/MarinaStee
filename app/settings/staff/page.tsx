@@ -1,15 +1,10 @@
-import { PageShell } from "@/components/page-shell";
-import { StaffView } from "@/components/settings/staff-view";
+import { redirect } from "next/navigation";
 
-export const metadata = { title: "Staff & Roles — Marina Stee Settings" };
-
-export default function StaffPage() {
-  return (
-    <PageShell
-      title="Staff & Roles"
-      description="Invite staff, assign roles, manage permissions. Each role gates which actions show up across the tool."
-    >
-      <StaffView />
-    </PageShell>
-  );
+/*
+ * Staff & Roles consolidated into /staff (Roster + Roles & access
+ * sub-sections). This redirect preserves any old bookmarks / sidebar
+ * links until they're cleaned up.
+ */
+export default function StaffSettingsPage() {
+  redirect("/staff?section=roster");
 }

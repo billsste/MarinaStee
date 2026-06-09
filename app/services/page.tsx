@@ -1,14 +1,25 @@
 import { Anchor, CalendarRange, DollarSign, FileText } from "lucide-react";
 import { DockMap } from "@/components/rentals/dock-map";
-import { RentalsAsk } from "@/components/rentals/rentals-ask";
 import {
   CONTRACTS,
   RATES,
   formatMoney,
   totalOccupancy,
 } from "@/lib/mock-data";
+import { isExpiringWithin, localIsoDate } from "@/lib/contracts";
 
 export const metadata = { title: "Rentals — Marina Stee" };
+
+// 60-day cutoff (in ms) for the Rentals overview "expiring" KPI.
+//
+// NOTE: this is intentionally DIFFERENT from the canonical 90-day
+// window everywhere else in the app (Boaters / Rentals roster /
+// Contracts KPI / Reports portfolio / agent /query_contract_expiry
+// default). The scout report flagged this as probable drift — the KPI
+// sub-label ("Next 60 days") matches the value, but there's no product
+// reason 60 vs 90. If 60 is intentional, leave; if not, change BOTH
+// this constant AND the KPI sub-label below.
+const SIXTY_DAYS_MS = 60 * 86_400_000;
 
 export default function RentalsOverviewPage() {
   const occ = totalOccupancy();
@@ -16,11 +27,15 @@ export default function RentalsOverviewPage() {
   const monthlyRate = RATES.find((r) => r.cadence === "monthly" && r.occupancy_type === "Standard")?.amount ?? 325;
   const revenueMTD = occ.occupied * monthlyRate;
 
-  const expiringSoon = CONTRACTS.filter((c) => {
-    if (c.status !== "active" || !c.effective_end) return false;
-    const days = (new Date(c.effective_end).getTime() - Date.now()) / 86_400_000;
-    return days <= 60 && days >= 0;
-  }).length;
+  const todayIso = localIsoDate();
+  const sixtyDaysOutIso = localIsoDate(new Date(Date.now() + SIXTY_DAYS_MS));
+  // Preserves the `c.status === "active"` narrowing — see migration
+  // report C3. Widening to isLiveContract would add executed contracts
+  // to the KPI count and shouldn't ship without product sign-off.
+  const expiringSoon = CONTRACTS.filter(
+    (c) =>
+      c.status === "active" && isExpiringWithin(c, todayIso, sixtyDaysOutIso),
+  ).length;
 
   return (
     <div className="space-y-5">
@@ -48,14 +63,12 @@ export default function RentalsOverviewPage() {
         />
         <Kpi
           icon={<FileText className="size-4" />}
-          label="Active rate cards"
+          label="Active pricing plans"
           value={`${RATES.length}`}
           sub="Across all occupancy types"
           tone="neutral"
         />
       </div>
-
-      <RentalsAsk />
 
       <DockMap />
     </div>

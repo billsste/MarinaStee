@@ -1,13 +1,14 @@
 "use client";
 
 import * as React from "react";
-import Link from "next/link";
-import { Pencil, Plus, Search, Sparkles, UserPlus } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { ChevronRight, Plus, Search, Sparkles, UserPlus } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ListFilterSelect } from "@/components/ui/list-filter-select";
 import { RecordEditDialog, type FieldSpec } from "@/components/record-edit-dialog";
-import { SpacesToolbar } from "@/components/rentals/spaces-toolbar";
-import { useRouter } from "next/navigation";
+import { AssignHolderWizard } from "@/app/services/[id]/assign/assign-slip-client";
+import { ContractPreviewSheet } from "@/components/contracts/contract-preview-sheet";
 import {
   BOATERS,
   VESSELS,
@@ -16,12 +17,19 @@ import {
 import {
   upsertSlip,
   useActiveDocks,
+  useBoaters,
   useContracts,
   useDocks,
   usePicklistLabel,
   useReservations,
   useSlips,
+  useVessels,
 } from "@/lib/client-store";
+import {
+  EXPIRING_SOON_WINDOW_MS,
+  classifyContractStatus,
+  localIsoDate,
+} from "@/lib/contracts";
 import { cn } from "@/lib/utils";
 import type { Boater, Contract, Reservation, Slip, Vessel } from "@/lib/types";
 
@@ -39,7 +47,7 @@ import type { Boater, Contract, Reservation, Slip, Vessel } from "@/lib/types";
  */
 
 type CadenceFilter = "all" | "annual" | "seasonal" | "monthly" | "transient";
-type StatusFilter = "all" | "active" | "expiring" | "lapsed" | "vacant";
+type StatusFilter = "all" | "active" | "pending" | "expiring" | "lapsed" | "vacant";
 
 type Row = {
   slip: Slip;
@@ -47,13 +55,16 @@ type Row = {
   boater?: Boater;
   vessel?: Vessel;
   reservation?: Reservation;
-  // Derived
-  rowStatus: "active" | "expiring" | "lapsed" | "vacant";
+  // Derived — "pending" = contract drafted/sent but not yet signed.
+  rowStatus: "active" | "pending" | "expiring" | "lapsed" | "vacant";
   daysUntilExpiry: number | null; // null when vacant
 };
 
-// "Expiring" = active contract with effective_end <= 90 days out
-const EXPIRY_WINDOW_DAYS = 90;
+// Grid columns for the roster table. Inlined as a JS constant — the
+// Tailwind v4 JIT silently drops `grid-cols-[…minmax(0,1.8fr)…]` so
+// rows collapse to a single column.
+const ROSTER_COLS =
+  "64px 84px minmax(0, 1.8fr) minmax(0, 1.7fr) 88px 140px 100px";
 
 // Slip-edit fields. Class is wired to the `slip_class` picklist so the
 // super-user can rename or add classes from Settings → Customization
@@ -94,8 +105,29 @@ const SLIP_FIELDS: FieldSpec<Slip>[] = [
 ];
 
 export function RosterView() {
+  // Used to route the operator from an occupied-slip row to the
+  // existing holder's detail page instead of opening the
+  // assign-holder wizard (which is the wrong destination when the
+  // slip already has someone holding it).
+  const router = useRouter();
   const contracts = useContracts();
   const reservations = useReservations();
+  // Live store reads so newly-added members + vessels show up immediately
+  // instead of dropping through to the static seed BOATERS/VESSELS array.
+  const allBoaters = useBoaters();
+  const allVessels = useVessels();
+  const boaterById = React.useMemo(() => {
+    const m = new Map<string, Boater>();
+    for (const b of allBoaters) m.set(b.id, b);
+    for (const b of BOATERS) if (!m.has(b.id)) m.set(b.id, b);
+    return m;
+  }, [allBoaters]);
+  const vesselById = React.useMemo(() => {
+    const m = new Map<string, Vessel>();
+    for (const v of allVessels) m.set(v.id, v);
+    for (const v of VESSELS) if (!m.has(v.id)) m.set(v.id, v);
+    return m;
+  }, [allVessels]);
   // Slip-intrinsic data lives in the store now so the row-level "Edit
   // slip" affordance can mutate slip_class / default_annual_rate /
   // dimensions without crossing the server/seed boundary.
@@ -111,37 +143,64 @@ export function RosterView() {
     return m;
   }, [allDocks]);
 
-  // Slip-edit dialog state — opens from the small pencil affordance
-  // appearing on each row hover.
+  // Slip-actions modal state — opens by clicking any slip row. The
+  // modal hosts BOTH the 5-step assign-holder wizard and the slip
+  // metadata editor under one shell, swapped via the footer's
+  // "Edit slip info instead" / "Back to assign holder" links. No
+  // separate edit dialog any more.
+  const [assignSlipId, setAssignSlipId] = React.useState<string | undefined>();
+  const [assignOpen, setAssignOpen] = React.useState(false);
+  // Contract Preview state — set by the wizard when it finishes
+  // drafting a contract via /api/draft-contract. The Preview sheet
+  // mounts here so it survives the wizard modal closing.
+  const [previewContractId, setPreviewContractId] = React.useState<
+    string | undefined
+  >();
+  const [previewOpen, setPreviewOpen] = React.useState(false);
+  function openAssign(slip: Slip) {
+    setAssignSlipId(slip.id);
+    setAssignOpen(true);
+  }
+
+  // "New slip" still uses the lightweight RecordEditDialog — it's an
+  // identity-only create flow (no assignment context yet). Repurposed
+  // state below; the "edit" path no longer mounts the dialog.
   const [editingSlip, setEditingSlip] = React.useState<Slip | undefined>();
   const [slipEditOpen, setSlipEditOpen] = React.useState(false);
-  function openSlipEdit(slip: Slip) {
-    setEditingSlip(slip);
-    setSlipEditOpen(true);
-  }
 
   const [dock, setDock] = React.useState<string>("all");
   const [cadence, setCadence] = React.useState<CadenceFilter>("all");
   const [status, setStatus] = React.useState<StatusFilter>("all");
   const [query, setQuery] = React.useState("");
-  // Vacant slips → navigate into the assignment wizard at
-  // /slips/[id]/assign instead of opening a one-shot dialog.
-  const router = useRouter();
+
+  // Date strings (YYYY-MM-DD) for the rowStatus classifier — computed
+  // ONCE per render so the per-row classify is allocation-free and
+  // timezone-stable. classifyContractStatus uses ISO string compare so
+  // these strings, not Date.now(), drive the active/expiring/lapsed
+  // decision.
+  const todayIso = localIsoDate();
+  const ninetyDaysOutIso = localIsoDate(
+    new Date(Date.now() + EXPIRING_SOON_WINDOW_MS),
+  );
 
   // Build joined rows once per change
   const rows: Row[] = React.useMemo(() => {
     const now = Date.now();
     return slips.map((slip) => {
-      // Most recent ACTIVE or LAPSED contract for this slip
+      // Most recent contract for this slip — exclude terminated/renewed
+      // since those are no longer "the contract on this slip."
       const slipContracts = contracts
-        .filter((c) => c.slip_id === slip.id)
+        .filter(
+          (c) =>
+            c.slip_id === slip.id &&
+            c.status !== "terminated" &&
+            c.status !== "renewed"
+        )
         .sort((a, b) => (a.effective_end < b.effective_end ? 1 : -1));
       const contract = slipContracts[0];
-      const boater = contract
-        ? BOATERS.find((b) => b.id === contract.boater_id)
-        : undefined;
+      const boater = contract ? boaterById.get(contract.boater_id) : undefined;
       const vessel = contract?.vessel_id
-        ? VESSELS.find((v) => v.id === contract.vessel_id)
+        ? vesselById.get(contract.vessel_id)
         : undefined;
       const reservation = reservations.find(
         (r) => r.slip_id === slip.id && r.status === "occupied"
@@ -150,19 +209,46 @@ export function RosterView() {
       let rowStatus: Row["rowStatus"] = "vacant";
       let daysUntilExpiry: number | null = null;
       if (contract) {
+        // daysUntilExpiry is purely cosmetic (renders "Expires in 12d"
+        // / "Expired 4d ago" in the cell) — the classification uses
+        // the ISO-string classifier below to stay timezone-stable.
         const end = new Date(contract.effective_end).getTime();
         daysUntilExpiry = Math.round((end - now) / 86_400_000);
-        if (contract.status === "expired" || daysUntilExpiry < 0) {
+
+        // Status derivation:
+        //   draft / sent / partially_signed → pending (not yet operational)
+        //   expired OR past end_date         → lapsed
+        //   within 90-day window             → expiring
+        //   executed / active                → active
+        //
+        // Pending wins over the date-driven verdict — a draft contract
+        // that happens to "expire" tomorrow is still pending, not
+        // expiring/lapsed (it was never operational in the first place).
+        if (
+          contract.status === "draft" ||
+          contract.status === "sent" ||
+          contract.status === "partially_signed"
+        ) {
+          rowStatus = "pending";
+        } else if (contract.status === "expired") {
           rowStatus = "lapsed";
-        } else if (daysUntilExpiry <= EXPIRY_WINDOW_DAYS) {
-          rowStatus = "expiring";
         } else {
-          rowStatus = "active";
+          const classified = classifyContractStatus(
+            contract,
+            todayIso,
+            ninetyDaysOutIso,
+          );
+          if (classified === "lapsed") rowStatus = "lapsed";
+          else if (classified === "expiring") rowStatus = "expiring";
+          else if (classified === "active") rowStatus = "active";
+          // classified === null only happens for terminal statuses,
+          // which are already filtered above — defensive fallthrough
+          // keeps rowStatus at its "vacant" default.
         }
       }
       return { slip, contract, boater, vessel, reservation, rowStatus, daysUntilExpiry };
     });
-  }, [contracts, reservations]);
+  }, [contracts, reservations, boaterById, vesselById, todayIso, ninetyDaysOutIso]);
 
   // Apply filters
   const filtered = React.useMemo(() => {
@@ -187,19 +273,73 @@ export function RosterView() {
 
   // Counts for filter chips
   const counts = React.useMemo(() => {
-    const c = { active: 0, expiring: 0, lapsed: 0, vacant: 0 };
+    const c = { active: 0, pending: 0, expiring: 0, lapsed: 0, vacant: 0 };
     for (const r of rows) c[r.rowStatus] += 1;
     return c;
   }, [rows]);
 
   return (
     <div className="space-y-4">
-      {/* Toolbar — Day pass for walk-ups, + Add slip for inventory growth */}
-      <div className="flex items-center justify-between gap-3">
-        <SpacesToolbar />
+      {/* Single-row toolbar — search + three compact filters + Add slip.
+          Filters are collapsed to dropdowns because annual-only marinas
+          rarely touch Cadence and rarely jump between docks. The Status
+          dropdown carries live counts so "how many are lapsed?" is one
+          glance away even when the filter isn't active. */}
+      <div className="flex flex-wrap items-center gap-2 rounded-[12px] border border-hairline bg-surface-1 p-2">
+        <div className="relative flex-1 min-w-[220px]">
+          <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-fg-tertiary" />
+          <input
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Slip, holder, or vessel…"
+            className="w-full rounded-[8px] border border-hairline bg-surface-2 py-1.5 pl-8 pr-3 text-[12px] text-fg placeholder:text-fg-tertiary focus:border-hairline-strong focus:outline-none"
+          />
+        </div>
+
+        <ListFilterSelect
+          value={dock}
+          onChange={(v) => setDock(v)}
+          label="Dock"
+          options={[
+            { value: "all", label: "All docks" },
+            ...activeDocks.map((d) => ({
+              value: d.id,
+              label: d.short_name || d.name,
+            })),
+          ]}
+        />
+
+        <ListFilterSelect
+          value={cadence}
+          onChange={(v) => setCadence(v as CadenceFilter)}
+          label="Cadence"
+          options={[
+            { value: "all", label: "All cadences" },
+            { value: "annual", label: "Annual" },
+            { value: "seasonal", label: "Seasonal" },
+            { value: "monthly", label: "Monthly" },
+            { value: "transient", label: "Transient" },
+          ]}
+        />
+
+        <ListFilterSelect
+          value={status}
+          onChange={(v) => setStatus(v as StatusFilter)}
+          label="Status"
+          options={[
+            { value: "all", label: `All · ${rows.length}` },
+            { value: "active", label: `Active · ${counts.active}` },
+            { value: "pending", label: `Pending approval · ${counts.pending}` },
+            { value: "expiring", label: `Expiring · ${counts.expiring}` },
+            { value: "lapsed", label: `Lapsed · ${counts.lapsed}` },
+            { value: "vacant", label: `Vacant · ${counts.vacant}` },
+          ]}
+        />
+
         <Button
           variant="secondary"
-          size="md"
+          size="sm"
           onClick={() => {
             setEditingSlip(undefined);
             setSlipEditOpen(true);
@@ -210,83 +350,24 @@ export function RosterView() {
         </Button>
       </div>
 
-      {/* Filter row */}
-      <div className="space-y-2 rounded-[12px] border border-hairline bg-surface-1 p-3">
-        {/* Search + dock + cadence */}
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="relative flex-1 min-w-[200px]">
-            <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-fg-tertiary" />
-            <input
-              type="search"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Slip, holder, or vessel…"
-              className="w-full rounded-[8px] border border-hairline bg-surface-2 py-1.5 pl-8 pr-3 text-[12px] text-fg placeholder:text-fg-tertiary focus:border-hairline-strong focus:outline-none"
-            />
-          </div>
-          <Seg
-            label="Dock"
-            value={dock}
-            options={[
-              { value: "all", label: "All" },
-              ...activeDocks.map((d) => ({
-                value: d.id,
-                label: d.short_name || d.name,
-              })),
-            ]}
-            onChange={setDock}
-          />
-          <Seg
-            label="Cadence"
-            value={cadence}
-            options={[
-              { value: "all", label: "All" },
-              { value: "annual", label: "Annual" },
-              { value: "seasonal", label: "Seasonal" },
-              { value: "monthly", label: "Monthly" },
-              { value: "transient", label: "Transient" },
-            ]}
-            onChange={(v) => setCadence(v as CadenceFilter)}
-          />
-        </div>
-        {/* Status chips with counts */}
-        <div className="flex flex-wrap items-center gap-1.5">
-          <span className="text-[11px] uppercase tracking-wide text-fg-tertiary">Status:</span>
-          {(
-            [
-              { v: "all", label: `All · ${rows.length}` },
-              { v: "active", label: `Active · ${counts.active}` },
-              { v: "expiring", label: `Expiring · ${counts.expiring}` },
-              { v: "lapsed", label: `Lapsed · ${counts.lapsed}` },
-              { v: "vacant", label: `Vacant · ${counts.vacant}` },
-            ] as const
-          ).map((o) => (
-            <button
-              key={o.v}
-              type="button"
-              onClick={() => setStatus(o.v as StatusFilter)}
-              className={cn(
-                "rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors",
-                status === o.v
-                  ? "border-primary/40 bg-primary-soft text-primary"
-                  : "border-hairline bg-surface-1 text-fg-muted hover:bg-surface-2"
-              )}
-            >
-              {o.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Roster table */}
+      {/* Roster table — grouped by dock so an 800-slip marina
+          doesn't render as one infinite list. Each dock section is
+          collapsible; the header shows occupancy at a glance. */}
       <div className="overflow-hidden rounded-[12px] border border-hairline bg-surface-1">
-        <div className="grid grid-cols-[64px_84px_minmax(0,1.8fr)_minmax(0,1.7fr)_minmax(0,1.1fr)_110px_100px] gap-5 border-b border-hairline bg-surface-2 px-3 py-2 pr-10 text-[10px] font-medium uppercase tracking-wide text-fg-tertiary">
+        {/* Header row is intentionally NOT sticky — sticky-positioned
+            headers clipped wider row content (multi-line cells) when
+            scrolling past the dock toggle. The dock group header
+            itself gives the operator orientation while scrolling. */}
+        <div
+          className="grid gap-x-3 border-b border-hairline bg-surface-2 px-3 py-2 pr-10 text-[10px] font-medium uppercase tracking-wide text-fg-tertiary"
+          style={{ gridTemplateColumns: ROSTER_COLS }}
+        >
           <span>Slip</span>
           <span>Dock</span>
-          <span>Holder</span>
+          <span>Member</span>
           <span>Vessel</span>
           <span>Cadence</span>
-          <span className="text-right">Rate</span>
+          <span>Rate</span>
           <span>Status</span>
         </div>
         {filtered.length === 0 ? (
@@ -294,17 +375,13 @@ export function RosterView() {
             No slips match these filters.
           </div>
         ) : (
-          <ul className="divide-y divide-hairline">
-            {filtered.map((r) => (
-              <RosterRow
-                key={r.slip.id}
-                row={r}
-                dockLabel={dockNameById.get(r.slip.dock_id) ?? r.slip.dock}
-                onAssign={() => router.push(`/slips/${r.slip.id}/assign`)}
-                onEditSlip={() => openSlipEdit(r.slip)}
-              />
-            ))}
-          </ul>
+          <DockGroupedRoster
+            rows={filtered}
+            dockNameById={dockNameById}
+            onAssign={openAssign}
+            onViewHolder={(boaterId) => router.push(`/members/${boaterId}`)}
+            filtersDirty={dock !== "all" || cadence !== "all" || status !== "all" || query.trim().length > 0}
+          />
         )}
       </div>
 
@@ -373,6 +450,30 @@ export function RosterView() {
           });
         }}
       />
+
+      {/* Slip-actions modal — opened by every slip row click. Hosts
+          both the assign-holder wizard and the slip metadata editor
+          under one shell; the operator swaps modes via the footer
+          "Edit slip info instead" link without losing modal context. */}
+      {assignSlipId && (
+        <AssignHolderWizard
+          slipId={assignSlipId}
+          open={assignOpen}
+          onOpenChange={setAssignOpen}
+          onContractDrafted={(contractId) => {
+            // Wizard just drafted a contract — surface the Preview
+            // sheet so the operator reviews + sends.
+            setPreviewContractId(contractId);
+            setPreviewOpen(true);
+          }}
+        />
+      )}
+
+      <ContractPreviewSheet
+        contractId={previewContractId}
+        open={previewOpen}
+        onOpenChange={setPreviewOpen}
+      />
     </div>
   );
 }
@@ -383,52 +484,52 @@ function RosterRow({
   row,
   dockLabel,
   onAssign,
-  onEditSlip,
+  onViewHolder,
 }: {
   row: Row;
   dockLabel: string;
   onAssign: () => void;
-  onEditSlip: () => void;
+  /** Called when the row's slip already has a holder — route to the
+      holder's detail page rather than re-running the assignment
+      wizard, which was the long-standing bug operators flagged. */
+  onViewHolder: (boaterId: string) => void;
 }) {
   const { slip, contract, boater, vessel, rowStatus } = row;
   const statusBadge = (() => {
     if (rowStatus === "vacant") return <Badge tone="ok" size="sm">Vacant</Badge>;
+    if (rowStatus === "pending") return <Badge tone="warn" size="sm">Pending approval</Badge>;
     if (rowStatus === "lapsed") return <Badge tone="danger" size="sm">Lapsed</Badge>;
     if (rowStatus === "expiring") return <Badge tone="warn" size="sm">Expiring</Badge>;
     return <Badge tone="neutral" size="sm">Active</Badge>;
   })();
 
   const gridClass =
-    "grid grid-cols-[64px_84px_minmax(0,1.8fr)_minmax(0,1.7fr)_minmax(0,1.1fr)_110px_100px] items-center gap-5 px-3 py-2 pr-10 text-[13px] transition-colors";
+    "grid items-center gap-x-3 px-3 py-2 text-[13px] transition-colors";
+  const gridStyle = { gridTemplateColumns: ROSTER_COLS };
 
-  // Hover-only pencil affordance for editing the slip's intrinsic
-  // defaults (class, max LOA/beam, default rates). Sits above the row's
-  // primary click target so the click doesn't navigate or open assign.
-  const editPencil = (
-    <button
-      type="button"
-      onClick={(e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        onEditSlip();
-      }}
-      title="Edit slip defaults"
-      aria-label="Edit slip defaults"
-      className="absolute right-2 top-1/2 z-10 -translate-y-1/2 rounded-md border border-hairline bg-surface-1 p-1 text-fg-subtle opacity-0 shadow-sm transition-opacity hover:bg-surface-2 hover:text-fg group-hover:opacity-100"
-    >
-      <Pencil className="size-3" />
-    </button>
-  );
-
-  // Vacant slips → "Assign holder" action. Occupied / lapsed / expiring →
-  // navigate to the boater detail.
+  // Row click branches on whether the slip is held:
+  //
+  //   - Vacant slip → assign-holder modal (the create-new flow). This
+  //     is what an operator is looking for when they click an "Assign
+  //     holder" row.
+  //
+  //   - Occupied slip (any boater attached, including lapsed/pending)
+  //     → route to /members/[boater.id], the holder detail page where
+  //     the operator can edit vessel, financials, comms, etc. Opening
+  //     the assign wizard here was a long-standing bug — operators
+  //     clicked Robert Jones's A04 row expecting his profile and got
+  //     a wizard that suggested they create a new holder.
+  //
+  // The assign-holder modal still has an "Edit slip info instead"
+  // escape hatch for operators who explicitly want to edit slip
+  // metadata (rate, class, LOA) while a holder is attached.
   if (!boater) {
     return (
       <li className="group relative">
-        {editPencil}
         <button
           type="button"
           onClick={onAssign}
+          style={gridStyle}
           className={cn(
             gridClass,
             "group w-full cursor-pointer text-left hover:bg-surface-2"
@@ -449,7 +550,7 @@ function RosterRow({
           <span className="text-fg-tertiary">—</span>
           {/* Show the slip's default annual rate so staff can quote a
               vacancy without opening the slip — pricing rides on the slip. */}
-          <span className="text-right tabular text-[12px] text-fg-subtle">
+          <span className="tabular text-[12px] text-fg-subtle">
             {slip.default_annual_rate
               ? formatMoney(slip.default_annual_rate)
               : "—"}
@@ -462,10 +563,14 @@ function RosterRow({
 
   return (
     <li className="group relative">
-      {editPencil}
-      <Link
-        href={`/holders/${boater.id}`}
-        className={cn(gridClass, "cursor-pointer hover:bg-surface-2")}
+      <button
+        type="button"
+        onClick={() => onViewHolder(boater.id)}
+        style={gridStyle}
+        className={cn(
+          gridClass,
+          "w-full cursor-pointer text-left hover:bg-surface-2"
+        )}
       >
         <span className="flex items-center gap-1.5 font-mono text-[12px] font-medium text-fg">
           {slip.id}
@@ -486,35 +591,14 @@ function RosterRow({
         <span className="text-[12px] capitalize text-fg-subtle">
           {boater?.billing_cadence ?? "—"}
         </span>
-        <span className="text-right tabular text-fg">
-          {contract?.annual_rate ? (
-            <span className="inline-flex items-baseline justify-end gap-1">
-              {/* Override flag — rendered BEFORE the money so the
-                  money's right edge aligns identically across all rows
-                  (with or without an override). Staff sees discounted
-                  / comp'd / grandfathered pricing at a glance. */}
-              {slip.default_annual_rate > 0 &&
-                Math.abs(contract.annual_rate - slip.default_annual_rate) >= 100 && (
-                  <span
-                    className={cn(
-                      "text-[10px]",
-                      contract.annual_rate < slip.default_annual_rate
-                        ? "text-status-warn"
-                        : "text-status-info"
-                    )}
-                    title={`Slip default ${formatMoney(slip.default_annual_rate)}`}
-                  >
-                    {contract.annual_rate < slip.default_annual_rate ? "↓" : "↑"}
-                  </span>
-                )}
-              <span>{formatMoney(contract.annual_rate)}</span>
-            </span>
-          ) : (
-            "—"
-          )}
+        <span className="tabular text-fg">
+          {/* Rate always reflects the slip's current rate from
+              Services → Rates — never a contract-level override.
+              Single source of truth keeps reports clean. */}
+          {slip.default_annual_rate > 0 ? formatMoney(slip.default_annual_rate) : "—"}
         </span>
         <span>{statusBadge}</span>
-      </Link>
+      </button>
     </li>
   );
 }
@@ -567,6 +651,197 @@ function shortenDock(name: string): string {
 // Re-export Sparkles to silence unused warning if any
 void Sparkles;
 void Button;
+
+/**
+ * Group filtered rows by their dock and render each as a
+ * collapsible section. With an 800-slip marina, a flat ul scrolls
+ * forever; a marina owner thinks in DOCKS ("how's A Dock looking?")
+ * not in a continuous slip list.
+ *
+ * Header per dock shows: name + occupancy (X / Y) + vacant chip when
+ * there are openings. The first dock auto-opens; the rest collapse
+ * by default so the page lands at a reasonable height. When a
+ * filter is active, ALL groups auto-expand because the operator is
+ * clearly searching and shouldn't have to click-expand each dock.
+ */
+function DockGroupedRoster({
+  rows,
+  dockNameById,
+  onAssign,
+  onViewHolder,
+  filtersDirty,
+}: {
+  rows: Row[];
+  dockNameById: Map<string, string>;
+  onAssign: (slip: Slip) => void;
+  onViewHolder: (boaterId: string) => void;
+  filtersDirty: boolean;
+}) {
+  // Build groups by dock_id, preserving the order rows appeared in
+  // (which itself was preserved by slip-list order at the data source).
+  const groups = React.useMemo(() => {
+    const map = new Map<string, { label: string; items: Row[] }>();
+    for (const r of rows) {
+      const key = r.slip.dock_id || "_unknown";
+      const label = dockNameById.get(key) ?? r.slip.dock ?? "Unsorted";
+      const existing = map.get(key);
+      if (existing) {
+        existing.items.push(r);
+      } else {
+        map.set(key, { label, items: [r] });
+      }
+    }
+    return Array.from(map.entries()).map(([id, g]) => ({
+      id,
+      label: g.label,
+      items: g.items,
+    }));
+  }, [rows, dockNameById]);
+
+  // Per-dock open state. Defaults: first dock open, rest closed.
+  // Filtered views (any dirty filter) force all-open so the operator
+  // searching for something doesn't have to click each dock.
+  const [openIds, setOpenIds] = React.useState<Set<string>>(() => {
+    const s = new Set<string>();
+    if (groups[0]) s.add(groups[0].id);
+    return s;
+  });
+
+  // When the filter state flips, expand everything so search results
+  // don't hide behind collapsed sections.
+  React.useEffect(() => {
+    if (filtersDirty) {
+      setOpenIds(new Set(groups.map((g) => g.id)));
+    }
+  }, [filtersDirty, groups]);
+
+  function toggle(id: string) {
+    setOpenIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  return (
+    <div>
+      {groups.map((g, i) => (
+        <DockGroup
+          key={g.id}
+          label={g.label}
+          items={g.items}
+          isOpen={openIds.has(g.id)}
+          onToggle={() => toggle(g.id)}
+          dockNameById={dockNameById}
+          onAssign={onAssign}
+          onViewHolder={onViewHolder}
+          isLast={i === groups.length - 1}
+        />
+      ))}
+    </div>
+  );
+}
+
+function DockGroup({
+  label,
+  items,
+  isOpen,
+  onToggle,
+  dockNameById,
+  onAssign,
+  onViewHolder,
+  isLast,
+}: {
+  label: string;
+  items: Row[];
+  isOpen: boolean;
+  onToggle: () => void;
+  dockNameById: Map<string, string>;
+  onAssign: (slip: Slip) => void;
+  onViewHolder: (boaterId: string) => void;
+  isLast: boolean;
+}) {
+  // Occupancy summary per dock — drives operator instincts (which
+  // docks have vacancy, which are at risk of lapsing, etc.).
+  const counts = React.useMemo(() => {
+    let occupied = 0;
+    let vacant = 0;
+    let expiring = 0;
+    let lapsed = 0;
+    for (const r of items) {
+      if (r.rowStatus === "vacant") vacant++;
+      else occupied++;
+      if (r.rowStatus === "expiring") expiring++;
+      if (r.rowStatus === "lapsed") lapsed++;
+    }
+    return { occupied, vacant, expiring, lapsed };
+  }, [items]);
+
+  return (
+    <div className={cn(!isLast && "border-b border-hairline")}>
+      <button
+        type="button"
+        onClick={onToggle}
+        className={cn(
+          "flex w-full items-center justify-between gap-3 px-3 py-2 text-left transition-colors hover:bg-surface-2",
+          isOpen && "bg-surface-2",
+        )}
+        aria-expanded={isOpen}
+      >
+        <div className="flex items-center gap-2">
+          <ChevronRight
+            className={cn(
+              "size-3.5 shrink-0 text-fg-tertiary transition-transform",
+              isOpen && "rotate-90",
+            )}
+            strokeWidth={2}
+          />
+          <span className="text-[13px] font-medium text-fg">{label}</span>
+          <span className="text-[11px] text-fg-tertiary tabular">
+            {counts.occupied} / {items.length}
+            {items.length > 0 && (
+              <span className="text-fg-tertiary">
+                {" · "}
+                {Math.round((counts.occupied / items.length) * 100)}% occupied
+              </span>
+            )}
+          </span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          {counts.vacant > 0 && (
+            <Badge tone="ok" size="sm">
+              {counts.vacant} vacant
+            </Badge>
+          )}
+          {counts.expiring > 0 && (
+            <Badge tone="warn" size="sm">
+              {counts.expiring} expiring
+            </Badge>
+          )}
+          {counts.lapsed > 0 && (
+            <Badge tone="danger" size="sm">
+              {counts.lapsed} lapsed
+            </Badge>
+          )}
+        </div>
+      </button>
+      {isOpen && (
+        <ul className="divide-y divide-hairline border-t border-hairline">
+          {items.map((r) => (
+            <RosterRow
+              key={r.slip.id}
+              row={r}
+              dockLabel={dockNameById.get(r.slip.dock_id) ?? r.slip.dock}
+              onAssign={() => onAssign(r.slip)}
+              onViewHolder={onViewHolder}
+            />
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
 
 /**
  * Tiny dot showing slip class (covered/uncovered/t-head/buoy/dry).

@@ -1,14 +1,21 @@
 "use client";
 
 import * as React from "react";
-import { useRouter } from "next/navigation";
-import { Check, Plus, Sparkles, UserPlus, X } from "lucide-react";
+import { Check, Pencil, Plus, Sparkles, UserPlus, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Combobox } from "@/components/ui/combobox";
+import { MultiCombobox } from "@/components/ui/multi-combobox";
 import { WizardShell } from "@/components/wizard/wizard-shell";
 import { WizardFooter } from "@/components/wizard/wizard-footer";
 import type { WizardStep } from "@/components/wizard/wizard-progress";
+import {
+  CadenceCard,
+  FieldLabel,
+  RailRow,
+  ReviewBlock,
+} from "@/components/wizard/wizard-fields";
+import { useWizardDraft } from "@/components/wizard/use-wizard-draft";
 import { NewBoaterSheet } from "@/components/boaters/new-boater-sheet";
 import { AddVesselSheet } from "@/components/boaters/add-vessel-sheet";
 import { BOATERS, CONTRACT_TEMPLATES, VESSELS, formatMoney } from "@/lib/mock-data";
@@ -16,14 +23,18 @@ import {
   addCommunication,
   mintContractSignatureToken,
   updateContract,
+  upsertSlip,
+  useActiveDocks,
   useBoaters,
   useContractTemplates,
-  useFees,
+  useDocks,
+  useFeesForEntity,
+  useRates,
   useSlip,
   useVesselsForBoater,
 } from "@/lib/client-store";
 import { executeAgentAction } from "@/lib/agent-actions";
-import type { Communication } from "@/lib/types";
+import type { Communication, Slip, SlipClass } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 /*
@@ -59,7 +70,7 @@ type SlipMeta = {
 const STORAGE_KEY_PREFIX = "marina_assign_slip_draft_";
 
 const STEPS: WizardStep[] = [
-  { id: "holder", label: "Holder" },
+  { id: "holder", label: "Member" },
   { id: "rate", label: "Pricing" },
   { id: "services", label: "Services" },
   { id: "contract", label: "Contract" },
@@ -91,40 +102,153 @@ type LocalAttachment = {
   sizeBytes: number;
 };
 
-export function AssignSlipClient({ slip: ssrSlip }: { slip: SlipMeta }) {
-  const router = useRouter();
-  // Prefer the store's copy of the slip so edits made on the Roster's
-  // "Edit slip" affordance flow into the wizard immediately. Fall back
-  // to the SSR-passed seed values if the store hasn't surfaced the slip
-  // (shouldn't happen, but defensive).
-  const liveSlip = useSlip(ssrSlip.id);
-  const slip: SlipMeta = liveSlip
-    ? {
-        id: liveSlip.id,
-        number: liveSlip.number,
-        dock: liveSlip.dock,
-        loaInches: liveSlip.max_loa_inches,
-        beamInches: liveSlip.max_beam_inches,
-        hasPower: liveSlip.has_power,
-        hasWater: liveSlip.has_water,
-        occupancyType: ssrSlip.occupancyType,
-        slipClass: liveSlip.slip_class,
-        defaultAnnualRate: liveSlip.default_annual_rate,
-        defaultMonthlyRate: liveSlip.default_monthly_rate,
-        defaultSeasonalRate: liveSlip.default_seasonal_rate,
-      }
-    : ssrSlip;
+/*
+ * Modal-mode slip-actions surface. ONE modal hosts two flows under
+ * the same chrome — the operator can swap between them without a
+ * context switch:
+ *
+ *   mode="assign" (default) — the 5-step assign-holder wizard
+ *   mode="edit"             — the single-form slip metadata editor
+ *
+ * Swap controls: the assign footer carries an "Edit slip info instead"
+ * link that flips to mode="edit"; the edit footer carries a "Back to
+ * assign holder" link that flips back. Closing the modal exits either
+ * mode entirely.
+ *
+ * The legacy page route at /services/[id]/assign is preserved as a
+ * redirect to /services (any old bookmark lands on the slips list,
+ * then one click opens the modal).
+ */
+export function AssignHolderWizard({
+  slipId,
+  open,
+  onOpenChange,
+  onContractDrafted,
+  prefillNewMember,
+}: {
+  slipId: string;
+  open: boolean;
+  onOpenChange: (next: boolean) => void;
+  /**
+   * Called when the wizard creates a contract AND the AI draft pass
+   * returns. Parent components mount a ContractPreviewSheet against
+   * this id so the operator can review, edit, and send the contract
+   * before it goes to the boater. Optional — when omitted, the
+   * wizard falls back to the legacy behavior (close immediately, no
+   * preview).
+   */
+  onContractDrafted?: (contractId: string) => void;
+  /**
+   * Pre-fill the "Add a new member" sub-sheet on first open. Used by
+   * the convert-waitlist-applicant flow so the operator doesn't re-type
+   * contact info that's already on the waitlist entry. When set, the
+   * wizard auto-opens the new-member sub-sheet with the prefill applied.
+   */
+  prefillNewMember?: {
+    first_name?: string;
+    last_name?: string;
+    email?: string;
+    phone?: string;
+    preferred_channel?: "email" | "sms" | "voice";
+  };
+}) {
+  // Resolve live from the store. The modal only renders when a slip
+  // resolves — protects against stale slipIds (deleted slip, rename).
+  const liveSlip = useSlip(slipId);
+  if (!open || !liveSlip) return null;
+  const slip: SlipMeta = {
+    id: liveSlip.id,
+    number: liveSlip.number,
+    dock: liveSlip.dock,
+    loaInches: liveSlip.max_loa_inches,
+    beamInches: liveSlip.max_beam_inches,
+    hasPower: liveSlip.has_power,
+    hasWater: liveSlip.has_water,
+    occupancyType: "Standard",
+    slipClass: liveSlip.slip_class,
+    defaultAnnualRate: liveSlip.default_annual_rate,
+    defaultMonthlyRate: liveSlip.default_monthly_rate,
+    defaultSeasonalRate: liveSlip.default_seasonal_rate,
+  };
+  return (
+    <AssignHolderWizardInner
+      slip={slip}
+      liveSlip={liveSlip}
+      onClose={() => onOpenChange(false)}
+      onContractDrafted={onContractDrafted}
+      prefillNewMember={prefillNewMember}
+    />
+  );
+}
+
+// Back-compat shim — older imports use AssignSlipClient. Routes that
+// still call this (the legacy page route) get a no-op render now that
+// the page is a redirect. New callers should use AssignHolderWizard.
+export function AssignSlipClient(_props: { slip: SlipMeta }) {
+  return null;
+}
+
+function AssignHolderWizardInner({
+  slip,
+  liveSlip,
+  onClose,
+  onContractDrafted,
+  prefillNewMember,
+}: {
+  slip: SlipMeta;
+  liveSlip: Slip;
+  onClose: () => void;
+  onContractDrafted?: (contractId: string) => void;
+  prefillNewMember?: {
+    first_name?: string;
+    last_name?: string;
+    email?: string;
+    phone?: string;
+    preferred_channel?: "email" | "sms" | "voice";
+  };
+}) {
   const liveBoaters = useBoaters();
   const boaters = liveBoaters.length > 0 ? liveBoaters : BOATERS;
-  const fees = useFees();
+  // Scope the Services step's fee list to ones the operator can
+  // attach to a slip CONTRACT — fees flagged for rental_boat or
+  // club_subscription drop out so the picker isn't cluttered with
+  // Pontoon-hourly rates and similar inapplicable rows.
+  const fees = useFeesForEntity("contract");
   const templates = useContractTemplates();
 
-  const [stepIdx, setStepIdx] = React.useState(0);
+  // Mode swap — same modal hosts both flows. "assign" = the 5-step
+  // wizard; "edit" = a single-form slip editor. Toggling between
+  // them preserves the operator's modal context (no close+open).
+  const [mode, setMode] = React.useState<"assign" | "edit">("assign");
+
   const [submitting, setSubmitting] = React.useState(false);
-  const [newHolderOpen, setNewHolderOpen] = React.useState(false);
+  // When the parent passes prefillNewMember (convert-waitlist flow),
+  // open the new-holder sub-sheet so the operator lands on the
+  // pre-filled form instead of an empty member picker.
+  //
+  // We initialize from the prop AND watch it via useEffect because
+  // `useState(initialValue)` only evaluates `initialValue` on the
+  // first render. If the parent mounts the wizard with
+  // prefillNewMember=undefined and sets it asynchronously later
+  // (current waitlist flow doesn't, but future callers might), the
+  // initial-state path silently misses. Belt + suspenders.
+  const [newHolderOpen, setNewHolderOpen] = React.useState(!!prefillNewMember);
+  const prefillFiredRef = React.useRef(!!prefillNewMember);
+  React.useEffect(() => {
+    if (prefillNewMember && !prefillFiredRef.current) {
+      prefillFiredRef.current = true;
+      setNewHolderOpen(true);
+    }
+  }, [prefillNewMember]);
   const [newVesselOpen, setNewVesselOpen] = React.useState(false);
 
-  const [draft, setDraft] = React.useState<DraftState>(() => {
+  // sessionStorage-backed wizard state. We persist `step` alongside the
+  // draft so a resume lands the operator on the step they left.
+  const storageKey = `${STORAGE_KEY_PREFIX}${slip.id}`;
+  const [persisted, setPersisted, clearPersisted] = useWizardDraft<{
+    step: number;
+    draft: DraftState;
+  }>(storageKey, () => {
     const firstTpl = templates[0] ?? CONTRACT_TEMPLATES[0];
     const today = new Date().toISOString().slice(0, 10);
     const months = firstTpl?.default_term_months ?? 12;
@@ -132,51 +256,50 @@ export function AssignSlipClient({ slip: ssrSlip }: { slip: SlipMeta }) {
       .toISOString()
       .slice(0, 10);
     return {
-      boaterId: "",
-      cadence: "annual" as CadenceKind,
-      amount: slip.defaultAnnualRate,
-      rateId: "",
-      selectedFeeIds: [],
-      templateId: firstTpl?.id ?? "",
-      vesselId: "",
-      start: today,
-      end: endDate,
-      attachmentNames: [],
+      step: 0,
+      draft: {
+        boaterId: "",
+        cadence: "annual" as CadenceKind,
+        amount: slip.defaultAnnualRate,
+        rateId: "",
+        selectedFeeIds: [],
+        templateId: firstTpl?.id ?? "",
+        vesselId: "",
+        start: today,
+        end: endDate,
+        attachmentNames: [],
+      },
     };
   });
+
+  const stepIdx = persisted.step;
+  const draft = persisted.draft;
+  const setStepIdx = React.useCallback(
+    (next: number | ((prev: number) => number)) => {
+      setPersisted((p) => ({
+        ...p,
+        step: typeof next === "function" ? (next as (n: number) => number)(p.step) : next,
+      }));
+    },
+    [setPersisted]
+  );
+  const setDraft = React.useCallback(
+    (next: DraftState | ((prev: DraftState) => DraftState)) => {
+      setPersisted((p) => ({
+        ...p,
+        draft:
+          typeof next === "function"
+            ? (next as (d: DraftState) => DraftState)(p.draft)
+            : next,
+      }));
+    },
+    [setPersisted]
+  );
 
   // Attachments live outside the draft state because File data doesn't
   // serialize to sessionStorage. Re-uploading on resume is fine.
   const [attachments, setAttachments] = React.useState<LocalAttachment[]>([]);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
-
-  // ── sessionStorage resume ────────────────────────────────────────────
-  const storageKey = `${STORAGE_KEY_PREFIX}${slip.id}`;
-  React.useEffect(() => {
-    if (typeof window === "undefined") return;
-    try {
-      const raw = window.sessionStorage.getItem(storageKey);
-      if (raw) {
-        const parsed = JSON.parse(raw) as { step: number; draft: DraftState };
-        if (parsed.draft) setDraft(parsed.draft);
-        if (typeof parsed.step === "number") setStepIdx(parsed.step);
-      }
-    } catch {
-      /* ignore corrupt drafts */
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-  React.useEffect(() => {
-    if (typeof window === "undefined") return;
-    try {
-      window.sessionStorage.setItem(
-        storageKey,
-        JSON.stringify({ step: stepIdx, draft })
-      );
-    } catch {
-      /* ignore quota / privacy errors */
-    }
-  }, [stepIdx, draft, storageKey]);
 
   // ── Derived ──────────────────────────────────────────────────────────
   const selectedBoater = boaters.find((b) => b.id === draft.boaterId);
@@ -295,132 +418,94 @@ export function AssignSlipClient({ slip: ssrSlip }: { slip: SlipMeta }) {
             : undefined,
       });
 
-      // AI draft pass — fill the template's merge tokens with concrete
-      // context for this contract. Runs against /api/draft-contract,
-      // which calls the Anthropic API if ANTHROPIC_API_KEY is set and
-      // falls back to a deterministic local fill otherwise. Either way
-      // the contract ends up with a `drafted_body_markdown` ready for
-      // the holder to read on /onboard.
+      // AI draft pass — now AWAITED. Earlier this fired fire-and-forget
+      // AND immediately dispatched the onboarding comm to the boater,
+      // so the operator never saw what Claude generated before it
+      // landed in front of the customer. Per Steven's feedback we now:
+      //   1. Wait for the drafted body to come back
+      //   2. Open the Contract Preview sheet
+      //   3. Let the operator edit / ask the agent / send when ready
+      // The communication dispatch is moved into the preview sheet's
+      // "Send to customer" handler.
       if (result.ok && result.createdId && selectedTemplate?.body_markdown) {
+        const contractId = result.createdId;
+        const vesselForDraft = vesselOptions.find(
+          (v) => v.id === draft.vesselId
+        );
+        const draftPayload = {
+          template_name: selectedTemplate.name,
+          template_body: selectedTemplate.body_markdown,
+          context: {
+            boater: selectedBoater
+              ? {
+                  display_name: selectedBoater.display_name,
+                  code: selectedBoater.code ?? "",
+                  legal_name: selectedBoater.display_name,
+                  primary_contact: selectedBoater.primary_contact,
+                  address: selectedBoater.address,
+                }
+              : null,
+            slip: {
+              number: slip.number,
+              dock: slip.dock,
+              slipClass: slip.slipClass,
+              loa_feet: Math.round(slip.loaInches / 12),
+            },
+            vessel: vesselForDraft
+              ? {
+                  name: vesselForDraft.name,
+                  year: vesselForDraft.year ?? "",
+                  make: vesselForDraft.make ?? "",
+                  model: vesselForDraft.model ?? "",
+                }
+              : null,
+            contract: {
+              effective_start: draft.start,
+              effective_end: draft.end,
+              annual_rate: annualRate,
+              billing_cadence: cadence,
+              services: selectedFees.map((f) => ({
+                name: f.name,
+                amount: f.amount,
+              })),
+            },
+          },
+        };
         try {
-          const vesselForDraft = vesselOptions.find(
-            (v) => v.id === draft.vesselId
-          );
           const draftRes = await fetch("/api/draft-contract", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              template_name: selectedTemplate.name,
-              template_body: selectedTemplate.body_markdown,
-              context: {
-                boater: selectedBoater
-                  ? {
-                      display_name: selectedBoater.display_name,
-                      code: selectedBoater.code ?? "",
-                      legal_name: selectedBoater.display_name,
-                      primary_contact: selectedBoater.primary_contact,
-                      address: selectedBoater.address,
-                    }
-                  : null,
-                slip: {
-                  number: slip.number,
-                  dock: slip.dock,
-                  slipClass: slip.slipClass,
-                  loa_feet: Math.round(slip.loaInches / 12),
-                },
-                vessel: vesselForDraft
-                  ? {
-                      name: vesselForDraft.name,
-                      year: vesselForDraft.year ?? "",
-                      make: vesselForDraft.make ?? "",
-                      model: vesselForDraft.model ?? "",
-                    }
-                  : null,
-                contract: {
-                  effective_start: draft.start,
-                  effective_end: draft.end,
-                  annual_rate: annualRate,
-                  billing_cadence: cadence,
-                  services: selectedFees.map((f) => ({
-                    name: f.name,
-                    amount: f.amount,
-                  })),
-                },
-              },
-            }),
+            body: JSON.stringify(draftPayload),
           });
           if (draftRes.ok) {
             const json = (await draftRes.json()) as {
               drafted_body_markdown?: string;
             };
             if (json.drafted_body_markdown) {
-              updateContract(result.createdId, {
+              updateContract(contractId, {
                 drafted_body_markdown: json.drafted_body_markdown,
                 drafted_at: new Date().toISOString(),
               });
             }
           }
         } catch (err) {
-          // Non-fatal: the contract is created, just lacks the AI body.
-          // Staff can re-draft from the contract detail page.
+          // Non-fatal: contract still exists, just no drafted body
+          // yet. Operator can re-draft from the contract detail page.
           console.error("[wizard] draft-contract call failed", err);
         }
+        // Notify the parent so it can open the Contract Preview
+        // sheet right after the wizard closes. Operator reviews +
+        // edits + sends from there. When `onContractDrafted` isn't
+        // wired (legacy callers), this is a no-op and the operator
+        // can still find the draft on the contract detail page.
+        onContractDrafted?.(contractId);
       }
 
-      // Onboarding chain — mint the signature token, transition the
-      // contract to "sent," and dispatch an outbound Communication to
-      // the holder with their /onboard/[token] URL. This is what makes
-      // the wizard's output an interconnected workflow rather than a
-      // dead-end draft.
-      if (result.ok && result.createdId && selectedBoater) {
-        const token = mintContractSignatureToken(result.createdId);
-        if (token) {
-          const origin = typeof window !== "undefined" ? window.location.origin : "";
-          const onboardUrl = `${origin}/onboard/${token}`;
-          const channel = selectedBoater.communication_prefs.preferred_channel;
-          const commType: Communication["type"] = channel;
-          const recipient =
-            commType === "email"
-              ? (selectedBoater.primary_contact.email ?? "")
-              : (selectedBoater.primary_contact.phone ?? "");
-          addCommunication({
-            id: `cm_onboard_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-            boater_id: selectedBoater.id,
-            type: commType,
-            direction: "outbound",
-            sender_label: "Marina Stee",
-            sender_is_system: true,
-            recipient,
-            subject: `Welcome to your slip ${slip.number} — complete onboarding`,
-            body_preview: `Sign your contract and add a payment method here: ${onboardUrl}`,
-            full_body:
-              `Hi ${selectedBoater.first_name},\n\n` +
-              `Your slip ${slip.number} at ${slip.dock} is reserved. Please complete the ` +
-              `following to activate your contract:\n\n` +
-              `  1. Review and sign your agreement\n` +
-              `  2. Add a payment method\n\n` +
-              `It takes about 2 minutes: ${onboardUrl}\n\n` +
-              `Reply to this message if you have any questions.`,
-            sent_at: new Date().toISOString(),
-            status: "delivered",
-            related_entity: { type: "contract", id: result.createdId },
-          });
-        }
-      }
-
-      // Clear the draft cache once committed
-      try {
-        window.sessionStorage.removeItem(storageKey);
-      } catch {
-        /* ignore */
-      }
-      // Land them on the holder's page so they see the onboarding rail
-      // + the just-sent contract + comm. If we couldn't resolve a boater
-      // for some reason, fall back to the contracts list.
-      const dest = selectedBoater
-        ? `/holders/${selectedBoater.id}`
-        : "/slips/contracts";
-      router.push(dest);
+      // Clear the draft cache once committed; close the wizard modal.
+      // The Contract Preview sheet (mounted on the parent) opens via
+      // the lastDraftedContractId state we just set.
+      clearPersisted();
+      onClose();
     } finally {
       setSubmitting(false);
     }
@@ -513,6 +598,7 @@ export function AssignSlipClient({ slip: ssrSlip }: { slip: SlipMeta }) {
       <NewBoaterSheet
         open={newHolderOpen}
         onOpenChange={setNewHolderOpen}
+        prefill={prefillNewMember}
         onCreated={(boaterId) => {
           // Auto-select the newly-created holder so staff doesn't have
           // to re-open the dropdown and find them. The sheet closes
@@ -533,20 +619,75 @@ export function AssignSlipClient({ slip: ssrSlip }: { slip: SlipMeta }) {
       />
 
       <WizardShell
-        eyebrow={`Assign slip ${slip.number} · ${slip.dock}`}
-        title={STEP_TITLES[stepIdx]}
-        subtitle={STEP_SUBTITLES[stepIdx]}
-        steps={STEPS}
-        currentIdx={stepIdx}
-        onStepClick={(idx) => idx < stepIdx && setStepIdx(idx)}
-        rightRail={rightRail}
+        chrome="modal"
+        onExit={onClose}
+        eyebrow={
+          mode === "edit"
+            ? `Edit slip ${slip.number} · ${slip.dock}`
+            : `Assign slip ${slip.number} · ${slip.dock}`
+        }
+        title={
+          mode === "edit"
+            ? "Edit slip defaults"
+            : STEP_TITLES[stepIdx]
+        }
+        subtitle={
+          mode === "edit"
+            ? "Pre-fills new contracts on this slip. Existing contracts keep their signed rates."
+            : STEP_SUBTITLES[stepIdx]
+        }
+        steps={mode === "assign" ? STEPS : undefined}
+        currentIdx={mode === "assign" ? stepIdx : undefined}
+        onStepClick={
+          mode === "assign"
+            ? (idx) => idx < stepIdx && setStepIdx(idx)
+            : undefined
+        }
+        // Rail removed in both modes — modal is now single-column
+        // and content-driven. Slip context lives in the eyebrow.
+        rightRail={undefined}
+        headerAction={
+          mode === "assign" ? (
+            <button
+              type="button"
+              onClick={() => setMode("edit")}
+              className="inline-flex items-center gap-1.5 rounded-[8px] border border-hairline bg-surface-1 px-2.5 py-1.5 text-[12px] text-fg-subtle transition-colors hover:border-hairline-strong hover:bg-surface-2 hover:text-fg"
+            >
+              <Pencil className="size-3.5" />
+              Edit slip info
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setMode("assign")}
+              className="inline-flex items-center gap-1.5 rounded-[8px] border border-hairline bg-surface-1 px-2.5 py-1.5 text-[12px] text-fg-subtle transition-colors hover:border-hairline-strong hover:bg-surface-2 hover:text-fg"
+            >
+              ← Back to assign holder
+            </button>
+          )
+        }
       >
+        {mode === "edit" && (
+          <SlipEditForm
+            slip={liveSlip}
+            onSaved={() => setMode("assign")}
+          />
+        )}
+        {mode === "assign" && (
+          <>
         {/* Step 0 — Holder */}
         {stepIdx === 0 && (
           <div className="space-y-4">
+            {/* Unified "find or create" combobox. Operators told us
+                the old "Existing member" label + invisible "create one
+                below" hint was confusing — there's no separate Create
+                button; the +Create option is inside the dropdown
+                itself. New shape: one field, one mental model. Type
+                to filter; if no existing match, hit "+ Create new
+                member" at the bottom of the list. */}
             <FieldLabel
-              label="Existing holder"
-              hint="Search by name or code. If they're new, create one below."
+              label="Member"
+              hint="Type a name, code, or email to find an existing member, or add a new one."
             >
               <Combobox
                 value={draft.boaterId}
@@ -556,54 +697,38 @@ export function AssignSlipClient({ slip: ssrSlip }: { slip: SlipMeta }) {
                   label: b.display_name,
                   hint: b.code ? `· ${b.code}` : undefined,
                 }))}
-                placeholder="Pick a holder…"
-                searchPlaceholder="Search by name, code…"
+                placeholder="Search by name, code, or email…"
+                searchPlaceholder="Type a name, code, or email…"
                 onCreateNew={() => setNewHolderOpen(true)}
-                createNewLabel="Create new holder"
+                createNewLabel="+ Create new member"
               />
+              {/* Visible "add new" affordance — duplicates the
+                  Combobox's footer option, but operators told us the
+                  in-dropdown footer was too easy to miss. Styled as
+                  an inline text button (left-aligned, link-toned)
+                  rather than a full-width dashed CTA so it doesn't
+                  compete with the search input above. */}
+              {!draft.boaterId && (
+                <button
+                  type="button"
+                  onClick={() => setNewHolderOpen(true)}
+                  className="mt-1.5 inline-flex items-center gap-1 rounded-[6px] px-2 py-1 text-[12px] font-medium text-primary transition-colors hover:bg-primary-soft/30"
+                >
+                  <Plus className="size-3.5" />
+                  Add a new member
+                </button>
+              )}
             </FieldLabel>
 
-            {selectedBoater && (
-              <div className="rounded-[10px] border border-hairline bg-surface-2 p-3">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <div className="text-[14px] font-medium text-fg">
-                      {selectedBoater.display_name}
-                    </div>
-                    <div className="text-[12px] text-fg-subtle">
-                      {selectedBoater.primary_contact.email ??
-                        selectedBoater.primary_contact.phone ??
-                        "—"}
-                    </div>
-                    <div className="mt-1 flex items-center gap-1.5">
-                      <Badge tone="info" size="sm">
-                        {selectedBoater.billing_cadence}
-                      </Badge>
-                      {selectedBoater.code && (
-                        <Badge tone="neutral" size="sm">
-                          {selectedBoater.code}
-                        </Badge>
-                      )}
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setDraft((d) => ({ ...d, boaterId: "" }))}
-                    className="text-[11px] text-fg-subtle hover:text-fg"
-                    aria-label="Clear holder"
-                  >
-                    <X className="size-4" />
-                  </button>
-                </div>
-              </div>
-            )}
 
             <FieldLabel
               label="Vessel (optional)"
               hint={
-                selectedBoater && vesselOptions.length === 0
-                  ? "No vessels on file yet — add one now or skip and attach later."
-                  : "Pick a vessel on file for this holder, or skip and attach later."
+                !selectedBoater
+                  ? "Pick a member above first — then their vessels appear here."
+                  : selectedBoater && vesselOptions.length === 0
+                    ? "No vessels on file yet. Add one now or skip and attach later."
+                    : "Pick a vessel on file, or use “+ Add a new vessel” at the bottom of the list."
               }
             >
               {selectedBoater && vesselOptions.length === 0 ? (
@@ -627,11 +752,11 @@ export function AssignSlipClient({ slip: ssrSlip }: { slip: SlipMeta }) {
                     label: v.name,
                     hint: v.year ? `· ${v.year}` : undefined,
                   }))}
-                  placeholder={selectedBoater ? "No vessel" : "Pick a holder first"}
+                  placeholder={selectedBoater ? "Pick a vessel — or create new" : "Pick a member first"}
                   searchPlaceholder="Search vessels…"
                   disabled={!selectedBoater}
                   onCreateNew={selectedBoater ? () => setNewVesselOpen(true) : undefined}
-                  createNewLabel="Add a new vessel"
+                  createNewLabel="+ Add a new vessel"
                 />
               )}
             </FieldLabel>
@@ -658,7 +783,7 @@ export function AssignSlipClient({ slip: ssrSlip }: { slip: SlipMeta }) {
                 <span className="text-[11px] text-fg-tertiary">/ year</span>
               </div>
               <p className="mt-1 text-[11px] text-fg-tertiary">
-                Pre-filled from slip {slip.id}. Override below if this holder gets a special arrangement.
+                Rate pulled from slip {slip.id}. To change a rate, update it in Services → Rates.
               </p>
             </div>
 
@@ -708,48 +833,32 @@ export function AssignSlipClient({ slip: ssrSlip }: { slip: SlipMeta }) {
               </div>
             </FieldLabel>
 
-            <FieldLabel
-              label="Amount"
-              hint={
-                draft.amount !== slipDefaultForCadence(draft.cadence)
-                  ? `Overrides slip default of ${formatMoney(slipDefaultForCadence(draft.cadence))} ${
-                      draft.cadence === "annual" ? "/ year" : draft.cadence === "monthly" ? "/ month" : "/ season"
-                    }.`
-                  : `Matches slip default — leave as-is unless this holder has a special arrangement.`
-              }
-            >
-              <div className="flex items-center gap-2">
-                <span className="text-[16px] text-fg-subtle">$</span>
-                <input
-                  type="number"
-                  min="0"
-                  step="50"
-                  value={draft.amount || ""}
-                  onChange={(e) =>
-                    setDraft((d) => ({ ...d, amount: Number(e.target.value) || 0 }))
-                  }
-                  className="h-10 w-full rounded-[8px] border border-hairline bg-surface-2 px-3 text-[18px] tabular text-fg focus:border-hairline-strong focus:outline-none"
-                />
-                <span className="text-[12px] text-fg-tertiary whitespace-nowrap">
+            {/* Rate is read-only — always sourced from Services → Rates.
+                Displayed so the operator can confirm before continuing. */}
+            <div className="rounded-[10px] border border-hairline bg-surface-2 px-4 py-3">
+              <div className="flex items-baseline justify-between gap-3">
+                <span className="text-[12px] text-fg-subtle">
                   {draft.cadence === "annual"
-                    ? "/ year"
+                    ? "Annual rate"
                     : draft.cadence === "monthly"
-                    ? "/ month"
-                    : "/ season"}
+                    ? "Monthly rate"
+                    : "Seasonal rate"}
                 </span>
-                {draft.amount !== slipDefaultForCadence(draft.cadence) && (
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setDraft((d) => ({ ...d, amount: slipDefaultForCadence(d.cadence) }))
-                    }
-                    className="text-[11px] text-primary hover:underline whitespace-nowrap"
-                  >
-                    Reset to default
-                  </button>
-                )}
+                <span className="money-display text-[22px] text-fg">
+                  {formatMoney(slipDefaultForCadence(draft.cadence))}
+                  <span className="ml-1 text-[12px] font-normal text-fg-tertiary">
+                    {draft.cadence === "annual"
+                      ? "/ year"
+                      : draft.cadence === "monthly"
+                      ? "/ month"
+                      : "/ season"}
+                  </span>
+                </span>
               </div>
-            </FieldLabel>
+              <p className="mt-1 text-[11px] text-fg-tertiary">
+                From Services → Rates. Change the rate there to apply it to all new contracts.
+              </p>
+            </div>
           </div>
         )}
 
@@ -757,11 +866,11 @@ export function AssignSlipClient({ slip: ssrSlip }: { slip: SlipMeta }) {
         {stepIdx === 2 && (
           <div className="space-y-3">
             <p className="text-[12px] text-fg-subtle">
-              Optional add-ons billed alongside the slip. Skip if none apply — you can add them later from the holder's Financials tab.
+              Optional add-ons billed alongside the slip. Skip if none apply — you can add them later from the member's Financials tab.
             </p>
             {fees.length === 0 ? (
               <div className="rounded-[10px] border border-dashed border-hairline-strong bg-surface-2 p-6 text-center text-[13px] text-fg-subtle">
-                No additional fees configured. Add to <strong>/slips/fees</strong>.
+                No additional fees configured. Add to <strong>/services/fees</strong>.
               </div>
             ) : (
               <ul className="space-y-1.5">
@@ -983,9 +1092,11 @@ export function AssignSlipClient({ slip: ssrSlip }: { slip: SlipMeta }) {
           continueLabel={stepIdx === STEPS.length - 1 ? "Draft contract" : "Continue"}
           continueDisabled={!canContinue}
           busy={submitting}
-          exitHref="/slips/roster"
+          onExit={onClose}
           busyLabel="Drafting…"
         />
+        </>
+        )}
       </WizardShell>
     </>
   );
@@ -1002,111 +1113,334 @@ const STEP_TITLES = [
 ];
 
 const STEP_SUBTITLES = [
-  "Search existing holders or create a new one. You can attach a vessel now or later.",
-  "The slip has its own default annual rate — pick the cadence and adjust the amount only if this holder has a special arrangement.",
+  "Search existing members or create a new one. You can attach a vessel now or later.",
+  "Pick the billing cadence — annual, monthly, or seasonal. The rate is pulled from Services → Rates and applied as-is.",
   "Optional add-ons billed alongside the slip (pump-out, hoist, COI processing, etc.).",
   "Choose the legal document, set the effective dates, and upload signed copies if you have them.",
   "Confirm the details — clicking Draft creates a contract in draft status, ready to send for signature.",
 ];
 
-// ── Small inline subcomponents ────────────────────────────────────────
+// ── Slip edit form ────────────────────────────────────────────────────
+//
+// Single-form slip metadata editor — lives inside the same modal as
+// the assign-holder wizard, hosted by the same WizardShell with
+// steps={undefined} so the progress bar hides.
+//
+// Field structure cleanup vs the old RecordEditDialog version:
+//   - Dock is now a Combobox of existing docks (was free text)
+//   - Slip class stays a select with friendly labels
+//   - Rates use the catalog-attach toggle pattern (mirrors rental boats):
+//     default mode pulls from the Rate catalog filtered to standard
+//     occupancy rows; "Custom amount" reveals the three legacy fields
+//   - Number / Max LOA / Max Beam use the wizard's NumericInput
+//   - Power / Water render as the canonical 2-card toggle (like the
+//     wizard's Use toggle) instead of bare checkboxes
 
-function FieldLabel({
-  label,
-  required,
-  hint,
-  children,
+const SLIP_CLASS_OPTIONS: { value: SlipClass; label: string }[] = [
+  { value: "covered", label: "Covered" },
+  { value: "uncovered", label: "Uncovered" },
+  { value: "t_head", label: "T-Head" },
+  { value: "buoy", label: "Buoy" },
+  { value: "dry_storage", label: "Dry storage" },
+];
+
+const SLIP_EDIT_CADENCES: { key: "annual" | "monthly" | "seasonal"; label: string; suffix: string }[] = [
+  { key: "annual", label: "Annual rate ($/yr)", suffix: "/yr" },
+  { key: "monthly", label: "Monthly rate ($/mo)", suffix: "/mo" },
+  { key: "seasonal", label: "Seasonal rate ($/season)", suffix: "/season" },
+];
+
+function SlipEditForm({
+  slip,
+  onSaved,
 }: {
-  label: string;
-  required?: boolean;
-  hint?: string;
-  children: React.ReactNode;
+  slip: Slip;
+  onSaved: () => void;
 }) {
-  return (
-    <label className="block">
-      <div className="mb-1.5 flex items-baseline justify-between gap-2">
-        <span className="text-[12px] font-medium text-fg-subtle">
-          {label}
-          {required && <span className="ml-1 text-status-danger">*</span>}
-        </span>
-      </div>
-      {children}
-      {hint && (
-        <p className="mt-1 text-[11px] text-fg-tertiary">{hint}</p>
-      )}
-    </label>
-  );
-}
+  const activeDocks = useActiveDocks();
+  const allDocks = useDocks();
+  const allRates = useRates();
 
-function RailRow({ label, value }: { label: string; value: string }) {
+  // Local draft — initialized from the live slip, only persisted on Save.
+  const [number, setNumber] = React.useState(slip.number);
+  const [dockId, setDockId] = React.useState(slip.dock_id);
+  const [slipClass, setSlipClass] = React.useState<SlipClass>(slip.slip_class);
+  const [invoiceCategory, setInvoiceCategory] = React.useState(slip.invoice_category);
+  const [maxLoa, setMaxLoa] = React.useState(slip.max_loa_inches);
+  const [maxBeam, setMaxBeam] = React.useState(slip.max_beam_inches);
+  const [hasPower, setHasPower] = React.useState(slip.has_power);
+  const [hasWater, setHasWater] = React.useState(slip.has_water);
+
+  // Catalog rates applicable to this slip — Standard occupancy rates
+  // across annual / monthly / seasonal cadences. Operator picks one
+  // per cadence; the picked amount fills the corresponding default.
+  // Free-text rates were removed platform-wide — every rate on the
+  // tool now sources from the centralized service-fee catalog.
+  const slipRateOptions = React.useMemo(() => {
+    return allRates
+      .filter(
+        (r) =>
+          r.occupancy_type === "Standard" &&
+          (r.cadence === "annual" || r.cadence === "monthly" || r.cadence === "seasonal")
+      )
+      .sort((a, b) => a.amount - b.amount);
+  }, [allRates]);
+  // Hydrate the multi-select from the slip's existing rates by
+  // matching catalog rows whose amount equals the slip's default for
+  // that cadence. Best-effort: if no match is found nothing is
+  // pre-checked and the operator picks fresh.
+  const initialPickedIds = React.useMemo(() => {
+    const ids: string[] = [];
+    const matchByCadenceAndAmount = (
+      cadence: "annual" | "monthly" | "seasonal",
+      target: number | undefined
+    ) => {
+      if (!target) return;
+      const hit = allRates.find(
+        (r) =>
+          r.occupancy_type === "Standard" &&
+          r.cadence === cadence &&
+          r.amount === target
+      );
+      if (hit) ids.push(hit.id);
+    };
+    matchByCadenceAndAmount("annual", slip.default_annual_rate);
+    matchByCadenceAndAmount("monthly", slip.default_monthly_rate);
+    matchByCadenceAndAmount("seasonal", slip.default_seasonal_rate);
+    return ids;
+  }, [
+    slip.default_annual_rate,
+    slip.default_monthly_rate,
+    slip.default_seasonal_rate,
+    allRates,
+  ]);
+  const [pickedRateIds, setPickedRateIds] = React.useState<string[]>(initialPickedIds);
+
+  const dockOptions = React.useMemo(
+    () =>
+      activeDocks.map((d) => ({
+        value: d.id,
+        label: d.name,
+        hint: d.short_name && d.short_name !== d.name ? `· ${d.short_name}` : undefined,
+      })),
+    [activeDocks]
+  );
+
+  // Save validation — name + dock + class are mandatory; everything
+  // else can be blank. Stays disabled when invalid; visible hint below.
+  const canSave =
+    number.trim().length > 0 &&
+    dockId.length > 0 &&
+    slipClass.length > 0;
+
+  function handleSave() {
+    if (!canSave) return;
+    const matchedDock = allDocks.find((d) => d.id === dockId);
+    const dockName = matchedDock?.name ?? slip.dock;
+    // Rates source from the catalog as a single multi-select. The
+    // slip persists THREE legacy cadence-specific fields for back-
+    // compat with the assign-slip wizard's prefill (which reads
+    // default_annual_rate etc.). Derive them by taking the FIRST
+    // picked rate per cadence. If the operator picks no rate for a
+    // cadence, the legacy field clears for that cadence (cleaner
+    // than retaining stale values from a prior edit).
+    const pickedRates = pickedRateIds
+      .map((id) => slipRateOptions.find((r) => r.id === id))
+      .filter((r): r is NonNullable<typeof r> => Boolean(r));
+    const resolvedAnnual = pickedRates.find((r) => r.cadence === "annual")?.amount ?? 0;
+    const resolvedMonthly = pickedRates.find((r) => r.cadence === "monthly")?.amount;
+    const resolvedSeasonal = pickedRates.find((r) => r.cadence === "seasonal")?.amount;
+    upsertSlip({
+      ...slip,
+      number: number.trim(),
+      dock_id: dockId,
+      dock: dockName,
+      slip_class: slipClass,
+      invoice_category: invoiceCategory.trim(),
+      max_loa_inches: Number(maxLoa) || 0,
+      max_beam_inches: Number(maxBeam) || 0,
+      has_power: hasPower,
+      has_water: hasWater,
+      default_annual_rate: Number(resolvedAnnual) || 0,
+      default_monthly_rate: resolvedMonthly,
+      default_seasonal_rate: resolvedSeasonal,
+    });
+    onSaved();
+  }
+
   return (
-    <div className="flex items-center justify-between">
-      <dt className="text-fg-tertiary">{label}</dt>
-      <dd className="text-fg">{value}</dd>
+    <div className="space-y-4">
+      {/* Identity row — number + dock + class + invoice category */}
+      <div className="grid gap-3 sm:grid-cols-2">
+        <FieldLabel label="Slip number" required>
+          <input
+            type="text"
+            value={number}
+            onChange={(e) => setNumber(e.target.value)}
+            placeholder="A01"
+            className="h-10 w-full rounded-[8px] border border-hairline bg-surface-2 px-3 text-[14px] text-fg focus:border-hairline-strong focus:outline-none"
+          />
+        </FieldLabel>
+        <FieldLabel label="Dock" required>
+          <Combobox
+            value={dockId}
+            onChange={setDockId}
+            options={dockOptions}
+            placeholder="Pick a dock…"
+            searchPlaceholder="Search docks…"
+          />
+        </FieldLabel>
+        <FieldLabel label="Class" required>
+          <Combobox
+            value={slipClass}
+            onChange={(v) => setSlipClass(v as SlipClass)}
+            options={SLIP_CLASS_OPTIONS.map((o) => ({
+              value: o.value,
+              label: o.label,
+            }))}
+            placeholder="Pick a class…"
+            searchPlaceholder="Search classes…"
+          />
+        </FieldLabel>
+        <FieldLabel label="Invoice category">
+          <input
+            type="text"
+            value={invoiceCategory}
+            onChange={(e) => setInvoiceCategory(e.target.value)}
+            placeholder="Marina Slip Fees"
+            className="h-10 w-full rounded-[8px] border border-hairline bg-surface-2 px-3 text-[14px] text-fg focus:border-hairline-strong focus:outline-none"
+          />
+        </FieldLabel>
+      </div>
+
+      {/* Dimensions */}
+      <div className="grid gap-3 sm:grid-cols-2">
+        <FieldLabel label="Max LOA (inches)">
+          <input
+            type="text"
+            inputMode="numeric"
+            value={maxLoa === 0 ? "" : String(maxLoa)}
+            onChange={(e) => {
+              const raw = e.target.value.replace(/[^\d]/g, "");
+              setMaxLoa(raw === "" ? 0 : Number(raw));
+            }}
+            placeholder="336"
+            className="h-10 w-full rounded-[8px] border border-hairline bg-surface-2 px-3 text-[14px] tabular-nums text-fg focus:border-hairline-strong focus:outline-none"
+          />
+        </FieldLabel>
+        <FieldLabel label="Max Beam (inches)">
+          <input
+            type="text"
+            inputMode="numeric"
+            value={maxBeam === 0 ? "" : String(maxBeam)}
+            onChange={(e) => {
+              const raw = e.target.value.replace(/[^\d]/g, "");
+              setMaxBeam(raw === "" ? 0 : Number(raw));
+            }}
+            placeholder="144"
+            className="h-10 w-full rounded-[8px] border border-hairline bg-surface-2 px-3 text-[14px] tabular-nums text-fg focus:border-hairline-strong focus:outline-none"
+          />
+        </FieldLabel>
+      </div>
+
+      {/* Utilities + Service rates — side-by-side row. Utilities is
+          just a couple of pill toggles, so pairing it with the rates
+          picker on the same row absorbs the leftover horizontal
+          space instead of stranding utilities alone. */}
+      <div className="grid gap-3 sm:grid-cols-2">
+        <FieldLabel label="Utilities">
+          <div className="flex flex-wrap gap-2">
+            <UtilityToggle label="Power" enabled={hasPower} onChange={setHasPower} />
+            <UtilityToggle label="Water" enabled={hasWater} onChange={setHasWater} />
+          </div>
+        </FieldLabel>
+
+        <FieldLabel label="Service rates">
+          {slipRateOptions.length === 0 ? (
+            <div className="rounded-[10px] border border-dashed border-hairline-strong bg-surface-2 p-4 text-center text-[12px] text-fg-subtle">
+              No slip rates configured. Add some in{" "}
+              <strong>Services → Rates</strong>.
+            </div>
+          ) : (
+            <MultiCombobox
+              value={pickedRateIds}
+              onChange={setPickedRateIds}
+              options={slipRateOptions.map((r) => {
+                const cadenceMeta = SLIP_EDIT_CADENCES.find(
+                  (c) => c.key === r.cadence
+                );
+                return {
+                  value: r.id,
+                  label: r.name,
+                  sub: r.cadence,
+                  trailing: `${formatMoney(r.amount)}${cadenceMeta?.suffix ?? ""}`,
+                };
+              })}
+              placeholder="Click to pick rates · type to filter"
+              searchPlaceholder="Search rates by name or cadence…"
+              emptyText="No rates match."
+            />
+          )}
+        </FieldLabel>
+      </div>
+
+      {/* Edit footer — Save changes only. The "Back to assign
+          holder" affordance lives in the header now (top-right of
+          the modal), so this footer is just the primary commit. */}
+      <div className="flex items-center justify-end gap-4 border-t border-hairline pt-4">
+        <Button
+          variant="primary"
+          size="md"
+          onClick={handleSave}
+          disabled={!canSave}
+        >
+          Save changes
+        </Button>
+      </div>
+      {!canSave && (
+        <p className="text-right text-[11px] text-status-danger">
+          Number, dock, and class are required.
+        </p>
+      )}
     </div>
   );
 }
 
-function CadenceCard({
+function UtilityToggle({
   label,
-  amount,
-  per,
-  hint,
-  selected,
-  onClick,
+  enabled,
+  onChange,
 }: {
   label: string;
-  amount: number;
-  per: string;
-  hint?: string;
-  selected: boolean;
-  onClick: () => void;
+  enabled: boolean;
+  onChange: (v: boolean) => void;
 }) {
+  // Compact inline pill — single button that toggles between
+  // available/not-available. Replaces the prior 2-card-per-utility
+  // pattern that was eating vertical space for a binary choice.
   return (
     <button
       type="button"
-      onClick={onClick}
+      onClick={() => onChange(!enabled)}
       className={cn(
-        "flex flex-col items-start gap-1 rounded-[10px] border px-3 py-2.5 text-left transition-colors",
-        selected
-          ? "border-primary bg-primary-soft/40 ring-1 ring-primary/30"
-          : "border-hairline bg-surface-1 hover:border-hairline-strong hover:bg-surface-2"
+        "inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-[12px] transition-colors",
+        enabled
+          ? "border-primary bg-primary-soft/40 text-fg"
+          : "border-hairline bg-surface-1 text-fg-subtle hover:bg-surface-2"
       )}
     >
-      <div className="text-[12px] font-medium text-fg">{label}</div>
-      <div className="money-display text-[18px] text-fg">{formatMoney(amount)}</div>
-      <div className="text-[10px] text-fg-tertiary">
-        {per}
-        {hint && <span className="ml-1">· {hint}</span>}
-      </div>
+      <span
+        className={cn(
+          "inline-block size-2 rounded-full",
+          enabled ? "bg-primary" : "bg-fg-tertiary/40"
+        )}
+        aria-hidden
+      />
+      <span className="font-medium">{label}</span>
+      <span className="text-fg-tertiary">
+        {enabled ? "Available" : "Not available"}
+      </span>
     </button>
   );
 }
 
-function ReviewBlock({
-  label,
-  value,
-  onEdit,
-}: {
-  label: string;
-  value: string;
-  onEdit: () => void;
-}) {
-  return (
-    <div className="flex items-start justify-between gap-3 rounded-[10px] border border-hairline bg-surface-1 px-3 py-2.5">
-      <div className="min-w-0 flex-1">
-        <div className="text-[11px] uppercase tracking-wide text-fg-tertiary">
-          {label}
-        </div>
-        <div className="mt-0.5 text-[13px] text-fg">{value}</div>
-      </div>
-      <button
-        type="button"
-        onClick={onEdit}
-        className="text-[12px] text-primary hover:underline"
-      >
-        Edit
-      </button>
-    </div>
-  );
-}

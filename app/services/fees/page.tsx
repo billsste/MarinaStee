@@ -1,20 +1,10 @@
-import { RentalsAsk } from "@/components/rentals/rentals-ask";
 import { FeesManager } from "@/components/rentals/fees-manager";
 
 export const metadata = { title: "Additional Fees — Marina Stee Docks" };
 
+// Agent prompt lives in app/services/layout.tsx so it spans the full width
+// above the rail + content split. Each sub-page just renders its
+// tabular surface.
 export default function FeesPage() {
-  return (
-    <div className="space-y-5">
-      <RentalsAsk
-        placeholder="Apply, create, or analyze a fee — e.g. 'add a hoist fee to David Emmons next invoice'"
-        suggestions={[
-          "Add hoist fee to David Emmons",
-          "Bulk-apply winterization to all annual boaters",
-          "Add a new pump-out fee at $30",
-        ]}
-      />
-      <FeesManager />
-    </div>
-  );
+  return <FeesManager />;
 }

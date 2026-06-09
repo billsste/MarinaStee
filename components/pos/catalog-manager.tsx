@@ -11,6 +11,7 @@ import {
   upsertPosItem,
   usePosCatalog,
   usePosLocations,
+  useVendors,
 } from "@/lib/client-store";
 import { formatMoney } from "@/lib/mock-data";
 import type { PosCatalogItem, PosLocation } from "@/lib/types";
@@ -28,7 +29,12 @@ import { cn } from "@/lib/utils";
  * is fine — many small marinas don't track COGS at the SKU level.
  */
 
-const ITEM_FIELDS: FieldSpec<PosCatalogItem>[] = [
+/**
+ * Static field set — boater-side info (name, sku, price, etc.). The
+ * stock fields below get appended dynamically in the component so
+ * the supplier dropdown can pull live vendor options.
+ */
+const ITEM_STATIC_FIELDS: FieldSpec<PosCatalogItem>[] = [
   { key: "name", label: "Item name", kind: "text", required: true, col: 2, placeholder: "Marina burger" },
   { key: "sku", label: "SKU", kind: "text", required: true, col: 2, placeholder: "BURGER", hint: "Shown on receipts. Stable — renaming is OK; historical orders keep the old SKU." },
   { key: "category", label: "Category", kind: "text", required: true, col: 2, placeholder: "Mains", hint: "Free-text; items group by this on the POS palette." },
@@ -36,11 +42,47 @@ const ITEM_FIELDS: FieldSpec<PosCatalogItem>[] = [
   { key: "cost", label: "Cost of goods ($)", kind: "money", col: 2, step: "0.01", hint: "Optional. Enables margin reports." },
   { key: "taxable", label: "Taxable", kind: "boolean", col: 2 },
   { key: "active", label: "Active in catalog", kind: "boolean", col: 2, hint: "Inactive items are hidden from the POS Terminal palette but historical orders still resolve." },
+  // ── Stock tracking (inventory) ──
+  // Toggle `tracked` on for items the marina counts in stock (lines,
+  // fenders, ice, sunscreen, etc.). When on, POS sales auto-decrement
+  // `stock_on_hand`, and the item surfaces in /inventory with low-stock
+  // alerts when stock falls to or below `reorder_point`. Untracked
+  // items skip silently — that's the right default for services
+  // (pump-out) and bottomless products (fuel by the gallon).
+  { key: "tracked", label: "Track stock", kind: "boolean", col: 2, hint: "When on, POS sales auto-decrement stock_on_hand and the item shows up under /inventory with low-stock alerts." },
+  { key: "stock_on_hand", label: "Stock on hand", kind: "number", col: 2, step: "1", hint: "Current count. Only meaningful when tracked." },
+  { key: "reorder_point", label: "Reorder point", kind: "number", col: 2, step: "1", hint: "Stock at or below this triggers a low-stock alert." },
+  { key: "reorder_quantity", label: "Suggested order qty", kind: "number", col: 2, step: "1", hint: "Default qty pre-filled when reordering from the low-stock view." },
 ];
 
 export function CatalogManager() {
   const items = usePosCatalog();
   const locations = usePosLocations();
+  const vendors = useVendors();
+
+  // Compose the full field spec — static fields plus the supplier
+  // dropdown built from the active tenant's vendors. Memoized so it
+  // doesn't recreate on every render.
+  const ITEM_FIELDS = React.useMemo<FieldSpec<PosCatalogItem>[]>(
+    () => [
+      ...ITEM_STATIC_FIELDS,
+      {
+        key: "supplier_vendor_id",
+        label: "Supplier",
+        kind: "select",
+        col: 2,
+        options: [
+          { value: "", label: "— None —" },
+          ...vendors.map((v) => ({
+            value: v.id,
+            label: v.display_name ?? v.name,
+          })),
+        ],
+        hint: "Vendor the item is reordered from. Used by /inventory low-stock reorder.",
+      },
+    ],
+    [vendors]
+  );
 
   const [open, setOpen] = React.useState(false);
   const [editing, setEditing] = React.useState<PosCatalogItem | undefined>();
@@ -86,6 +128,28 @@ export function CatalogManager() {
       taxable: values.taxable !== false,
       active: values.active !== false,
       location_keys,
+      // Stock tracking fields — preserve undefined when blank so the
+      // store doesn't end up storing 0 / false for items that just
+      // weren't filled in. Tracked = true is the only field that
+      // changes downstream behavior (POS auto-decrement).
+      tracked: Boolean(values.tracked),
+      stock_on_hand:
+        values.stock_on_hand !== undefined && String(values.stock_on_hand) !== ""
+          ? Number(values.stock_on_hand)
+          : undefined,
+      reorder_point:
+        values.reorder_point !== undefined && String(values.reorder_point) !== ""
+          ? Number(values.reorder_point)
+          : undefined,
+      reorder_quantity:
+        values.reorder_quantity !== undefined &&
+        String(values.reorder_quantity) !== ""
+          ? Number(values.reorder_quantity)
+          : undefined,
+      supplier_vendor_id:
+        values.supplier_vendor_id && values.supplier_vendor_id !== ""
+          ? values.supplier_vendor_id
+          : undefined,
     });
   }
   function handleDelete(item: PosCatalogItem) {

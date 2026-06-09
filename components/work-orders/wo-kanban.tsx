@@ -4,17 +4,30 @@ import * as React from "react";
 import { Search, Flag, Plus } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { RentalsAsk } from "@/components/rentals/rentals-ask";
 import { WoCard } from "./wo-card";
-import { NewWorkOrderSheet } from "./new-work-order-sheet";
+import { NewWorkOrderWizard } from "./new-work-order-wizard";
 import { cn } from "@/lib/utils";
 import { getQuoteForWorkOrder } from "@/lib/mock-data";
 import { updateWorkOrder, useWorkOrders } from "@/lib/client-store";
+import { useTabUrlState } from "@/lib/use-tab-url-state";
 import type {
   WorkOrder,
   WorkOrderStatus,
   WorkOrderActivityType,
 } from "@/lib/types";
+
+type ActivityFilter = WorkOrderActivityType | "all";
+
+function isActivityFilter(v: string | null | undefined): v is ActivityFilter {
+  return (
+    v === "all" ||
+    v === "winterization" ||
+    v === "bottom_paint" ||
+    v === "service" ||
+    v === "inspection" ||
+    v === "haul_out"
+  );
+}
 
 type ColumnKey = "open" | "scheduled" | "in_progress" | "completed" | "billed";
 
@@ -53,7 +66,15 @@ export function WoKanban({ initial }: { initial?: WorkOrder[] }) {
     localOverrides[w.id] ? { ...w, status: localOverrides[w.id] } : w
   );
 
-  const [filterType, setFilterType] = React.useState<WorkOrderActivityType | "all">("all");
+  // ?tab=winterization | bottom_paint | service | inspection | haul_out
+  // — deep-link from the dashboard "review winterization queue" CTA,
+  // the agent ("show me bottom-paint work orders"), or external links.
+  // Default to "all" so a fresh navigation hits the full kanban.
+  const [filterType, setFilterType] = useTabUrlState<ActivityFilter>(
+    "tab",
+    isActivityFilter,
+    "all",
+  );
   const [query, setQuery] = React.useState("");
   const [flaggedOnly, setFlaggedOnly] = React.useState(false);
   const [newOpen, setNewOpen] = React.useState(false);
@@ -108,17 +129,11 @@ export function WoKanban({ initial }: { initial?: WorkOrder[] }) {
   }
 
   return (
-    <div className="space-y-4">
-      <RentalsAsk
-        placeholder="Ask about work orders — e.g. 'winterize David's Bayliner with the standard package'"
-        suggestions={[
-          "Winterize David's Bayliner",
-          "Why hasn't Peterson signed the paint quote?",
-          "Reassign Davis's haul-out to J. Reyes",
-          "Send winterization quotes to all annual holders",
-        ]}
-      />
-
+    // The agent lives on the parent page (app/work-orders/page.tsx) so
+    // it persists across kanban filter changes and matches the canonical
+    // agent-at-the-layout-level pattern used by every other top-level
+    // page (/members, /services, /bookings, /settings).
+    <div className="space-y-5">
       {/* Type filter tabs */}
       <div className="flex flex-wrap gap-1 rounded-[10px] border border-hairline bg-surface-2 p-1">
         {ACTIVITY_TABS.map((t) => (
@@ -168,7 +183,7 @@ export function WoKanban({ initial }: { initial?: WorkOrder[] }) {
         </Button>
       </div>
 
-      <NewWorkOrderSheet open={newOpen} onOpenChange={setNewOpen} />
+      <NewWorkOrderWizard open={newOpen} onOpenChange={setNewOpen} />
 
       {/* Kanban */}
       <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(5, minmax(220px, 1fr))" }}>

@@ -130,12 +130,23 @@ export function Combobox({
       <Popover.Portal>
         <Popover.Content
           align="start"
-          sideOffset={4}
-          className="z-50 w-[--radix-popover-trigger-width] min-w-[360px] overflow-hidden rounded-[10px] border border-hairline bg-surface-1 shadow-xl outline-none"
+          sideOffset={2}
+          /*
+           * Width: exactly the trigger's width — no separate min-width
+           * that can leak past on narrow forms. Radius matches the
+           * trigger (8px) so when the popover opens it reads as one
+           * continuous surface, not a separate panel. shadow-xl is the
+           * only elevation cue.
+           */
+          style={{ width: "var(--radix-popover-trigger-width)" }}
+          className="z-50 overflow-hidden rounded-[8px] border border-hairline bg-surface-1 shadow-xl outline-none"
           onOpenAutoFocus={(e) => e.preventDefault()}
         >
+          {/* Flush search bar — no border, no rounded inset, no focus
+              ring. The bottom hairline becomes the only divider so it
+              feels like part of the same surface as the option list. */}
           <div className="flex items-center gap-2 border-b border-hairline px-3 py-2">
-            <Search className="size-3.5 text-fg-tertiary" />
+            <Search className="size-3.5 shrink-0 text-fg-tertiary" />
             <input
               ref={searchRef}
               type="text"
@@ -143,7 +154,7 @@ export function Combobox({
               onChange={(e) => setQuery(e.target.value)}
               onKeyDown={handleKey}
               placeholder={searchPlaceholder}
-              className="flex-1 bg-transparent text-[13px] text-fg outline-none placeholder:text-fg-tertiary"
+              className="flex-1 border-0 bg-transparent text-[13px] text-fg outline-none ring-0 placeholder:text-fg-tertiary focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0"
             />
           </div>
           <div className="max-h-72 overflow-y-auto py-1">

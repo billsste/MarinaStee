@@ -30,7 +30,7 @@ export function LinkedEntitiesRail({ wo }: { wo: WorkOrder }) {
           {boater && (
             <RowLink
               icon={<UserIcon className="size-3.5" />}
-              href={`/holders/${boater.id}`}
+              href={`/members/${boater.id}`}
               primary={boater.display_name}
               secondary={`${boater.code ?? ""}${boater.billing_cadence ? ` · ${boater.billing_cadence}` : ""}`}
             />
@@ -48,7 +48,7 @@ export function LinkedEntitiesRail({ wo }: { wo: WorkOrder }) {
           {vessel && (
             <RowLink
               icon={<Ship className="size-3.5" />}
-              href={`/holders/${vessel.boater_id}?tab=vessels`}
+              href={`/members/${vessel.boater_id}?tab=vessels`}
               primary={vessel.name}
               secondary={`${vessel.year ?? ""} ${vessel.make ?? ""} ${vessel.model ?? ""}`.trim()}
             />
@@ -56,7 +56,7 @@ export function LinkedEntitiesRail({ wo }: { wo: WorkOrder }) {
           {slip && (
             <RowLink
               icon={<Anchor className="size-3.5" />}
-              href={`/slips/roster`}
+              href={`/services/roster`}
               primary={`${slip.dock} · ${slip.number}`}
               secondary={`${slip.invoice_category}`}
             />
@@ -67,7 +67,7 @@ export function LinkedEntitiesRail({ wo }: { wo: WorkOrder }) {
           <Section title="Contract">
             <RowLink
               icon={<FileText className="size-3.5" />}
-              href={`/slips/contracts/${contract.id}`}
+              href={`/services/contracts/${contract.id}`}
               primary={contract.number}
               secondary={`${contract.effective_start} → ${contract.effective_end}`}
             />
@@ -80,7 +80,7 @@ export function LinkedEntitiesRail({ wo }: { wo: WorkOrder }) {
               <RowLink
                 key={le.id}
                 icon={<Receipt className="size-3.5" />}
-                href={`/holders/${le.boater_id}?tab=financials`}
+                href={`/members/${le.boater_id}?tab=financials`}
                 primary={`${le.type === "invoice" ? "Invoice" : le.type === "payment" ? "Payment" : le.type}${le.number ? ` ${le.number}` : ""}`}
                 secondary={`${le.date} · ${formatMoney(le.amount)}`}
               />

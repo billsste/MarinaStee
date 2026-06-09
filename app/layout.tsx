@@ -4,6 +4,7 @@ import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
 import { AppShell } from "@/components/app-shell";
 import { ServiceWorkerRegister } from "@/components/service-worker-register";
+import { ConvexClerkProvider } from "@/components/providers/convex-clerk-provider";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -18,7 +19,7 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Marina Stee — Admin",
   description:
-    "Agent-native marina management. Slips, boaters, ledger, POS — orchestrated by a single agent.",
+    "Agent-native marina management. Services, members, ledger, POS — orchestrated by a single agent.",
   applicationName: "Marina Stee",
   appleWebApp: {
     capable: true,
@@ -53,12 +54,15 @@ export default function RootLayout({
     >
       <head>
         {/*
-         * Pre-hydration theme bootstrap. Runs before React paints so the
-         * correct class lands on <html> immediately (no FOUC). Replaces the
-         * inline script next-themes used to inject — which React 19 warns
-         * against inside the component tree.
+         * Pre-hydration theme bootstrap. suppressHydrationWarning silences
+         * React 19's "script tag inside component" console error while still
+         * letting the script run before React paints (no FOUC).
+         * next/script with beforeInteractive also triggers the warning in
+         * Next 16 when placed in <head>, so we use the raw tag + suppress.
          */}
+        {/* eslint-disable-next-line @next/next/no-sync-scripts */}
         <script
+          suppressHydrationWarning
           dangerouslySetInnerHTML={{
             __html:
               "(function(){try{var t=localStorage.getItem('marina-stee-theme');if(!t){t='dark';}var r=document.documentElement;r.classList.remove('light','dark');r.classList.add(t);}catch(e){document.documentElement.classList.add('dark');}})();",
@@ -66,10 +70,12 @@ export default function RootLayout({
         />
       </head>
       <body className="min-h-full">
-        <ThemeProvider defaultTheme="dark">
-          <AppShell>{children}</AppShell>
-          <ServiceWorkerRegister />
-        </ThemeProvider>
+        <ConvexClerkProvider>
+          <ThemeProvider defaultTheme="dark">
+            <AppShell>{children}</AppShell>
+            <ServiceWorkerRegister />
+          </ThemeProvider>
+        </ConvexClerkProvider>
       </body>
     </html>
   );

@@ -4,6 +4,18 @@ import { Badge } from "@/components/ui/badge";
 import { formatMoney, initialsOf } from "@/lib/mock-data";
 import type { Boater, Reservation } from "@/lib/types";
 
+// Derived service-type label rendered in the Service column. Computed
+// once in BoaterList from (club subscription ?? slip class) and passed
+// here so the row stays a pure render.
+export type ServiceLabel =
+  | "Rental Club"
+  | "Standard"
+  | "Buoy"
+  | "Dry Storage"
+  | "Jet Ski"
+  | "Mooring"
+  | null; // null = no recognized service yet (account-only / transient walk-in)
+
 function relativeTime(iso?: string) {
   if (!iso) return "—";
   const ms = Date.now() - new Date(iso).getTime();
@@ -24,25 +36,41 @@ function trustTone(score?: number) {
   return "danger" as const;
 }
 
-function cadenceLabel(c: Boater["billing_cadence"]) {
-  return c.charAt(0).toUpperCase() + c.slice(1);
+function serviceTone(s: ServiceLabel) {
+  if (s === "Rental Club") return "info" as const;
+  if (s === "Jet Ski") return "warn" as const;
+  if (s === "Buoy" || s === "Mooring") return "neutral" as const;
+  if (s === "Dry Storage") return "neutral" as const;
+  return "outline" as const;
 }
 
 export function BoaterRow({
   boater,
   currentReservation,
+  contractSlipId,
+  contractStatus,
   openBalance,
+  service,
 }: {
   boater: Boater;
   currentReservation?: Reservation;
+  /** Fallback slip when no reservation exists — comes from the
+      boater's contract. Set together with contractStatus. */
+  contractSlipId?: string;
+  contractStatus?: import("@/lib/types").ContractStatus;
   openBalance: number;
+  service: ServiceLabel;
 }) {
   const balanceTone = openBalance > 0 ? "warn" : "ok";
 
   return (
     <Link
-      href={`/holders/${boater.id}`}
-      className="grid grid-cols-[minmax(0,1.8fr)_minmax(0,0.9fr)_minmax(0,0.9fr)_minmax(0,0.9fr)_minmax(0,0.9fr)_minmax(0,0.7fr)] items-center gap-3 border-b border-hairline px-4 py-3 text-[13px] transition-colors hover:bg-surface-2"
+      href={`/members/${boater.id}`}
+      className="grid items-center gap-3 border-b border-hairline px-4 py-3 text-[13px] transition-colors hover:bg-surface-2"
+      style={{
+        gridTemplateColumns:
+          "minmax(0, 1.8fr) minmax(0, 0.9fr) minmax(0, 0.9fr) minmax(0, 0.9fr) minmax(0, 0.9fr) minmax(0, 0.7fr)",
+      }}
     >
       {/* Identity */}
       <div className="flex min-w-0 items-center gap-3">
@@ -66,7 +94,8 @@ export function BoaterRow({
         </div>
       </div>
 
-      {/* Slip / current reservation */}
+      {/* Slip / current reservation. Falls back to the boater's contract
+          slip when no reservation exists yet (e.g. pending approval). */}
       <div className="min-w-0">
         {currentReservation ? (
           <div className="text-fg">
@@ -75,16 +104,29 @@ export function BoaterRow({
               · {currentReservation.status}
             </span>
           </div>
+        ) : contractSlipId ? (
+          <div className="text-fg">
+            <span className="font-medium">{contractSlipId}</span>
+            <span className="ml-1 text-[11px] text-fg-tertiary">
+              · {contractStatusLabel(contractStatus)}
+            </span>
+          </div>
         ) : (
           <span className="text-fg-tertiary">—</span>
         )}
       </div>
 
-      {/* Cadence */}
+      {/* Service type — derived from active subscription / slip class.
+          Replaces the old Cadence column (cadence is still in the
+          filter chip row at the top of the list). */}
       <div className="min-w-0">
-        <Badge tone={boater.billing_cadence === "transient" ? "info" : "neutral"} size="sm">
-          {cadenceLabel(boater.billing_cadence)}
-        </Badge>
+        {service ? (
+          <Badge tone={serviceTone(service)} size="sm">
+            {service}
+          </Badge>
+        ) : (
+          <span className="text-fg-tertiary">—</span>
+        )}
       </div>
 
       {/* Balance */}
@@ -114,4 +156,25 @@ export function BoaterRow({
       </div>
     </Link>
   );
+}
+
+/**
+ * Friendly labels for contract statuses when shown as a sub-line next
+ * to the slip number on the members list. "Pending" covers any in-flight
+ * draft / sent / partially_signed states — operator just needs to know
+ * the slip is claimed but not yet live.
+ */
+function contractStatusLabel(s?: import("@/lib/types").ContractStatus): string {
+  switch (s) {
+    case "active":
+      return "active";
+    case "executed":
+      return "executed";
+    case "draft":
+    case "sent":
+    case "partially_signed":
+      return "pending approval";
+    default:
+      return s ?? "";
+  }
 }

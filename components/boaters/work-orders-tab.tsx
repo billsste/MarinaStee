@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { getUser, getQuoteForWorkOrder, formatMoney } from "@/lib/mock-data";
 import { useWorkOrdersForBoater } from "@/lib/client-store";
-import { NewWorkOrderSheet } from "@/components/work-orders/new-work-order-sheet";
+import { NewWorkOrderWizard } from "@/components/work-orders/new-work-order-wizard";
 import type { WorkOrder, WorkOrderStatus } from "@/lib/types";
 
 const COLUMNS: { key: WorkOrderStatus; label: string }[] = [
@@ -69,7 +69,7 @@ export function WorkOrdersTab({
         })}
       </div>
 
-      <NewWorkOrderSheet
+      <NewWorkOrderWizard
         open={newOpen}
         onOpenChange={setNewOpen}
         defaultBoaterId={boaterId}

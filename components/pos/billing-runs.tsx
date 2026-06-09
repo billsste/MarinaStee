@@ -152,6 +152,15 @@ export function BillingRuns() {
         <p className="text-[12px] text-fg-subtle">
           Drafts one open invoice per contract in scope. Each lands in the boater's Financials tab, the global ledger, and the QuickBooks pending batch.
         </p>
+        <p className="mt-2 text-[11px] text-fg-tertiary">
+          Need a wizard with month + rule + preview steps?{" "}
+          <a
+            href="/billing/bulk-run"
+            className="font-medium text-primary hover:underline"
+          >
+            Open the bulk billing wizard →
+          </a>
+        </p>
       </div>
 
       <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
@@ -215,7 +224,7 @@ export function BillingRuns() {
             <table className="w-full text-[13px]">
               <thead className="bg-surface-2 text-[10px] uppercase tracking-wide text-fg-tertiary">
                 <tr>
-                  <Th>Holder</Th>
+                  <Th>Member</Th>
                   <Th>Slip</Th>
                   <Th>Cadence</Th>
                   <Th>Contract</Th>

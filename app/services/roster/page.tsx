@@ -1,31 +1,14 @@
-import { RentalsAsk } from "@/components/rentals/rentals-ask";
 import { RosterView } from "@/components/rentals/roster-view";
 
-export const metadata = { title: "Slips — Marina Stee Docks" };
+export const metadata = { title: "Slips — Marina Stee" };
 
-/*
- * /slips/roster — the unified slip page.
- *
- * Previously split into Status (operational) + Layout (inventory) tabs.
- * Merged: the Roster table already shows everything operationally
- * important; the slip-edit pencil exposes inventory fields. Adding new
- * slips happens via the toolbar "+ Add slip" action. The dock filter
- * chips effectively give the per-dock grouping the Layout view used to
- * provide.
- */
-export default function SlipsPage() {
-  return (
-    <div className="space-y-5">
-      <RentalsAsk
-        placeholder="Ask the roster — e.g. 'who expires in the next 60 days?' or 'draft 2027 renewals for D Dock'"
-        suggestions={[
-          "Expiring in the next 90 days",
-          "Show me everyone on A Dock",
-          "Vacant slips > 30 ft",
-          "Lapsed contracts — who needs to renew?",
-        ]}
-      />
-      <RosterView />
-    </div>
-  );
+// Agent prompt lives in app/services/layout.tsx.
+//
+// The slip roster is the SOLE content on this surface. The waitlist
+// used to share this page above the roster, but operators with
+// 800-slip marinas + 500-person waitlists need each surface to scroll
+// independently — the waitlist now lives at /services/waitlist with
+// its own 4-tab structure.
+export default function SlipsRosterPage() {
+  return <RosterView />;
 }

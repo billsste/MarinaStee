@@ -501,7 +501,7 @@ function EventDetailDialog({
                 <ul className="space-y-1">
                   {rsvps.map((b) => (
                     <li key={b!.id} className="flex items-center justify-between text-[12px]">
-                      <Link href={`/holders/${b!.id}`} className="text-fg hover:text-primary">
+                      <Link href={`/members/${b!.id}`} className="text-fg hover:text-primary">
                         {b!.display_name}
                       </Link>
                       <button
@@ -566,7 +566,7 @@ function DaySection({
                 <div className="flex items-center gap-1.5">
                   {boater ? (
                     <Link
-                      href={`/holders/${boater.id}`}
+                      href={`/members/${boater.id}`}
                       className="truncate text-[13px] font-medium text-fg hover:text-primary"
                     >
                       {boater.display_name}

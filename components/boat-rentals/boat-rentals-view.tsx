@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { NewBoatButton } from "@/components/rentals/new-boat-button";
 import { formatMoney, rentalDurationLabel } from "@/lib/mock-data";
 import { useBoatRentals, usePicklistLabelMap, useRentalBoats } from "@/lib/client-store";
 import type { BoatRental, BoatRentalStatus, RentalBoat } from "@/lib/types";
@@ -143,13 +144,19 @@ export function BoatRentalsView() {
 
       {/* Fleet grid */}
       <section>
-        <header className="mb-2 flex items-end justify-between">
+        <header className="mb-2 flex items-end justify-between gap-3">
           <div>
             <h2 className="text-[15px] font-medium text-fg">Fleet</h2>
             <p className="text-[12px] text-fg-subtle">
               {fleet.filter((f) => f.status === "available").length} available · {onTheWater.length} on the water · {fleet.filter((f) => f.status === "maintenance").length} in maintenance
             </p>
           </div>
+          {/* + New boat — mirrors the affordance on Services → Rental
+              Club Fleet. Defaults available_for_club=false here because
+              the /boat-rentals page is the natural home for walk-up
+              rentals; operator flips the boat into the club rotation
+              from the catalog when needed. */}
+          <NewBoatButton defaultAvailableForClub={false} />
         </header>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {fleet

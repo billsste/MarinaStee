@@ -22,6 +22,8 @@ import {
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { LocalTime } from "@/components/ui/local-time";
+import { AttachedFeesList } from "@/components/financials/attached-fees-list";
 import { formatMoney } from "@/lib/mock-data";
 import {
   addCommunication,
@@ -92,7 +94,7 @@ export function ContractDetail({
       {/* Top bar */}
       <div className="mb-4 flex items-center justify-between">
         <Link
-          href="/slips/contracts"
+          href="/services/contracts"
           className="inline-flex items-center gap-1 text-[12px] text-fg-subtle hover:text-fg"
         >
           <ArrowLeft className="size-3.5" />
@@ -113,7 +115,7 @@ export function ContractDetail({
         </div>
         <p className="mt-1 text-[13px] text-fg-subtle">
           {boater ? (
-            <Link href={`/holders/${boater.id}`} className="hover:text-primary">
+            <Link href={`/members/${boater.id}`} className="hover:text-primary">
               {boater.display_name}
             </Link>
           ) : (
@@ -136,6 +138,27 @@ export function ContractDetail({
           <NextStepCard contract={contract} boater={boater} slip={slip} />
 
           <DocumentSection contract={contract} template={template} />
+
+          {/* Attached service fees — one-time / monthly / annual roll-up */}
+          {(contract.attached_fee_ids?.length ?? 0) > 0 && (
+            <section className="rounded-[12px] border border-hairline bg-surface-1">
+              <div className="border-b border-hairline px-4 py-2.5">
+                <h2 className="inline-flex items-center gap-2 text-[13px] font-medium text-fg">
+                  <Receipt className="size-3.5 text-fg-subtle" />
+                  Attached fees
+                </h2>
+              </div>
+              <div className="p-4">
+                <AttachedFeesList
+                  feeIds={contract.attached_fee_ids ?? []}
+                  termMonths={contractTermMonths(
+                    contract.effective_start,
+                    contract.effective_end,
+                  )}
+                />
+              </div>
+            </section>
+          )}
 
           {/* Linked invoices */}
           {linkedInvoices.length > 0 && (
@@ -195,14 +218,11 @@ export function ContractDetail({
                           {c.direction}
                         </Badge>
                         <span className="text-fg">{c.subject}</span>
-                        <span className="ml-auto text-[10px] tabular text-fg-tertiary">
-                          {new Date(c.sent_at).toLocaleString(undefined, {
-                            month: "short",
-                            day: "numeric",
-                            hour: "numeric",
-                            minute: "2-digit",
-                          })}
-                        </span>
+                        <LocalTime
+                          iso={c.sent_at}
+                          fmt="short_datetime"
+                          className="ml-auto text-[10px] tabular text-fg-tertiary"
+                        />
                       </div>
                       {c.body_preview && (
                         <p className="mt-0.5 text-[11px] text-fg-tertiary">
@@ -240,7 +260,7 @@ export function ContractDetail({
                   icon={<User className="size-3.5" />}
                   label="Holder"
                   value={boater.display_name}
-                  href={`/holders/${boater.id}`}
+                  href={`/members/${boater.id}`}
                 />
               )}
               {slip && (
@@ -361,7 +381,7 @@ function DocumentSection({
                 <div className="mt-0.5 text-[12px] text-fg-subtle">
                   {contract.signer_name ?? "—"} ·{" "}
                   {contract.signed_at
-                    ? new Date(contract.signed_at).toLocaleString()
+                    ? <LocalTime iso={contract.signed_at} fmt="datetime" />
                     : "—"}
                   {contract.signer_ip && (
                     <span className="text-fg-tertiary"> · {contract.signer_ip}</span>
@@ -428,7 +448,12 @@ function DocumentSection({
                   <DocRow
                     icon={<Paperclip className="size-3.5 text-fg-subtle" />}
                     title={a.name}
-                    subtitle={`${a.type.replace("_", " ")} · uploaded ${new Date(a.uploaded_at).toLocaleDateString()}`}
+                    subtitle={
+                      <>
+                        {a.type.replace("_", " ")} · uploaded{" "}
+                        <LocalTime iso={a.uploaded_at} fmt="date" />
+                      </>
+                    }
                     href={a.url}
                     downloadName={a.name}
                     mimeBadge={mimeShorthand(a.mime_type)}
@@ -457,7 +482,9 @@ function DocRow({
 }: {
   icon: React.ReactNode;
   title: string;
-  subtitle?: string;
+  // ReactNode so callers can embed <LocalTime> in the subtitle without
+  // collapsing it to a string.
+  subtitle?: React.ReactNode;
   href?: string;
   downloadName?: string;
   mimeBadge?: string;
@@ -504,6 +531,16 @@ function DocRow({
       {inner}
     </a>
   );
+}
+
+// Contract term -> months for the fee roll-up. Floors at 1 so a same-day
+// contract still prorates fairly.
+function contractTermMonths(start: string, end: string): number {
+  const a = new Date(start).getTime();
+  const b = new Date(end).getTime();
+  if (!Number.isFinite(a) || !Number.isFinite(b) || b <= a) return 1;
+  const days = (b - a) / (1000 * 60 * 60 * 24);
+  return Math.max(1, Math.round(days / 30));
 }
 
 function mimeShorthand(mime: string): string {
@@ -842,9 +879,11 @@ function AiDraftedBody({
               AI-drafted contract body
             </div>
             {draftedAt && (
-              <span className="text-[11px] text-fg-tertiary">
-                {new Date(draftedAt).toLocaleString()}
-              </span>
+              <LocalTime
+                iso={draftedAt}
+                fmt="datetime"
+                className="text-[11px] text-fg-tertiary"
+              />
             )}
           </div>
           <p className="mt-0.5 text-[11px] text-fg-subtle">

@@ -61,7 +61,7 @@ export function PosOrders() {
                   <Td className="text-fg-subtle">{loc?.name ?? "—"}</Td>
                   <Td>
                     {boater ? (
-                      <Link href={`/holders/${boater.id}`} className="text-primary hover:underline">
+                      <Link href={`/members/${boater.id}`} className="text-primary hover:underline">
                         {boater.display_name}
                       </Link>
                     ) : (

@@ -1,0 +1,1094 @@
+"use client";
+
+import * as React from "react";
+import Link from "next/link";
+import {
+  Archive,
+  Check,
+  ChevronRight,
+  Clock,
+  Filter,
+  Mail,
+  Megaphone,
+  Search,
+  Sparkles,
+  Tag,
+  Timer,
+  Users,
+  X,
+} from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { BOATERS, SLIPS, formatInches } from "@/lib/mock-data";
+import {
+  acceptWaitlistOffer,
+  archiveWaitlistEntries,
+  bulkStampLastContact,
+  declineWaitlistOffer,
+  expireWaitlistOffers,
+  useWaitlist,
+} from "@/lib/client-store";
+import type { WaitlistEntry, WaitlistOfferStatus } from "@/lib/types";
+import { useTabUrlState } from "@/lib/use-tab-url-state";
+import { ListFilterSelect } from "@/components/ui/list-filter-select";
+import { WaitlistFireOfferModal } from "./waitlist-fire-offer-modal";
+import { WaitlistApplicantSheet } from "./waitlist-applicant-sheet";
+import { AssignHolderWizard } from "@/app/services/[id]/assign/assign-slip-client";
+import { cn } from "@/lib/utils";
+
+/*
+ * Waitlist operator surface — 4-tab structure for the 500-person
+ * reality marinas actually face.
+ *
+ *   Queue   — active applicants ranked oldest-first. Filter +
+ *             bulk-select + per-row Fire offer. The primary daily
+ *             driver.
+ *   Offers  — pending + recent decisions across all slips. Watch
+ *             the auto-offer cascade as it fires.
+ *   Stale   — entries that have gone cold (no contact > 9 months,
+ *             never contacted at all, OR ≥3 declines). Bulk
+ *             "check-in" stamps last_contact_at so re-engaged
+ *             entries leave Stale automatically.
+ *   Archive — historical record (got_slip / withdrew / aged_out /
+ *             non_responder / too_many_declines). Searchable for
+ *             re-engagement.
+ *
+ * Filter bar lives ABOVE the tabs and applies to whichever tab is
+ * active. Tabs are URL-synced via useTabUrlState so an agent
+ * suggestion like "open the stale tab" can deep-link directly.
+ */
+
+// Mirrors ROSTER_COLS in components/rentals/roster-view.tsx so the
+// waitlist table reads at the same density as the slip roster.
+// Columns: [checkbox] / RANK or SLIP / WANTS (preferred dock) /
+// APPLICANT / VESSEL / CADENCE / SIGNAL / STATUS / ACTION.
+const WAITLIST_COLS =
+  "28px 56px 88px minmax(0, 1.8fr) minmax(0, 1.7fr) 88px 140px 90px 130px";
+
+const OFFER_TONE: Record<
+  WaitlistOfferStatus,
+  { tone: "ok" | "warn" | "info" | "danger" | "neutral"; label: string }
+> = {
+  none: { tone: "neutral", label: "no offer" },
+  pending: { tone: "warn", label: "pending" },
+  accepted: { tone: "ok", label: "accepted" },
+  declined: { tone: "danger", label: "declined" },
+  expired: { tone: "neutral", label: "expired" },
+};
+
+type WaitlistTab = "queue" | "offers" | "stale" | "archive";
+
+function isWaitlistTab(v: string | null | undefined): v is WaitlistTab {
+  return v === "queue" || v === "offers" || v === "stale" || v === "archive";
+}
+
+// "Stale" criteria — these are the defaults; settings/notification-rules
+// will eventually let the operator tune the threshold per tenant.
+const STALE_NO_CONTACT_DAYS = 270; // ~9 months
+const STALE_DECLINE_COUNT = 3;
+
+function isStale(entry: WaitlistEntry, nowMs: number): boolean {
+  // Only pending entries can be "stale" — archived/converted are
+  // out of the queue entirely.
+  if (entry.status !== "pending") return false;
+  if ((entry.decline_count ?? 0) >= STALE_DECLINE_COUNT) return true;
+  const last = entry.last_contact_at ?? entry.created_at;
+  const ageDays = (nowMs - new Date(last).getTime()) / 86_400_000;
+  return ageDays >= STALE_NO_CONTACT_DAYS;
+}
+
+// Length-band buckets for the filter bar. Matches the realistic
+// segmentation operators do when fitting an opened slip to the queue.
+type LengthBand = "all" | "under_25" | "26_35" | "36_45" | "over_46";
+function inLengthBand(loaInches: number | undefined, band: LengthBand): boolean {
+  if (band === "all") return true;
+  if (loaInches == null) return false;
+  const ft = loaInches / 12;
+  if (band === "under_25") return ft <= 25;
+  if (band === "26_35") return ft > 25 && ft <= 35;
+  if (band === "36_45") return ft > 35 && ft <= 45;
+  return ft > 45;
+}
+
+type CadenceFilter = "all" | WaitlistEntry["reservation_type"];
+
+export function WaitlistSection() {
+  const entries = useWaitlist();
+  const [tab, setTab] = useTabUrlState<WaitlistTab>(
+    "wl",
+    isWaitlistTab,
+    "queue",
+  );
+  const [fireOpen, setFireOpen] = React.useState(false);
+  const [prefilledSlipId, setPrefilledSlipId] = React.useState<string | undefined>();
+
+  // ── Applicant detail sheet (row click) + convert flow ──
+  // selectedApplicantId opens the WaitlistApplicantSheet. When the
+  // operator picks a slip from inside that sheet, it closes itself
+  // and triggers wizardArgs which mounts AssignHolderWizard pre-filled
+  // with the applicant's contact info.
+  const [selectedApplicantId, setSelectedApplicantId] = React.useState<
+    string | null
+  >(null);
+  const [wizardArgs, setWizardArgs] = React.useState<{
+    slipId: string;
+    prefill: {
+      first_name: string;
+      last_name: string;
+      email?: string;
+      phone?: string;
+    };
+    /**
+     * Source waitlist entry id. Used to archive the entry as `got_slip`
+     * only AFTER the wizard successfully drafts a contract — if the
+     * operator cancels the wizard mid-flow, the entry stays in the Queue
+     * tab (prior version archived on slip-pick, which orphaned the
+     * applicant if they backed out).
+     */
+    waitlistEntryId: string;
+  } | null>(null);
+  const selectedEntry = React.useMemo(
+    () => (selectedApplicantId ? entries.find((e) => e.id === selectedApplicantId) ?? null : null),
+    [entries, selectedApplicantId],
+  );
+
+  // ── Filter state — applies to whichever tab is active ──
+  const [query, setQuery] = React.useState("");
+  const [lengthBand, setLengthBand] = React.useState<LengthBand>("all");
+  const [cadence, setCadence] = React.useState<CadenceFilter>("all");
+
+  // ── Bulk selection — keyed by entry.id. Cleared on tab switch
+  //    so the operator never accidentally bulk-acts on a row they
+  //    forgot was selected on a different tab. ──
+  const [selectedIds, setSelectedIds] = React.useState<Set<string>>(
+    () => new Set(),
+  );
+  React.useEffect(() => {
+    setSelectedIds(new Set());
+  }, [tab]);
+
+  // ── Tab-specific row partitioning ──
+  // Cheaper to derive once and reuse for counters than to re-filter
+  // per render branch. nowMs lives inside the memo body — pulling it
+  // out as a render-level const re-invalidated the memo every render
+  // (a `Date.now()` deps invariant doesn't hold), which silently
+  // turned the memo into per-render work. `isStale` only cares about
+  // day-level age, so refreshing only when `entries` changes is fine.
+  // pendingOfferCount counted alongside the partition so the badge
+  // doesn't allocate a throwaway filtered array on every render.
+  const { partitions, pendingOfferCount } = React.useMemo(() => {
+    const nowMs = Date.now();
+    const queue: WaitlistEntry[] = [];
+    const offers: WaitlistEntry[] = [];
+    const stale: WaitlistEntry[] = [];
+    const archive: WaitlistEntry[] = [];
+    let pendingOfferCount = 0;
+    for (const e of entries) {
+      if (e.archived_at) {
+        archive.push(e);
+        continue;
+      }
+      if (e.status === "converted") {
+        archive.push(e);
+        continue;
+      }
+      if (e.offer_status && e.offer_status !== "none") {
+        offers.push(e);
+        if (e.offer_status === "pending") pendingOfferCount += 1;
+      }
+      if (e.status === "pending") {
+        if (isStale(e, nowMs)) {
+          stale.push(e);
+        } else {
+          queue.push(e);
+        }
+      }
+    }
+    queue.sort((a, b) => a.created_at.localeCompare(b.created_at));
+    offers.sort((a, b) => {
+      const ap = a.offer_status === "pending" ? 0 : 1;
+      const bp = b.offer_status === "pending" ? 0 : 1;
+      if (ap !== bp) return ap - bp;
+      const at = a.offer_responded_at ?? a.offered_at ?? "";
+      const bt = b.offer_responded_at ?? b.offered_at ?? "";
+      return bt.localeCompare(at);
+    });
+    stale.sort((a, b) => {
+      // Worst-first: most declines, then oldest last-contact.
+      const dd = (b.decline_count ?? 0) - (a.decline_count ?? 0);
+      if (dd !== 0) return dd;
+      const al = a.last_contact_at ?? a.created_at;
+      const bl = b.last_contact_at ?? b.created_at;
+      return al.localeCompare(bl);
+    });
+    archive.sort((a, b) => {
+      const ad = a.archived_at ?? a.created_at;
+      const bd = b.archived_at ?? b.created_at;
+      return bd.localeCompare(ad);
+    });
+    return {
+      partitions: { queue, offers, stale, archive },
+      pendingOfferCount,
+    };
+  }, [entries]);
+
+  // ── Filter pipeline — runs after partition; same filter state
+  //    drives every tab so the operator can carry a "covered slip
+  //    over 36' annual" lens across Queue → Stale → Archive. ──
+  //
+  // boaterById is precomputed so each keystroke in the search box
+  // doesn't do entries × BOATERS lookups (was O(n × m) per keystroke;
+  // now O(m) build + O(1) per row).
+  const boaterById = React.useMemo(
+    () => new Map(BOATERS.map((b) => [b.id, b])),
+    [],
+  );
+  const filterRow = React.useCallback(
+    (e: WaitlistEntry) => {
+      if (!inLengthBand(e.loa_inches, lengthBand)) return false;
+      if (cadence !== "all" && e.reservation_type !== cadence) return false;
+      if (query.trim()) {
+        const q = query.toLowerCase();
+        const boater = e.boater_id ? boaterById.get(e.boater_id) : undefined;
+        const haystack = [
+          boater?.display_name,
+          e.guest_name,
+          e.guest_email,
+          e.guest_phone,
+          e.notes,
+          e.preferred_dock,
+          ...(e.tags ?? []),
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase();
+        if (!haystack.includes(q)) return false;
+      }
+      return true;
+    },
+    [query, lengthBand, cadence, boaterById],
+  );
+
+  const visible = React.useMemo(() => {
+    const list = partitions[tab];
+    return list.filter(filterRow);
+  }, [partitions, tab, filterRow]);
+
+  const filtersDirty =
+    query.trim().length > 0 || lengthBand !== "all" || cadence !== "all";
+
+  // pendingOfferCount is destructured from the partition memo above —
+  // counted in the same pass so we don't allocate a throwaway
+  // filtered array on every render.
+
+  // ── Bulk actions
+  function toggleAll() {
+    if (selectedIds.size === visible.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(visible.map((v) => v.id)));
+    }
+  }
+  function toggleOne(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  return (
+    <section className="space-y-4">
+      <header className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="text-[16px] font-semibold text-fg">Waitlist</h2>
+          <p className="text-[12px] text-fg-subtle">
+            When a slip frees up, fire an auto-offer cascade to the top-N
+            matching applicants. 48-hour expiry, auto-advance on decline.
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => {
+              const r = expireWaitlistOffers();
+              if (r.expired > 0 || r.advanced > 0) {
+                console.info(
+                  `[waitlist] swept ${r.expired} expired · advanced ${r.advanced}`,
+                );
+              }
+            }}
+            title="Run the cascade walker — flip stale offers to expired and auto-advance to next-in-line"
+          >
+            <Timer className="size-3.5" />
+            Sweep expired
+          </Button>
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={() => {
+              setPrefilledSlipId(undefined);
+              setFireOpen(true);
+            }}
+          >
+            <Megaphone className="size-3.5" />
+            Fire offer
+          </Button>
+        </div>
+      </header>
+
+      {/* ── Tabs ──────────────────────────────────────── */}
+      <div className="flex flex-wrap items-center gap-1 rounded-[10px] border border-hairline bg-surface-1 p-1">
+        <TabButton
+          active={tab === "queue"}
+          onClick={() => setTab("queue")}
+          label="Queue"
+          count={partitions.queue.length}
+          icon={<Users className="size-3.5" />}
+        />
+        <TabButton
+          active={tab === "offers"}
+          onClick={() => setTab("offers")}
+          label="Offers"
+          count={partitions.offers.length}
+          badge={pendingOfferCount > 0 ? `${pendingOfferCount} pending` : undefined}
+          icon={<Sparkles className="size-3.5" />}
+        />
+        <TabButton
+          active={tab === "stale"}
+          onClick={() => setTab("stale")}
+          label="Stale"
+          count={partitions.stale.length}
+          icon={<Clock className="size-3.5" />}
+          severity={partitions.stale.length > 0 ? "warn" : undefined}
+        />
+        <TabButton
+          active={tab === "archive"}
+          onClick={() => setTab("archive")}
+          label="Archive"
+          count={partitions.archive.length}
+          icon={<Archive className="size-3.5" />}
+        />
+      </div>
+
+      {/* ── Filter bar — matches the slip roster + rental boats
+                pattern: search input on the left, ListFilterSelect
+                dropdown pills for facets, running count on the
+                right. Operators learn one filter vocabulary across
+                every list page. */}
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative min-w-[220px] flex-1">
+          <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-fg-tertiary" />
+          <input
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search by name, boat, phone, dock, or tag…"
+            className="w-full rounded-[8px] border border-hairline bg-surface-2 py-1.5 pl-8 pr-3 text-[12.5px] text-fg placeholder:text-fg-tertiary focus:outline-none focus:ring-1 focus:ring-primary"
+          />
+        </div>
+        <ListFilterSelect
+          label="Length"
+          value={lengthBand}
+          onChange={(v) => setLengthBand(v as LengthBand)}
+          options={[
+            { value: "all", label: "All lengths" },
+            { value: "under_25", label: "≤ 25'" },
+            { value: "26_35", label: "26-35'" },
+            { value: "36_45", label: "36-45'" },
+            { value: "over_46", label: "46'+" },
+          ]}
+        />
+        <ListFilterSelect
+          label="Cadence"
+          value={cadence}
+          onChange={(v) => setCadence(v as CadenceFilter)}
+          options={[
+            { value: "all", label: "All cadences" },
+            { value: "annual", label: "Annual" },
+            { value: "seasonal", label: "Seasonal" },
+            { value: "monthly", label: "Monthly" },
+            { value: "transient", label: "Transient" },
+          ]}
+        />
+        {filtersDirty && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              setQuery("");
+              setLengthBand("all");
+              setCadence("all");
+            }}
+          >
+            Clear
+          </Button>
+        )}
+        <div className="ml-auto inline-flex items-center gap-1 text-[11px] text-fg-tertiary">
+          <Filter className="size-3" />
+          Showing {visible.length} of {partitions[tab].length}
+        </div>
+      </div>
+
+      {/* ── Bulk action bar (only when selection exists) ──── */}
+      {selectedIds.size > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-[10px] border border-primary/40 bg-primary/10 px-3 py-2">
+          <div className="text-[12.5px] font-medium text-fg">
+            {selectedIds.size} selected
+          </div>
+          <div className="flex items-center gap-1.5">
+            {tab !== "archive" && (
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => {
+                  bulkStampLastContact(Array.from(selectedIds));
+                  setSelectedIds(new Set());
+                }}
+                title="Stamp last_contact_at on each selected entry. Use after sending a check-in email or making outbound calls."
+              >
+                <Mail className="size-3.5" />
+                Mark contacted
+              </Button>
+            )}
+            {tab !== "archive" && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  const reason = tab === "stale" ? "non_responder" : "withdrew";
+                  archiveWaitlistEntries(Array.from(selectedIds), reason);
+                  setSelectedIds(new Set());
+                }}
+                title="Move these entries to the Archive tab. They stay searchable but leave the active queue."
+              >
+                <Archive className="size-3.5" />
+                Archive
+              </Button>
+            )}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setSelectedIds(new Set())}
+            >
+              <X className="size-3.5" />
+              Cancel
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Body ── Mirrors the slip roster layout: rounded table
+                with a sticky column header, then either a flat row
+                list or dock-grouped collapsible sections. Operators
+                only learn one row pattern across slips + waitlist. */}
+      {visible.length === 0 ? (
+        <div className="rounded-[12px] border border-dashed border-hairline bg-surface-1 px-3 py-10 text-center text-[13px] text-fg-subtle">
+          {tab === "queue" && (filtersDirty
+            ? "No active waitlisters match the filter."
+            : "Nothing in the active queue. The marina has capacity, or every applicant has been moved to Stale / Archive.")}
+          {tab === "offers" && "No offers fired yet."}
+          {tab === "stale" && "No stale entries. Every applicant has been contacted in the last 9 months."}
+          {tab === "archive" && (filtersDirty
+            ? "No archived entries match the filter."
+            : "No archived entries yet.")}
+        </div>
+      ) : (
+        <div className="overflow-hidden rounded-[12px] border border-hairline bg-surface-1">
+          {/* Column header. Was `sticky top-16` to match the slip
+              roster, but waitlist rows are two-line (name + email)
+              while slip rows are single-line — the sticky header
+              ended up clipping the first row's top half when the
+              user scrolled past the dock group toggle. Keeping it
+              static avoids the clipping; the dock toggle button
+              still scrolls along to give the operator orientation. */}
+          <div
+            className="grid items-center gap-x-3 border-b border-hairline bg-surface-2 px-3 py-2 text-[10px] font-medium uppercase tracking-wide text-fg-tertiary"
+            style={{ gridTemplateColumns: WAITLIST_COLS }}
+          >
+            <button
+              type="button"
+              onClick={toggleAll}
+              className="inline-flex size-4 items-center justify-center rounded border border-hairline bg-surface-1 hover:border-primary"
+              aria-label={
+                selectedIds.size === visible.length
+                  ? "Deselect all"
+                  : "Select all visible"
+              }
+            >
+              {selectedIds.size === visible.length && visible.length > 0 && (
+                <Check className="size-3 text-primary" />
+              )}
+            </button>
+            <span>{tab === "queue" ? "Rank" : "Slip"}</span>
+            <span>Wants</span>
+            <span>Applicant</span>
+            <span>Vessel</span>
+            <span>Cadence</span>
+            <span>
+              {tab === "queue"
+                ? "Match"
+                : tab === "offers"
+                  ? "Window"
+                  : tab === "stale"
+                    ? "Signal"
+                    : "Reason"}
+            </span>
+            <span>Status</span>
+            <span className="text-right">Action</span>
+          </div>
+
+          {tab === "queue" ? (
+            <DockGroupedWaitlist
+              rows={visible}
+              selectedIds={selectedIds}
+              onToggle={toggleOne}
+              onFire={() => {
+                setPrefilledSlipId(undefined);
+                setFireOpen(true);
+              }}
+              onOpen={(entryId) => setSelectedApplicantId(entryId)}
+              filtersDirty={filtersDirty}
+            />
+          ) : (
+            <ul className="divide-y divide-hairline">
+              {visible.map((entry) => (
+                <WaitlistRow
+                  key={entry.id}
+                  entry={entry}
+                  rank={undefined}
+                  selected={selectedIds.has(entry.id)}
+                  onToggle={() => toggleOne(entry.id)}
+                  variant={tab}
+                  onOpen={() => setSelectedApplicantId(entry.id)}
+                  onFire={() => {
+                    setPrefilledSlipId(undefined);
+                    setFireOpen(true);
+                  }}
+                  onResend={() => {
+                    setPrefilledSlipId(entry.offered_slip_id);
+                    setFireOpen(true);
+                  }}
+                />
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+
+      <WaitlistFireOfferModal
+        open={fireOpen}
+        onOpenChange={setFireOpen}
+        prefilledSlipId={prefilledSlipId}
+      />
+
+      {/* Applicant detail sheet — opens on row click. Owns the comms +
+          confirm-interest + convert-to-slip flow. */}
+      <WaitlistApplicantSheet
+        entry={selectedEntry}
+        open={selectedApplicantId !== null}
+        onOpenChange={(next) => {
+          if (!next) setSelectedApplicantId(null);
+        }}
+        onConvert={({ slipId, prefill, waitlistEntryId }) => {
+          // Stage the wizard. We do NOT archive the waitlist entry
+          // yet — only after the wizard successfully drafts a
+          // contract (via onContractDrafted below) do we flip the
+          // entry to got_slip. If the operator cancels, the entry
+          // stays in the Queue.
+          setSelectedApplicantId(null);
+          setWizardArgs({ slipId, prefill, waitlistEntryId });
+        }}
+      />
+
+      {/* AssignHolderWizard — opens after the operator picks a slip
+          from the applicant sheet. Pre-fills the "Add a new member"
+          sub-sheet with the applicant's contact info. Archive of the
+          source waitlist entry waits until the wizard drafts a
+          contract — see onContractDrafted. */}
+      {wizardArgs && (
+        <AssignHolderWizard
+          slipId={wizardArgs.slipId}
+          open
+          onOpenChange={(open) => {
+            if (!open) setWizardArgs(null);
+          }}
+          prefillNewMember={wizardArgs.prefill}
+          onContractDrafted={() => {
+            // Wizard fired through to a draft contract — safe to
+            // archive the source waitlist entry now.
+            archiveWaitlistEntries([wizardArgs.waitlistEntryId], "got_slip");
+          }}
+        />
+      )}
+    </section>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+
+function TabButton({
+  active,
+  onClick,
+  label,
+  count,
+  badge,
+  icon,
+  severity,
+}: {
+  active: boolean;
+  onClick: () => void;
+  label: string;
+  count: number;
+  badge?: string;
+  icon: React.ReactNode;
+  severity?: "warn";
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "inline-flex items-center gap-1.5 rounded-[8px] px-3 py-1.5 text-[12.5px] font-medium transition-colors",
+        active
+          ? "bg-surface-3 text-fg shadow-sm"
+          : "text-fg-subtle hover:bg-surface-2 hover:text-fg",
+      )}
+    >
+      <span className={cn(severity === "warn" && count > 0 && !active && "text-status-warn")}>
+        {icon}
+      </span>
+      <span>{label}</span>
+      <Badge tone="neutral" size="sm">
+        {count}
+      </Badge>
+      {badge && (
+        <Badge tone="warn" size="sm">
+          {badge}
+        </Badge>
+      )}
+    </button>
+  );
+}
+
+/**
+ * Group the Queue tab rows by preferred dock — same UX pattern the
+ * slip roster uses. When A29 frees up, the operator opens A Dock's
+ * group and the matching waitlisters surface at the top of one
+ * focused list, not buried in a 500-row flat scroll.
+ *
+ * Stale / Offers / Archive tabs stay flat — they're not dock-bound
+ * mental models.
+ */
+function DockGroupedWaitlist({
+  rows,
+  selectedIds,
+  onToggle,
+  onFire,
+  onOpen,
+  filtersDirty,
+}: {
+  rows: WaitlistEntry[];
+  selectedIds: Set<string>;
+  onToggle: (id: string) => void;
+  onFire: () => void;
+  onOpen: (entryId: string) => void;
+  filtersDirty: boolean;
+}) {
+  const groups = React.useMemo(() => {
+    const map = new Map<string, WaitlistEntry[]>();
+    for (const r of rows) {
+      const key = r.preferred_dock || "No preference";
+      const arr = map.get(key);
+      if (arr) arr.push(r);
+      else map.set(key, [r]);
+    }
+    // Predictable order: alphabetical, with "No preference" last.
+    return Array.from(map.entries())
+      .sort(([a], [b]) => {
+        if (a === "No preference") return 1;
+        if (b === "No preference") return -1;
+        return a.localeCompare(b);
+      })
+      .map(([label, items]) => ({ id: label, label, items }));
+  }, [rows]);
+
+  const [openIds, setOpenIds] = React.useState<Set<string>>(() => {
+    const s = new Set<string>();
+    if (groups[0]) s.add(groups[0].id);
+    return s;
+  });
+
+  React.useEffect(() => {
+    if (filtersDirty) setOpenIds(new Set(groups.map((g) => g.id)));
+  }, [filtersDirty, groups]);
+
+  function toggleGroup(id: string) {
+    setOpenIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  // Rank counter spans groups so #1 is the oldest applicant overall,
+  // not "the oldest applicant in B Dock" (which would mislead).
+  let rankCounter = 0;
+
+  return (
+    <div>
+      {groups.map((g, gi) => {
+        const isOpen = openIds.has(g.id);
+        return (
+          <div key={g.id} className={cn(gi < groups.length - 1 && "border-b border-hairline")}>
+            <button
+              type="button"
+              onClick={() => toggleGroup(g.id)}
+              className={cn(
+                "flex w-full items-center justify-between gap-3 px-3 py-2 text-left transition-colors hover:bg-surface-2",
+                isOpen && "bg-surface-2",
+              )}
+              aria-expanded={isOpen}
+            >
+              <div className="flex items-center gap-2">
+                <ChevronRight
+                  className={cn(
+                    "size-3.5 shrink-0 text-fg-tertiary transition-transform",
+                    isOpen && "rotate-90",
+                  )}
+                  strokeWidth={2}
+                />
+                <span className="text-[13px] font-medium text-fg">{g.label}</span>
+                <span className="text-[11px] text-fg-tertiary tabular">
+                  {g.items.length} {g.items.length === 1 ? "applicant" : "applicants"}
+                </span>
+              </div>
+            </button>
+            {isOpen && (
+              <ul className="divide-y divide-hairline border-t border-hairline">
+                {g.items.map((entry) => {
+                  rankCounter += 1;
+                  return (
+                    <WaitlistRow
+                      key={entry.id}
+                      entry={entry}
+                      rank={rankCounter}
+                      selected={selectedIds.has(entry.id)}
+                      onToggle={() => onToggle(entry.id)}
+                      variant="queue"
+                      onOpen={() => onOpen(entry.id)}
+                      onFire={onFire}
+                      onResend={() => undefined}
+                    />
+                  );
+                })}
+              </ul>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/**
+ * Unified waitlist row — one component renders all four tabs in the
+ * same grid layout (same WAITLIST_COLS) so the visual language
+ * matches the slip roster. Per-cell content branches on `variant`:
+ *   - queue:  rank, match badges, Fire offer
+ *   - offers: slip, countdown + applicant URL, Sim accept / Resend
+ *   - stale:  slip (if any), stale signal (months no contact / N
+ *             declines), no per-row action (operator works in
+ *             bulk via the bulk action bar)
+ *   - archive: slip (if any), archive reason + date, no action
+ *
+ * Action column collapses to "—" when there's no per-row action so
+ * column alignment stays consistent across tabs.
+ */
+function WaitlistRow({
+  entry,
+  rank,
+  selected,
+  onToggle,
+  variant,
+  onOpen,
+  onFire,
+  onResend,
+}: {
+  entry: WaitlistEntry;
+  rank?: number;
+  selected: boolean;
+  onToggle: () => void;
+  variant: WaitlistTab;
+  /**
+   * Opens the WaitlistApplicantSheet — the click target for the whole
+   * row. Interactive children (checkbox, action buttons, applicant
+   * name link) stopPropagation so the sheet doesn't double-fire when
+   * the operator wants the sub-action. Matches CLAUDE.md §6.1 pattern.
+   */
+  onOpen: () => void;
+  onFire: () => void;
+  onResend: () => void;
+}) {
+  const boater = entry.boater_id
+    ? BOATERS.find((b) => b.id === entry.boater_id)
+    : undefined;
+  const displayName =
+    boater?.display_name ?? entry.guest_name ?? "Unknown applicant";
+  const email = boater?.primary_contact?.email ?? entry.guest_email;
+
+  // Match-quality chips — same idea as the legacy single-column view.
+  const sizeFits = entry.loa_inches
+    ? SLIPS.some((s) => s.max_loa_inches >= (entry.loa_inches ?? 0))
+    : true;
+  const classMatch = entry.preferred_dock
+    ? SLIPS.some((s) => s.dock === entry.preferred_dock)
+    : false;
+
+  const lastContact = entry.last_contact_at;
+  const ageDays = lastContact
+    ? Math.floor((Date.now() - new Date(lastContact).getTime()) / 86_400_000)
+    : null;
+
+  // Live-tick the offer countdown chip without burning render budget.
+  const [tick, setTick] = React.useState(0);
+  React.useEffect(() => {
+    if (variant !== "offers" || !entry.offer_expires_at) return;
+    const id = setInterval(() => setTick((t) => t + 1), 30_000);
+    return () => clearInterval(id);
+  }, [variant, entry.offer_expires_at]);
+  const remaining = React.useMemo(() => {
+    if (!entry.offer_expires_at) return null;
+    const ms = new Date(entry.offer_expires_at).getTime() - Date.now();
+    if (ms <= 0) return "expired";
+    const hrs = Math.floor(ms / 3_600_000);
+    if (hrs >= 24) return `${Math.floor(hrs / 24)}d ${hrs % 24}h left`;
+    const mins = Math.floor((ms % 3_600_000) / 60_000);
+    return `${hrs}h ${mins}m left`;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [entry.offer_expires_at, tick]);
+
+  const offerTone = OFFER_TONE[entry.offer_status ?? "none"];
+
+  // Status badge — varies per tab.
+  const statusBadge = (() => {
+    if (variant === "queue") {
+      return (
+        <Badge tone="neutral" size="sm">
+          Waiting
+        </Badge>
+      );
+    }
+    if (variant === "offers") {
+      return (
+        <Badge tone={offerTone.tone} size="sm">
+          {offerTone.label}
+        </Badge>
+      );
+    }
+    if (variant === "stale") {
+      return (
+        <Badge tone="warn" size="sm">
+          Stale
+        </Badge>
+      );
+    }
+    // archive
+    return (
+      <Badge tone="neutral" size="sm">
+        Archived
+      </Badge>
+    );
+  })();
+
+  return (
+    <li
+      className={cn(
+        "group grid cursor-pointer items-center gap-x-3 px-3 py-2 text-[13px] transition-colors",
+        selected ? "bg-primary/5" : "hover:bg-surface-2",
+      )}
+      style={{ gridTemplateColumns: WAITLIST_COLS }}
+      onClick={onOpen}
+    >
+      {/* Checkbox — stopPropagation so toggling doesn't open the sheet. */}
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          onToggle();
+        }}
+        className="inline-flex size-4 items-center justify-center rounded border border-hairline bg-surface-1 hover:border-primary"
+        aria-label={selected ? `Deselect ${displayName}` : `Select ${displayName}`}
+      >
+        {selected && <Check className="size-3 text-primary" />}
+      </button>
+
+      {/* Rank (queue) or offered Slip (offers) — mirrors the SLIP column on the roster */}
+      <span className="font-mono text-[12px] font-medium text-fg">
+        {variant === "queue" && rank !== undefined ? `#${rank}` : entry.offered_slip_id ?? "—"}
+      </span>
+
+      {/* Wants (preferred dock) — mirrors DOCK column on the roster */}
+      <span className="truncate text-[12px] text-fg-subtle">
+        {entry.preferred_dock ?? "any"}
+      </span>
+
+      {/* Applicant — mirrors MEMBER column on the roster. Link
+          stopPropagation so opening the member page doesn't also fire
+          the sheet behind it. */}
+      <div className="min-w-0">
+        {boater ? (
+          <Link
+            href={`/members/${boater.id}`}
+            onClick={(e) => e.stopPropagation()}
+            className="block truncate font-medium text-fg hover:text-primary"
+          >
+            {displayName}
+          </Link>
+        ) : (
+          <span className="block truncate font-medium text-fg">{displayName}</span>
+        )}
+        {email && (
+          <span className="block truncate text-[11px] text-fg-tertiary">
+            {email}
+          </span>
+        )}
+      </div>
+
+      {/* Vessel — mirrors VESSEL column on the roster */}
+      <span className="min-w-0 truncate text-fg-subtle">
+        {entry.loa_inches
+          ? `${formatInches(entry.loa_inches)} LOA`
+          : "—"}
+        {entry.beam_inches ? ` · ${formatInches(entry.beam_inches)} beam` : ""}
+      </span>
+
+      {/* Cadence — mirrors CADENCE column on the roster */}
+      <span className="text-[12px] capitalize text-fg-subtle">
+        {entry.reservation_type}
+      </span>
+
+      {/* Signal column — varies per tab. Holds the
+          context-relevant chip cluster (match quality / countdown /
+          stale signal / archive reason). */}
+      <div className="flex min-w-0 flex-wrap items-center gap-1">
+        {variant === "queue" && sizeFits && (
+          <Badge tone="ok" size="sm" title="Vessel size fits available slips">
+            size fits
+          </Badge>
+        )}
+        {variant === "queue" && classMatch && (
+          <Badge tone="info" size="sm" title="Preferred dock has matching slips">
+            dock match
+          </Badge>
+        )}
+        {variant === "offers" && entry.offer_status === "pending" && remaining && (
+          <span className="inline-flex items-center gap-1 text-[11px] text-status-warn tabular">
+            <Clock className="size-3" />
+            {remaining}
+          </span>
+        )}
+        {variant === "offers" && entry.offer_responded_at && (
+          <span className="text-[11px] text-fg-tertiary tabular">
+            responded {new Date(entry.offer_responded_at).toLocaleDateString()}
+          </span>
+        )}
+        {variant === "stale" && (entry.decline_count ?? 0) >= STALE_DECLINE_COUNT && (
+          <Badge tone="danger" size="sm">
+            {entry.decline_count} declines
+          </Badge>
+        )}
+        {variant === "stale" && ageDays !== null && ageDays >= STALE_NO_CONTACT_DAYS && (
+          <Badge tone="warn" size="sm">
+            {Math.round(ageDays / 30)} mo silent
+          </Badge>
+        )}
+        {variant === "stale" && !lastContact && (
+          <Badge tone="warn" size="sm">
+            never contacted
+          </Badge>
+        )}
+        {variant === "archive" && entry.archive_reason && (
+          <Badge tone="neutral" size="sm">
+            {archiveReasonLabel(entry.archive_reason)}
+          </Badge>
+        )}
+        {variant === "archive" && entry.archived_at && (
+          <span className="text-[11px] text-fg-tertiary">
+            {new Date(entry.archived_at).toLocaleDateString()}
+          </span>
+        )}
+      </div>
+
+      {/* Status badge */}
+      <span>{statusBadge}</span>
+
+      {/* Action — fixed-width column on the right edge mirrors how
+          the slip roster reserves space for the row-level action.
+          Each button stopPropagation so the row's onClick (open sheet)
+          doesn't fire after the per-row action. */}
+      <div className="flex justify-end gap-1" onClick={(e) => e.stopPropagation()}>
+        {variant === "queue" && (
+          <Button variant="primary" size="sm" onClick={onFire}>
+            <Sparkles className="size-3.5" />
+            Fire offer
+          </Button>
+        )}
+        {variant === "offers" && entry.offer_status === "pending" && entry.offer_token && (
+          <>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => {
+                if (!entry.offer_token) return;
+                acceptWaitlistOffer(entry.offer_token);
+              }}
+              title="Simulate the applicant hitting Accept"
+            >
+              Accept
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                if (!entry.offer_token) return;
+                declineWaitlistOffer(entry.offer_token, { auto_advance: true });
+              }}
+              title="Simulate the applicant hitting Decline + auto-advance"
+            >
+              <X className="size-3.5" />
+            </Button>
+          </>
+        )}
+        {variant === "offers" && entry.offer_status !== "pending" && (
+          <Button variant="ghost" size="sm" onClick={onResend}>
+            Resend
+          </Button>
+        )}
+        {(variant === "stale" || variant === "archive") && (
+          <span className="text-[11px] text-fg-tertiary">—</span>
+        )}
+      </div>
+    </li>
+  );
+}
+
+function archiveReasonLabel(r: NonNullable<WaitlistEntry["archive_reason"]>): string {
+  switch (r) {
+    case "got_slip":
+      return "Got slip";
+    case "withdrew":
+      return "Withdrew";
+    case "aged_out":
+      return "Aged out";
+    case "non_responder":
+      return "Non-responder";
+    case "too_many_declines":
+      return "Too many declines";
+    case "duplicate":
+      return "Duplicate";
+  }
+}

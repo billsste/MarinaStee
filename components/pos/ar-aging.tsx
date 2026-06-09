@@ -49,7 +49,7 @@ export function ArAging() {
               {rows.map((r) => (
                 <tr key={r.boater.id} className="border-b border-hairline last:border-b-0 hover:bg-surface-2">
                   <td className="px-3 py-2">
-                    <Link href={`/holders/${r.boater.id}`} className="text-primary hover:underline">
+                    <Link href={`/members/${r.boater.id}`} className="text-primary hover:underline">
                       {r.boater.display_name}
                     </Link>
                   </td>

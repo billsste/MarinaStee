@@ -62,7 +62,7 @@ export function RenewalPipelineView() {
   const nextARR = successors.reduce((s, c) => s + (c.annual_rate ?? 0), 0);
 
   function openContract(id: string) {
-    router.push(`/slips/contracts/${id}`);
+    router.push(`/services/contracts/${id}`);
   }
 
   return (
@@ -269,7 +269,7 @@ function PipelineTable({
       <table className="w-full text-[13px]">
         <thead>
           <tr className="border-b border-hairline bg-surface-2 text-[11px] uppercase tracking-wide text-fg-tertiary">
-            <Th>Holder</Th>
+            <Th>Member</Th>
             <Th>Contract</Th>
             <Th>Slip</Th>
             <Th>Term</Th>

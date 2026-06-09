@@ -29,7 +29,7 @@ import {
 import { useLedgerDrawer } from "@/components/ledger/ledger-entry-drawer";
 import { EnterPaymentSheet } from "@/components/financials/enter-payment-sheet";
 import { AddCardSheet } from "@/components/financials/add-card-sheet";
-import { NewContractSheet } from "@/components/financials/new-contract-sheet";
+import { ContractWizard } from "@/components/financials/contract-wizard";
 import type { Boater, CardOnFile, Communication, Contract, LedgerEntry } from "@/lib/types";
 
 const CARD_FIELDS: FieldSpec<CardOnFile>[] = [
@@ -184,7 +184,7 @@ export function FinancialsTab({
                     className="flex items-start justify-between gap-3 rounded-[8px] border border-hairline bg-surface-2 px-3 py-2.5 transition-colors hover:bg-surface-3"
                   >
                     <Link
-                      href={`/slips/contracts/${c.id}`}
+                      href={`/services/contracts/${c.id}`}
                       className="min-w-0 flex-1 cursor-pointer"
                     >
                       <div className="flex items-center gap-2">
@@ -270,7 +270,7 @@ export function FinancialsTab({
         onOpenChange={setCardOpen}
         defaultBoaterId={boaterId}
       />
-      <NewContractSheet
+      <ContractWizard
         open={contractOpen}
         onOpenChange={setContractOpen}
         defaultBoaterId={boaterId}

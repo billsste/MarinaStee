@@ -5,21 +5,26 @@ test.describe("2. Dashboard", () => {
     await page.goto("/");
   });
 
-  test("KPI strip renders slip occupancy and key stats", async ({ page }) => {
-    await expect(page.getByText(/slip occupancy/i).first()).toBeVisible();
-    // At least one numeric stat is present
-    await expect(page.locator(".tabular, [class*='money'], [data-stat]").first()).toBeVisible().catch(() => {
-      // Fallback: any number on the page from the KPI strip
+  test("daily briefing panel renders", async ({ page }) => {
+    // The dashboard was rebuilt: the old "Slip occupancy" KPI strip is
+    // gone, replaced by AgentHero + AgentBrief + LiveDock + QuietList.
+    // "Today's briefing" is the section eyebrow on AgentBrief — stable
+    // across data shapes (renders even when all-quiet).
+    await expect(page.getByText(/today's briefing/i).first()).toBeVisible({
+      timeout: 8000,
     });
   });
 
   test("agent input renders with correct placeholder", async ({ page }) => {
-    const input = page.getByPlaceholder("Message Marina Stee…");
-    await expect(input).toBeVisible();
+    // Placeholder text changed when AgentHero was introduced. Use a
+    // partial regex so future tweaks to the suggestion examples don't
+    // re-break the test.
+    const input = page.getByPlaceholder(/Ask Marina Stee/i);
+    await expect(input).toBeVisible({ timeout: 8000 });
   });
 
   test("agent input accepts text", async ({ page }) => {
-    const input = page.getByPlaceholder("Message Marina Stee…");
+    const input = page.getByPlaceholder(/Ask Marina Stee/i);
     await input.fill("How many slips are occupied?");
     await expect(input).toHaveValue("How many slips are occupied?");
   });

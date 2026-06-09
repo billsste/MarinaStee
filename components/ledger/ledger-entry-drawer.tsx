@@ -14,17 +14,29 @@ import {
   Mail,
   Printer,
   ShoppingBag,
+  Sailboat,
+  CalendarRange,
   User as UserIcon,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { LocalTime } from "@/components/ui/local-time";
 import { QbSyncBadge } from "@/components/pos/qb-sync-badge";
 import {
   BOATERS,
   WORK_ORDERS,
   formatMoney,
 } from "@/lib/mock-data";
-import { usePicklistLabel, usePosLocations, useStore } from "@/lib/client-store";
+import {
+  useBoatRentals,
+  useClubBookings,
+  useClubSubscriptions,
+  useContracts,
+  usePicklistLabel,
+  usePosLocations,
+  useReservations,
+  useStore,
+} from "@/lib/client-store";
 import { EnterPaymentSheet } from "@/components/financials/enter-payment-sheet";
 import type { LedgerEntry, LedgerEntryType, PosOrder } from "@/lib/types";
 
@@ -124,6 +136,11 @@ function Body({
   const boater = BOATERS.find((b) => b.id === entry.boater_id);
   const [paymentOpen, setPaymentOpen] = React.useState(false);
   const locations = usePosLocations();
+  const reservations = useReservations();
+  const contracts = useContracts();
+  const boatRentals = useBoatRentals();
+  const clubSubs = useClubSubscriptions();
+  const clubBookings = useClubBookings();
 
   function handlePrint() {
     // Browser's native print — uses the page's print stylesheet. Production
@@ -150,6 +167,25 @@ function Body({
   const posLocation = posOrder
     ? locations.find((l) => l.id === posOrder.location_id)
     : undefined;
+  // New FK-linked sources from the type-fix sweep — render each
+  // when set so the operator can drill from invoice → source entity.
+  const reservation = entry.linked_reservation_id
+    ? reservations.find((r) => r.id === entry.linked_reservation_id)
+    : undefined;
+  const contract = entry.linked_contract_id
+    ? contracts.find((c) => c.id === entry.linked_contract_id)
+    : undefined;
+  const boatRental = entry.linked_boat_rental_id
+    ? boatRentals.find((br) => br.id === entry.linked_boat_rental_id)
+    : undefined;
+  const clubSubscription = entry.linked_club_subscription_id
+    ? clubSubs.find((s) => s.id === entry.linked_club_subscription_id)
+    : undefined;
+  const linkedBookings = entry.linked_club_booking_ids?.length
+    ? clubBookings.filter((b) =>
+        entry.linked_club_booking_ids!.includes(b.id)
+      )
+    : [];
   const appliedTo = (entry.applied_to_invoice_ids ?? [])
     .map((id) => ledger.find((l) => l.id === id))
     .filter(Boolean) as LedgerEntry[];
@@ -204,7 +240,7 @@ function Body({
             <Field label="Processor ref" value={entry.processor_ref} mono />
           )}
           {entry.qb_synced_at && (
-            <Field label="QB synced" value={new Date(entry.qb_synced_at).toLocaleString()} />
+            <Field label="QB synced" value={<LocalTime iso={entry.qb_synced_at} fmt="datetime" />} />
           )}
         </div>
       </header>
@@ -213,7 +249,7 @@ function Body({
         {boater && (
           <Section title="Holder">
             <Link
-              href={`/holders/${boater.id}`}
+              href={`/members/${boater.id}`}
               className="flex items-center gap-2 rounded-[8px] border border-hairline bg-surface-2 px-3 py-2 transition-colors hover:border-hairline-strong"
             >
               <UserIcon className="size-4 text-fg-subtle" />
@@ -260,7 +296,7 @@ function Body({
           </Section>
         )}
 
-        {(wo || posOrder) && (
+        {(wo || posOrder || reservation || contract || boatRental || clubSubscription || linkedBookings.length > 0) && (
           <Section title="Source">
             {wo && (
               <Link
@@ -288,6 +324,94 @@ function Body({
                   </div>
                 </div>
                 <Badge tone="ok" size="sm">{posOrder.status}</Badge>
+              </div>
+            )}
+            {/* Contract — slip lease that triggered the invoice. Click
+                drills to the contract detail. */}
+            {contract && (
+              <Link
+                href={`/services/contracts/${contract.id}`}
+                className="mt-2 flex items-center gap-2 rounded-[8px] border border-hairline bg-surface-2 px-3 py-2 transition-colors hover:border-hairline-strong"
+              >
+                <FileText className="size-4 text-fg-subtle" />
+                <div className="min-w-0 flex-1">
+                  <div className="text-[13px] font-medium text-fg">
+                    {contract.number}
+                  </div>
+                  <div className="text-[11px] text-fg-tertiary">
+                    {contract.status} · {contract.effective_start} → {contract.effective_end}
+                  </div>
+                </div>
+              </Link>
+            )}
+            {/* Reservation — transient stay invoice */}
+            {reservation && (
+              <div className="mt-2 flex items-center gap-2 rounded-[8px] border border-hairline bg-surface-2 px-3 py-2">
+                <CalendarRange className="size-4 text-fg-subtle" />
+                <div className="min-w-0 flex-1">
+                  <div className="text-[13px] font-medium text-fg">
+                    Reservation {reservation.number}
+                  </div>
+                  <div className="text-[11px] text-fg-tertiary">
+                    {reservation.arrival_date} → {reservation.departure_date} · {reservation.status}
+                  </div>
+                </div>
+              </div>
+            )}
+            {/* Boat rental — closeout invoice */}
+            {boatRental && (
+              <Link
+                href={`/boat-rentals/${boatRental.id}`}
+                className="mt-2 flex items-center gap-2 rounded-[8px] border border-hairline bg-surface-2 px-3 py-2 transition-colors hover:border-hairline-strong"
+              >
+                <Anchor className="size-4 text-fg-subtle" />
+                <div className="min-w-0 flex-1">
+                  <div className="text-[13px] font-medium text-fg">
+                    {boatRental.number}
+                  </div>
+                  <div className="text-[11px] text-fg-tertiary">
+                    {boatRental.status} · {boatRental.source ?? "walk_in"}
+                  </div>
+                </div>
+              </Link>
+            )}
+            {/* Club subscription — monthly invoice + refund. Drills to
+                the member's detail; we don't have a per-subscription
+                page yet. */}
+            {clubSubscription && (
+              <Link
+                href={`/members/${clubSubscription.boater_id}`}
+                className="mt-2 flex items-center gap-2 rounded-[8px] border border-hairline bg-surface-2 px-3 py-2 transition-colors hover:border-hairline-strong"
+              >
+                <Sailboat className="size-4 text-fg-subtle" />
+                <div className="min-w-0 flex-1">
+                  <div className="text-[13px] font-medium text-fg">
+                    Club membership
+                  </div>
+                  <div className="text-[11px] text-fg-tertiary">
+                    {clubSubscription.status} · since {clubSubscription.member_since}
+                  </div>
+                </div>
+              </Link>
+            )}
+            {/* Booking days the invoice covers — collapse to a single
+                summary row when there's more than one. */}
+            {linkedBookings.length > 0 && (
+              <div className="mt-2 rounded-[8px] border border-hairline bg-surface-2 px-3 py-2">
+                <div className="flex items-center gap-2 text-[12px] text-fg-tertiary">
+                  <CalendarRange className="size-3.5" />
+                  <span>Covered days ({linkedBookings.length})</span>
+                </div>
+                <div className="mt-1 flex flex-wrap gap-1">
+                  {linkedBookings.map((b) => (
+                    <span
+                      key={b.id}
+                      className="rounded-full border border-hairline bg-surface-1 px-1.5 py-0.5 text-[11px] text-fg-subtle"
+                    >
+                      {b.date.slice(5)}
+                    </span>
+                  ))}
+                </div>
               </div>
             )}
           </Section>
@@ -361,7 +485,9 @@ function Field({
   tone,
 }: {
   label: string;
-  value: string;
+  // ReactNode so callers can pass <LocalTime> for date fields
+  // without forcing date-to-string conversion at the callsite.
+  value: React.ReactNode;
   mono?: boolean;
   tone?: "warn";
 }) {

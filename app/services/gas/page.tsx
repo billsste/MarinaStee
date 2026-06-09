@@ -1,7 +1,6 @@
 import { Fuel, TrendingUp, Truck } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { RentalsAsk } from "@/components/rentals/rentals-ask";
 import { FuelTanks } from "@/components/rentals/fuel-tanks";
 import {
   FUEL_DELIVERIES,
@@ -20,15 +19,6 @@ export default function GasPage() {
 
   return (
     <div className="space-y-5">
-      <RentalsAsk
-        placeholder="Ask about fuel — e.g. 'what's our margin this month?'"
-        suggestions={[
-          "What's our margin this month?",
-          "Reorder when gasoline hits 25%",
-          "Top fuel customers in May",
-        ]}
-      />
-
       <FuelTanks />
 
       <div className="grid grid-cols-1 gap-3 md:grid-cols-3">

@@ -6,49 +6,64 @@ import {
   CheckCircle2,
   CreditCard,
   FileText,
-  Mail,
-  PartyPopper,
-  ShieldCheck,
+  Lock,
   Ship,
-  Sparkles,
+  ShieldCheck,
+  Smartphone,
+  User,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { SignaturePad, capturePadDataUrl } from "@/components/sign/signature-pad";
-import { formatMoney, BOATERS, SLIPS, VESSELS } from "@/lib/mock-data";
+import { BOATERS, SLIPS, VESSELS } from "@/lib/mock-data";
 import {
   addCardForBoater,
   getContractByToken as getContractByTokenFromStore,
   markContractOnboardingStep,
-  nextCardId,
+  nextVesselId,
+  upsertBoater,
+  upsertContract,
+  upsertVessel,
+  useContractTemplates,
   useStore,
 } from "@/lib/client-store";
+import { resolveContractTokens } from "@/lib/contract-tokens";
+import type { CardOnFile } from "@/lib/types";
 import { cn } from "@/lib/utils";
-import type { Boater, CardOnFile, Contract, Slip, Vessel } from "@/lib/types";
+import type { Boater, Contract, Slip, Vessel } from "@/lib/types";
 
 /*
- * Unified boater-facing onboarding experience. Resolves a Contract by
- * its signature_token and walks the holder through:
+ * Boater-facing onboarding wizard. Resolves a Contract by its
+ * signature_token and walks the holder through three steps:
  *
- *   1. REVIEW  — read the contract terms (rate, term, slip, services)
- *   2. SIGN    — capture an e-signature (canvas pad)
- *   3. PAY     — add a card on file (CC tokenization happens here in
- *                production; in mock we store last 4 + brand)
- *   4. DONE    — welcome + handoff to the holder's portal
+ *   1. PERSONAL INFO  — confirm / complete boater profile (name, contact,
+ *                       address, emergency contact, insurance, paperless)
+ *   2. VESSEL INFO    — pre-filled if a vessel is already on file;
+ *                       otherwise a blank add-vessel form. Saves via
+ *                       upsertVessel on submit so it's visible in staff UI.
+ *   3. REVIEW & SIGN  — rendered contract body (with merge tokens filled
+ *                       from live boater + vessel + slip + contract data)
+ *                       + canvas signature pad + "I agree" checkbox.
+ *                       On sign: upsertContract with status=executed.
  *
- * Each completed step writes back to the Contract via
- * markContractOnboardingStep, which auto-advances status:
- *   draft -> sent (mint) -> executed (sign) -> active (sign + card)
+ * After signing a "signed" success screen is shown (no further steps).
+ *
+ * Token resolution and the "already signed" guard from the prior flow
+ * are both preserved.
  */
 
 type Step = 0 | 1 | 2 | 3;
 
 const STEPS = [
-  { id: "review", label: "Review", icon: FileText },
-  { id: "sign", label: "Sign", icon: ShieldCheck },
-  { id: "pay", label: "Payment", icon: CreditCard },
-  { id: "done", label: "Welcome", icon: PartyPopper },
+  { id: "personal", label: "Personal Info", icon: User },
+  { id: "vessel", label: "Vessel", icon: Ship },
+  { id: "payment", label: "Payment", icon: CreditCard },
+  { id: "sign", label: "Review & Sign", icon: ShieldCheck },
 ] as const;
+
+// ────────────────────────────────────────────────────────────────────────────
+// Root component
+// ────────────────────────────────────────────────────────────────────────────
 
 export function OnboardExperience({
   token,
@@ -63,10 +78,10 @@ export function OnboardExperience({
   ssrVessel: Vessel | null;
   ssrSlip: Slip | null;
 }) {
-  // Subscribe to the live store so we always reflect the freshest
-  // contract (especially important when the token was minted in this
-  // same session and didn't make it into the SSR mock data).
+  // Subscribe to the live store so freshly-minted in-session tokens
+  // resolve correctly even if they didn't make it into SSR mock data.
   const store = useStore();
+
   const liveContract = React.useMemo(
     () =>
       getContractByTokenFromStore(token) ??
@@ -75,8 +90,7 @@ export function OnboardExperience({
     [store.contracts, token, ssrContract]
   );
 
-  // Resolve boater / slip / vessel from the live contract.
-  const boater = React.useMemo(() => {
+  const baseBoater = React.useMemo(() => {
     if (!liveContract) return ssrBoater;
     return (
       store.boaters.find((b) => b.id === liveContract.boater_id) ??
@@ -85,7 +99,7 @@ export function OnboardExperience({
     );
   }, [liveContract, store.boaters, ssrBoater]);
 
-  const vessel = React.useMemo(() => {
+  const baseVessel = React.useMemo(() => {
     if (!liveContract?.vessel_id) return ssrVessel;
     return (
       store.vessels.find((v) => v.id === liveContract.vessel_id) ??
@@ -100,8 +114,21 @@ export function OnboardExperience({
   }, [liveContract, ssrSlip]);
 
   const [step, setStep] = React.useState<Step>(0);
+  const [signed, setSigned] = React.useState(false);
 
-  // Mark "link viewed" once on mount so staff sees the holder opened it.
+  // Boater edits accumulate here across steps 0 → 2.
+  const [boaterDraft, setBoaterDraft] = React.useState<Boater | null>(null);
+  // Vessel edits accumulate here across steps 1 → 2.
+  const [vesselDraft, setVesselDraft] = React.useState<Vessel | null>(null);
+
+  // Hydration guard — SSR renders with the SSR-passed props (which may be
+  // null for freshly-minted in-session tokens). The client store resolves
+  // the contract after hydration. Without this flag the two renders disagree
+  // and React throws a hydration mismatch.
+  const [mounted, setMounted] = React.useState(false);
+  React.useEffect(() => { setMounted(true); }, []);
+
+  // Mark link viewed on mount.
   React.useEffect(() => {
     if (liveContract?.id && !liveContract.onboarding?.link_viewed_at) {
       markContractOnboardingStep(liveContract.id, "link_viewed_at");
@@ -109,7 +136,19 @@ export function OnboardExperience({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [liveContract?.id]);
 
-  if (!liveContract || !boater) {
+  // ── Pre-hydration loading state ──────────────────────────────────────────
+  // Before the client store hydrates we can't reliably know if the token
+  // resolves — render a neutral shell so SSR and first client paint agree.
+  if (!mounted) {
+    return (
+      <main className="min-h-screen bg-canvas">
+        <div className="mx-auto w-full max-w-lg px-4 py-8" />
+      </main>
+    );
+  }
+
+  // ── Invalid link guard ───────────────────────────────────────────────────
+  if (!liveContract || !baseBoater) {
     return (
       <main className="min-h-screen bg-canvas">
         <div className="mx-auto flex max-w-xl flex-col items-center px-6 py-24 text-center">
@@ -126,9 +165,78 @@ export function OnboardExperience({
     );
   }
 
+  // ── Already-signed guard ─────────────────────────────────────────────────
+  const alreadySigned =
+    !signed &&
+    (liveContract.status === "executed" ||
+      liveContract.status === "active" ||
+      !!liveContract.onboarding?.signed_at);
+
+  if (alreadySigned) {
+    return (
+      <main className="min-h-screen bg-canvas">
+        <div className="mx-auto flex max-w-xl flex-col items-center px-6 py-24 text-center">
+          <span className="mx-auto mb-3 flex size-12 items-center justify-center rounded-full bg-status-ok/10 text-status-ok">
+            <CheckCircle2 className="size-6" />
+          </span>
+          <h1 className="text-[20px] font-semibold text-fg">
+            Already signed
+          </h1>
+          <p className="mt-2 text-[13px] text-fg-subtle">
+            This contract has already been executed. If you need a copy,
+            reply to the email or message you received from your marina.
+          </p>
+          {baseBoater.portal_token && (
+            <a
+              href={`/portal/${baseBoater.portal_token}`}
+              className="mt-6 inline-flex items-center justify-center rounded-[10px] bg-primary px-5 py-2.5 text-[14px] font-medium text-on-primary hover:opacity-90"
+            >
+              Open your portal
+            </a>
+          )}
+        </div>
+      </main>
+    );
+  }
+
+  const activeBoater = boaterDraft ?? baseBoater;
+  const activeVessel = vesselDraft ?? baseVessel;
+
+  // ── Signed success screen ────────────────────────────────────────────────
+  if (signed) {
+    return (
+      <main className="min-h-screen bg-canvas">
+        <div className="mx-auto flex max-w-lg flex-col items-center px-6 py-24 text-center">
+          <span className="mx-auto mb-3 flex size-12 items-center justify-center rounded-full bg-status-ok/10 text-status-ok">
+            <CheckCircle2 className="size-6" />
+          </span>
+          <h2 className="text-[22px] font-semibold text-fg">
+            Your contract has been signed.
+          </h2>
+          <p className="mx-auto mt-2 max-w-sm text-[13px] text-fg-subtle">
+            We&apos;ll be in touch shortly. A signed copy will be sent to the
+            email on file.
+          </p>
+          {activeBoater.portal_token && (
+            <a
+              href={`/portal/${activeBoater.portal_token}`}
+              className="mt-6 inline-flex items-center justify-center rounded-[10px] bg-primary px-5 py-2.5 text-[14px] font-medium text-on-primary hover:opacity-90"
+            >
+              Open your portal
+            </a>
+          )}
+        </div>
+      </main>
+    );
+  }
+
+  // ── Main wizard shell ────────────────────────────────────────────────────
+  // Widen the shell on the Review & Sign step so the contract renders
+  // with letter-style margins instead of a cramped mobile column.
+  const shellMaxW = step === 3 ? "max-w-3xl" : "max-w-lg";
   return (
     <main className="min-h-screen bg-canvas">
-      <div className="mx-auto w-full max-w-[820px] px-5 py-8">
+      <div className={cn("mx-auto w-full px-4 py-8 transition-[max-width] duration-200", shellMaxW)}>
         {/* Marina header */}
         <header className="mb-6 flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -143,56 +251,74 @@ export function OnboardExperience({
           </Badge>
         </header>
 
-        {/* Progress strip */}
+        {/* Progress stepper */}
         <Stepper currentIdx={step} />
 
-        {/* Active step body */}
+        {/* Step body */}
         <div className="mt-6 rounded-[14px] border border-hairline bg-surface-1 shadow-sm">
           {step === 0 && (
-            <ReviewStep
-              contract={liveContract}
-              boater={boater}
-              vessel={vessel}
-              slip={slip}
-              onContinue={() => setStep(1)}
+            <PersonalInfoStep
+              boater={activeBoater}
+              onNext={(updated) => {
+                setBoaterDraft(updated);
+                upsertBoater(updated);
+                setStep(1);
+              }}
             />
           )}
           {step === 1 && (
-            <SignStep
+            <VesselInfoStep
+              boater={activeBoater}
+              vessel={activeVessel}
               contract={liveContract}
-              boater={boater}
-              onSigned={() => setStep(2)}
+              onNext={(v) => {
+                setVesselDraft(v);
+                upsertVessel(v);
+                // If the contract doesn't already link this vessel, patch it.
+                if (liveContract.vessel_id !== v.id) {
+                  upsertContract({ ...liveContract, vessel_id: v.id });
+                }
+                setStep(2);
+              }}
               onBack={() => setStep(0)}
             />
           )}
           {step === 2 && (
-            <PayStep
-              contract={liveContract}
-              boater={boater}
+            <PaymentStep
+              boater={activeBoater}
               onDone={() => setStep(3)}
               onBack={() => setStep(1)}
             />
           )}
           {step === 3 && (
-            <DoneStep contract={liveContract} boater={boater} />
+            <ReviewSignStep
+              contract={liveContract}
+              boater={activeBoater}
+              vessel={activeVessel}
+              slip={slip}
+              onSigned={() => setSigned(true)}
+              onBack={() => setStep(2)}
+            />
           )}
         </div>
 
         <footer className="mt-6 flex items-center justify-between text-[11px] text-fg-tertiary">
           <span>
-            Contract <span className="font-mono">{liveContract.number}</span>{" "}
-            · Token <span className="font-mono">{token.slice(0, 12)}…</span>
+            Contract{" "}
+            <span className="font-mono">{liveContract.number}</span>
+            {" · "}Token{" "}
+            <span className="font-mono">{token.slice(0, 12)}…</span>
           </span>
-          <span>
-            Need help? Reply to the email or text you received from your marina.
-          </span>
+          <span>Questions? Reply to the message from your marina.</span>
         </footer>
       </div>
     </main>
   );
 }
 
-// ── Progress stepper ──────────────────────────────────────────────────
+// ────────────────────────────────────────────────────────────────────────────
+// Progress stepper
+// ────────────────────────────────────────────────────────────────────────────
 
 function Stepper({ currentIdx }: { currentIdx: Step }) {
   return (
@@ -202,7 +328,7 @@ function Stepper({ currentIdx }: { currentIdx: Step }) {
           <div
             key={idx}
             className={cn(
-              "h-1 flex-1 rounded-full transition-colors",
+              "h-1 flex-1 rounded-full transition-colors duration-300",
               idx <= currentIdx ? "bg-primary" : "bg-surface-3"
             )}
           />
@@ -223,8 +349,12 @@ function Stepper({ currentIdx }: { currentIdx: Step }) {
                 !active && !done && "text-fg-tertiary"
               )}
             >
-              {done ? <CheckCircle2 className="size-3 text-status-ok" /> : <Icon className="size-3" />}
-              {s.label}
+              {done ? (
+                <CheckCircle2 className="size-3 text-status-ok" />
+              ) : (
+                <Icon className="size-3" />
+              )}
+              <span className="hidden sm:inline">{s.label}</span>
             </div>
           );
         })}
@@ -233,191 +363,554 @@ function Stepper({ currentIdx }: { currentIdx: Step }) {
   );
 }
 
-// ── Step 0: Review ────────────────────────────────────────────────────
+// ────────────────────────────────────────────────────────────────────────────
+// Shared field component
+// ────────────────────────────────────────────────────────────────────────────
 
-function ReviewStep({
-  contract,
-  boater,
-  vessel,
-  slip,
-  onContinue,
+function Field({
+  label,
+  required,
+  children,
 }: {
-  contract: Contract;
-  boater: Boater;
-  vessel: Vessel | null;
-  slip: Slip | null;
-  onContinue: () => void;
+  label: string;
+  required?: boolean;
+  children: React.ReactNode;
 }) {
   return (
-    <div className="px-6 py-6">
-      <div className="mb-1 text-[11px] font-medium uppercase tracking-wide text-fg-tertiary">
-        Welcome, {boater.first_name}
-      </div>
-      <h1 className="display-tight text-[24px] font-semibold text-fg">
-        Let&apos;s get you settled in.
-      </h1>
-      <p className="mt-1 max-w-2xl text-[13px] text-fg-subtle">
-        We&apos;ve prepared your slip lease. Take a minute to review it below.
-        Next you&apos;ll sign and add a payment method — that&apos;s the whole flow.
-      </p>
+    <label className="block">
+      <span className="text-[12px] font-medium text-fg-subtle">
+        {label}
+        {required && <span className="ml-0.5 text-status-danger">*</span>}
+      </span>
+      <div className="mt-1">{children}</div>
+    </label>
+  );
+}
 
-      <div className="mt-5 grid grid-cols-1 gap-3 md:grid-cols-2">
-        <SummaryCard icon={<Anchor className="size-3.5" />} label="Slip">
-          {slip ? (
-            <>
-              <div className="text-[15px] font-medium text-fg">
-                {slip.dock} · {slip.number}
-              </div>
-              <div className="mt-0.5 text-[11px] text-fg-tertiary">
-                Max LOA {Math.round(slip.max_loa_inches / 12)}&apos; · Power{" "}
-                {slip.has_power ? "yes" : "no"} · Water {slip.has_water ? "yes" : "no"}
-              </div>
-            </>
-          ) : (
-            <span className="text-fg-tertiary">—</span>
-          )}
-        </SummaryCard>
+const inputCls =
+  "block h-10 w-full rounded-[8px] border border-hairline bg-surface-2 px-3 text-[14px] text-fg placeholder:text-fg-tertiary focus:border-hairline-strong focus:outline-none";
 
-        <SummaryCard icon={<Ship className="size-3.5" />} label="Vessel">
-          {vessel ? (
-            <>
-              <div className="text-[15px] font-medium text-fg">{vessel.name}</div>
-              <div className="mt-0.5 text-[11px] text-fg-tertiary">
-                {[vessel.year, vessel.make, vessel.model].filter(Boolean).join(" ")}
-              </div>
-            </>
-          ) : (
-            <span className="text-[12px] italic text-fg-tertiary">
-              No vessel on file yet — add one any time from your portal.
+// ────────────────────────────────────────────────────────────────────────────
+// Address autocomplete component
+// ────────────────────────────────────────────────────────────────────────────
+//
+// Street address field with Google Places suggestions (address type).
+// When the user selects a suggestion, city/state/zip auto-fill.
+// Degrades gracefully when GOOGLE_PLACES_API_KEY is not set — the field
+// works as a plain text input with no suggestions.
+
+type AddressFields = { line1: string; city: string; state: string; zip: string };
+
+function AddressAutocomplete({
+  line1,
+  city,
+  state,
+  zip,
+  onLine1Change,
+  onCityChange,
+  onStateChange,
+  onZipChange,
+  onAutofill,
+}: AddressFields & {
+  onLine1Change: (v: string) => void;
+  onCityChange: (v: string) => void;
+  onStateChange: (v: string) => void;
+  onZipChange: (v: string) => void;
+  onAutofill: (a: AddressFields) => void;
+}) {
+  type Prediction = { placeId: string; description: string; mainText: string; secondaryText: string };
+  const [predictions, setPredictions] = React.useState<Prediction[]>([]);
+  const [open, setOpen] = React.useState(false);
+  const [loading, setLoading] = React.useState(false);
+  const sessionTokenRef = React.useRef(Math.random().toString(36).slice(2));
+  const debounceRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function handleStreetChange(v: string) {
+    onLine1Change(v);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (v.length < 3) { setPredictions([]); setOpen(false); return; }
+    debounceRef.current = setTimeout(async () => {
+      setLoading(true);
+      try {
+        const res = await fetch("/api/places/autocomplete", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ input: v, sessionToken: sessionTokenRef.current }),
+        });
+        if (res.ok) {
+          const data = await res.json() as { predictions: Prediction[] };
+          setPredictions(data.predictions ?? []);
+          setOpen((data.predictions ?? []).length > 0);
+        }
+      } finally {
+        setLoading(false);
+      }
+    }, 280);
+  }
+
+  async function selectPrediction(p: Prediction) {
+    // Fill street immediately for responsiveness.
+    onLine1Change(p.mainText);
+    setOpen(false);
+    setPredictions([]);
+
+    // Fetch details to fill city/state/zip.
+    try {
+      const res = await fetch(
+        `/api/places/details?placeId=${encodeURIComponent(p.placeId)}&sessionToken=${sessionTokenRef.current}`
+      );
+      if (res.ok) {
+        const d = await res.json() as AddressFields;
+        onAutofill(d);
+        // Rotate session token — this session is spent.
+        sessionTokenRef.current = Math.random().toString(36).slice(2);
+      }
+    } catch {
+      // Details failed — street is still filled, user manually completes city/state/zip.
+    }
+  }
+
+  return (
+    <div className="space-y-3">
+      <Field label="Street address">
+        <div className="relative">
+          <input
+            type="text"
+            value={line1}
+            onChange={(e) => handleStreetChange(e.target.value)}
+            onBlur={() => setTimeout(() => setOpen(false), 150)}
+            onFocus={() => predictions.length > 0 && setOpen(true)}
+            placeholder="101 Main St"
+            className={cn(inputCls, loading && "pr-8")}
+            autoComplete="off"
+          />
+          {loading && (
+            <span className="absolute right-3 top-1/2 -translate-y-1/2">
+              <span className="block size-4 animate-spin rounded-full border-2 border-hairline border-t-primary" />
             </span>
           )}
-        </SummaryCard>
-
-        <SummaryCard icon={<FileText className="size-3.5" />} label="Term">
-          <div className="text-[15px] font-medium text-fg">
-            {contract.effective_start} → {contract.effective_end}
-          </div>
-          <div className="mt-0.5 text-[11px] capitalize text-fg-tertiary">
-            {contract.billing_cadence} billing
-          </div>
-        </SummaryCard>
-
-        <SummaryCard icon={<CreditCard className="size-3.5" />} label="Rate">
-          {contract.annual_rate ? (
-            <>
-              <div className="money-display text-[20px] text-fg">
-                {formatMoney(contract.annual_rate)}
-              </div>
-              <div className="mt-0.5 text-[11px] text-fg-tertiary">
-                / year · billed {contract.billing_cadence}
-              </div>
-            </>
-          ) : (
-            <span className="text-fg-tertiary">—</span>
+          {open && predictions.length > 0 && (
+            <ul className="absolute z-20 mt-1 w-full overflow-hidden rounded-[10px] border border-hairline bg-surface-1 shadow-xl">
+              {predictions.map((p) => (
+                <li key={p.placeId}>
+                  <button
+                    type="button"
+                    onMouseDown={(e) => { e.preventDefault(); void selectPrediction(p); }}
+                    className="flex w-full flex-col px-3 py-2.5 text-left transition-colors hover:bg-surface-2"
+                  >
+                    <span className="text-[13px] font-medium text-fg">{p.mainText}</span>
+                    <span className="text-[11px] text-fg-tertiary">{p.secondaryText}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
           )}
-        </SummaryCard>
+        </div>
+      </Field>
+
+      <div className="grid grid-cols-[1fr_80px_90px] gap-3">
+        <Field label="City">
+          <input
+            type="text"
+            value={city}
+            onChange={(e) => onCityChange(e.target.value)}
+            placeholder="Elephant Butte"
+            className={inputCls}
+            autoComplete="address-level2"
+          />
+        </Field>
+        <Field label="State">
+          <input
+            type="text"
+            value={state}
+            onChange={(e) => onStateChange(e.target.value.toUpperCase().slice(0, 2))}
+            placeholder="NM"
+            className={inputCls}
+            autoComplete="address-level1"
+            maxLength={2}
+          />
+        </Field>
+        <Field label="ZIP">
+          <input
+            type="text"
+            value={zip}
+            onChange={(e) => onZipChange(e.target.value.replace(/\D/g, "").slice(0, 5))}
+            placeholder="87935"
+            className={inputCls}
+            autoComplete="postal-code"
+            inputMode="numeric"
+            maxLength={5}
+          />
+        </Field>
+      </div>
+    </div>
+  );
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Step 0: Personal Info
+// ────────────────────────────────────────────────────────────────────────────
+
+function PersonalInfoStep({
+  boater,
+  onNext,
+}: {
+  boater: Boater;
+  onNext: (updated: Boater) => void;
+}) {
+  const addr = boater.address;
+
+  const [firstName, setFirstName] = React.useState(boater.first_name);
+  const [lastName, setLastName] = React.useState(boater.last_name);
+  const [email, setEmail] = React.useState(boater.primary_contact.email ?? "");
+  const [phone, setPhone] = React.useState(boater.primary_contact.phone ?? "");
+
+  // Additional contacts — we surface up to 3 meaningful contact fields
+  const emergencyContact = boater.additional_contacts.find(
+    (c) => c.role === "other" || c.role === "spouse"
+  );
+  const [emergencyName, setEmergencyName] = React.useState(
+    emergencyContact?.name ?? ""
+  );
+  const [emergencyPhone, setEmergencyPhone] = React.useState(
+    emergencyContact?.phone ?? ""
+  );
+
+  const [addrLine1, setAddrLine1] = React.useState(addr.line1 ?? "");
+  const [addrCity, setAddrCity] = React.useState(addr.city ?? "");
+  const [addrState, setAddrState] = React.useState(addr.state ?? "");
+  const [addrZip, setAddrZip] = React.useState(addr.zip ?? "");
+
+  const [paperless, setPaperless] = React.useState(
+    boater.communication_prefs.preferred_channel === "email"
+  );
+
+  const canContinue =
+    firstName.trim().length > 0 &&
+    lastName.trim().length > 0 &&
+    email.trim().length > 0 &&
+    phone.trim().length > 0;
+
+  function handleNext() {
+    if (!canContinue) return;
+    const updated: Boater = {
+      ...boater,
+      first_name: firstName.trim(),
+      last_name: lastName.trim(),
+      display_name: `${lastName.trim()}, ${firstName.trim()}`,
+      primary_contact: {
+        ...boater.primary_contact,
+        email: email.trim(),
+        phone: phone.trim(),
+      },
+      address: {
+        ...boater.address,
+        line1: addrLine1.trim(),
+        city: addrCity.trim(),
+        state: addrState.trim(),
+        zip: addrZip.trim(),
+      },
+      communication_prefs: {
+        ...boater.communication_prefs,
+        preferred_channel: paperless ? "email" : boater.communication_prefs.preferred_channel,
+      },
+      additional_contacts: emergencyName.trim()
+        ? [
+            ...boater.additional_contacts.filter(
+              (c) => c.role !== "other" && c.role !== "spouse"
+            ),
+            {
+              id: emergencyContact?.id ?? `ec_${Date.now()}`,
+              name: emergencyName.trim(),
+              role: "other" as const,
+              phone: emergencyPhone.trim() || undefined,
+              preferred_channel: "sms" as const,
+              can_be_billed: false,
+            },
+          ]
+        : boater.additional_contacts,
+    };
+    onNext(updated);
+  }
+
+  return (
+    <div className="px-5 py-6">
+      <div className="mb-1 text-[11px] font-medium uppercase tracking-wide text-fg-tertiary">
+        Step 1 of 4
+      </div>
+      <h2 className="text-[20px] font-semibold text-fg">
+        Confirm your details
+      </h2>
+      <p className="mt-1 text-[13px] text-fg-subtle">
+        We pre-filled this from what the marina has on file. Review and
+        update anything that&apos;s out of date before continuing.
+      </p>
+
+      <div className="mt-5 space-y-3.5">
+        {/* Name row */}
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="First name" required>
+            <input
+              type="text"
+              value={firstName}
+              onChange={(e) => setFirstName(e.target.value)}
+              className={inputCls}
+              autoComplete="given-name"
+            />
+          </Field>
+          <Field label="Last name" required>
+            <input
+              type="text"
+              value={lastName}
+              onChange={(e) => setLastName(e.target.value)}
+              className={inputCls}
+              autoComplete="family-name"
+            />
+          </Field>
+        </div>
+
+        {/* Contact */}
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <Field label="Email address" required>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className={inputCls}
+              autoComplete="email"
+              inputMode="email"
+            />
+          </Field>
+          <Field label="Phone (primary)" required>
+            <input
+              type="tel"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              className={inputCls}
+              autoComplete="tel"
+              inputMode="tel"
+            />
+          </Field>
+        </div>
+
+        {/* Address — street uses Google Places autocomplete */}
+        <AddressAutocomplete
+          line1={addrLine1}
+          city={addrCity}
+          state={addrState}
+          zip={addrZip}
+          onLine1Change={setAddrLine1}
+          onCityChange={setAddrCity}
+          onStateChange={setAddrState}
+          onZipChange={setAddrZip}
+          onAutofill={(a) => {
+            setAddrLine1(a.line1);
+            setAddrCity(a.city);
+            setAddrState(a.state);
+            setAddrZip(a.zip);
+          }}
+        />
+
+        {/* Emergency contact — flat fields, no nested box */}
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <Field label="Emergency contact name">
+            <input
+              type="text"
+              value={emergencyName}
+              onChange={(e) => setEmergencyName(e.target.value)}
+              placeholder="Jane Smith"
+              className={inputCls}
+              autoComplete="off"
+            />
+          </Field>
+          <Field label="Emergency contact phone">
+            <input
+              type="tel"
+              value={emergencyPhone}
+              onChange={(e) => setEmergencyPhone(e.target.value)}
+              placeholder="(555) 555-0100"
+              className={inputCls}
+              autoComplete="tel"
+              inputMode="tel"
+            />
+          </Field>
+        </div>
+
+        {/* Paperless billing */}
+        <label className="flex cursor-pointer items-start gap-3">
+          <input
+            type="checkbox"
+            checked={paperless}
+            onChange={(e) => setPaperless(e.target.checked)}
+            className="mt-0.5 size-4 accent-primary"
+          />
+          <span className="text-[13px] text-fg-subtle">
+            <span className="font-medium text-fg">Paperless billing</span>
+            {" — "}
+            Send invoices and receipts by email instead of mail.
+          </span>
+        </label>
       </div>
 
-      {contract.attachments && contract.attachments.length > 0 && (
-        <div className="mt-5">
-          <div className="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-fg-tertiary">
-            Documents
-          </div>
-          <ul className="space-y-1.5">
-            {contract.attachments.map((a) => (
-              <li
-                key={a.id}
-                className="flex items-center justify-between gap-2 rounded-[8px] border border-hairline bg-surface-2 px-3 py-2 text-[12px]"
-              >
-                <span className="min-w-0 flex-1 truncate font-medium text-fg">
-                  {a.name}
-                </span>
-                <a
-                  href={a.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-[11px] text-primary hover:underline"
-                >
-                  Open
-                </a>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
       <div className="mt-6 flex justify-end border-t border-hairline pt-4">
-        <Button variant="primary" size="md" onClick={onContinue}>
-          Continue to signature
+        <Button
+          variant="primary"
+          size="md"
+          onClick={handleNext}
+          disabled={!canContinue}
+        >
+          Continue
         </Button>
       </div>
     </div>
   );
 }
 
-// ── Step 1: Sign ──────────────────────────────────────────────────────
+// ────────────────────────────────────────────────────────────────────────────
+// Step 1: Vessel Info
+// ────────────────────────────────────────────────────────────────────────────
 
-function SignStep({
-  contract,
+function VesselInfoStep({
   boater,
-  onSigned,
+  vessel,
+  contract,
+  onNext,
   onBack,
 }: {
-  contract: Contract;
   boater: Boater;
-  onSigned: () => void;
+  vessel: Vessel | null | undefined;
+  contract: Contract;
+  onNext: (v: Vessel) => void;
   onBack: () => void;
 }) {
-  const [signerName, setSignerName] = React.useState(
-    `${boater.first_name} ${boater.last_name}`
+  const [name, setName] = React.useState(vessel?.name ?? "");
+  const [year, setYear] = React.useState(
+    vessel?.year != null ? String(vessel.year) : ""
   );
-  const [hasSignature, setHasSignature] = React.useState(false);
-  const canvasRef = React.useRef<HTMLCanvasElement | null>(null);
+  const [make, setMake] = React.useState(vessel?.make ?? "");
+  const [model, setModel] = React.useState(vessel?.model ?? "");
+  const [registration, setRegistration] = React.useState(
+    vessel?.registration ?? ""
+  );
+  // loa_inches stored internally; we show/collect in feet
+  const [lengthFt, setLengthFt] = React.useState(
+    vessel?.loa_inches != null ? String(Math.round(vessel.loa_inches / 12)) : ""
+  );
 
-  function commit() {
-    if (!hasSignature || !signerName.trim()) return;
-    const dataUrl = capturePadDataUrl(canvasRef.current);
-    markContractOnboardingStep(contract.id, "signed_at", {
-      signed_at: new Date().toISOString(),
-      signer_name: signerName.trim(),
-      signature_data_url: dataUrl,
-    });
-    onSigned();
+  const canContinue = name.trim().length > 0;
+
+  function handleNext() {
+    if (!canContinue) return;
+    const yearNum = year.trim() ? parseInt(year.trim(), 10) : undefined;
+    const loaInches = lengthFt.trim()
+      ? parseFloat(lengthFt.trim()) * 12
+      : undefined;
+
+    const v: Vessel = vessel
+      ? {
+          ...vessel,
+          name: name.trim(),
+          year: yearNum,
+          make: make.trim() || undefined,
+          model: model.trim() || undefined,
+          registration: registration.trim() || undefined,
+          loa_inches: loaInches,
+        }
+      : {
+          id: nextVesselId(),
+          boater_id: boater.id,
+          co_owner_ids: [],
+          name: name.trim(),
+          year: yearNum,
+          make: make.trim() || undefined,
+          model: model.trim() || undefined,
+          registration: registration.trim() || undefined,
+          loa_inches: loaInches,
+          active: true,
+        };
+    onNext(v);
   }
 
   return (
-    <div className="px-6 py-6">
-      <h2 className="text-[18px] font-semibold text-fg">Sign your agreement</h2>
+    <div className="px-5 py-6">
+      <div className="mb-1 text-[11px] font-medium uppercase tracking-wide text-fg-tertiary">
+        Step 2 of 4
+      </div>
+      <h2 className="text-[20px] font-semibold text-fg">
+        {vessel ? "Confirm your vessel" : "Add your vessel"}
+      </h2>
       <p className="mt-1 text-[13px] text-fg-subtle">
-        By signing below you agree to the terms of the slip lease (
-        contract <span className="font-mono">{contract.number}</span>). A timestamped
-        copy will be emailed to you.
+        {vessel
+          ? "We have this on file — update anything that has changed."
+          : "Enter your boat details so they're reflected in your contract."}
       </p>
 
-      <div className="mt-5 space-y-3">
-        <label className="block">
-          <span className="text-[12px] font-medium text-fg-subtle">
-            Signer name
-          </span>
+      <div className="mt-5 space-y-3.5">
+        <Field label="Boat name" required>
           <input
             type="text"
-            value={signerName}
-            onChange={(e) => setSignerName(e.target.value)}
-            className="mt-1 block h-10 w-full rounded-[8px] border border-hairline bg-surface-2 px-3 text-[14px] text-fg focus:border-hairline-strong focus:outline-none"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="e.g. Sea Breeze"
+            className={inputCls}
           />
-        </label>
+        </Field>
 
-        <div>
-          <span className="text-[12px] font-medium text-fg-subtle">Signature</span>
-          <div className="mt-1">
-            <SignaturePad
-              canvasRef={canvasRef}
-              hasSignature={hasSignature}
-              onChange={setHasSignature}
-              signerName={signerName}
-              height={160}
+        <div className="grid grid-cols-3 gap-3">
+          <Field label="Year">
+            <input
+              type="text"
+              value={year}
+              onChange={(e) =>
+                setYear(e.target.value.replace(/\D/g, "").slice(0, 4))
+              }
+              placeholder="2022"
+              className={inputCls}
+              inputMode="numeric"
             />
-          </div>
+          </Field>
+          <Field label="Make">
+            <input
+              type="text"
+              value={make}
+              onChange={(e) => setMake(e.target.value)}
+              placeholder="Sea Ray"
+              className={inputCls}
+            />
+          </Field>
+          <Field label="Model">
+            <input
+              type="text"
+              value={model}
+              onChange={(e) => setModel(e.target.value)}
+              placeholder="SPX 190"
+              className={inputCls}
+            />
+          </Field>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Registration #">
+            <input
+              type="text"
+              value={registration}
+              onChange={(e) => setRegistration(e.target.value.toUpperCase())}
+              placeholder="MI-1234-AB"
+              className={cn(inputCls, "font-mono uppercase")}
+            />
+          </Field>
+          <Field label="Length (feet)">
+            <input
+              type="text"
+              value={lengthFt}
+              onChange={(e) =>
+                setLengthFt(e.target.value.replace(/[^\d.]/g, ""))
+              }
+              placeholder="21"
+              className={inputCls}
+              inputMode="decimal"
+            />
+          </Field>
         </div>
       </div>
 
@@ -432,155 +925,149 @@ function SignStep({
         <Button
           variant="primary"
           size="md"
-          onClick={commit}
-          disabled={!hasSignature || !signerName.trim()}
+          onClick={handleNext}
+          disabled={!canContinue}
         >
-          Sign and continue
+          Continue
         </Button>
       </div>
     </div>
   );
 }
 
-// ── Step 2: Pay (capture card) ────────────────────────────────────────
+// ────────────────────────────────────────────────────────────────────────────
+// Step 2: Review + Sign
+// ────────────────────────────────────────────────────────────────────────────
 
-function PayStep({
+function ReviewSignStep({
   contract,
   boater,
-  onDone,
+  vessel,
+  slip,
+  onSigned,
   onBack,
 }: {
   contract: Contract;
   boater: Boater;
-  onDone: () => void;
+  vessel: Vessel | null | undefined;
+  slip: Slip | null | undefined;
+  onSigned: () => void;
   onBack: () => void;
 }) {
-  const [cardName, setCardName] = React.useState(
+  const [signerName, setSignerName] = React.useState(
     `${boater.first_name} ${boater.last_name}`
   );
-  const [cardNumber, setCardNumber] = React.useState("");
-  const [expMonth, setExpMonth] = React.useState("");
-  const [expYear, setExpYear] = React.useState("");
-  const [zip, setZip] = React.useState(boater.address.zip ?? "");
+  const [hasSignature, setHasSignature] = React.useState(false);
+  const [agreed, setAgreed] = React.useState(false);
+  const canvasRef = React.useRef<HTMLCanvasElement | null>(null);
 
-  // For the demo we strip non-digits and just record the last 4 + a
-  // brand guess. In production this is replaced with Stripe Elements
-  // (or equivalent) and the PAN never touches our servers.
-  const digitsOnly = cardNumber.replace(/\D/g, "");
-  const last4 = digitsOnly.slice(-4);
-  const brand = guessBrand(digitsOnly);
-  const expMonthNum = Number(expMonth);
-  const expYearNum = Number(expYear);
-  const canCommit =
-    cardName.trim().length > 0 &&
-    digitsOnly.length >= 12 &&
-    expMonthNum >= 1 &&
-    expMonthNum <= 12 &&
-    expYearNum >= new Date().getFullYear() % 100 &&
-    last4.length === 4 &&
-    zip.length >= 3;
+  // Look up the contract template so we can fall back to its body_markdown
+  // when the contract itself hasn't been individually drafted yet (the
+  // common case in the prototype where staff just sends the standard template).
+  const templates = useContractTemplates();
+  const template = templates.find((t) => t.id === contract.template_id);
+
+  const resolvedBody = React.useMemo(
+    () => resolveContractTokens(contract, boater, vessel, slip, template?.body_markdown),
+    [contract, boater, vessel, slip, template?.body_markdown]
+  );
+
+  const canSign =
+    signerName.trim().length > 0 && hasSignature && agreed;
 
   function commit() {
-    if (!canCommit) return;
-    const card: CardOnFile = {
-      id: nextCardId(),
-      brand,
-      last4,
-      exp_month: expMonthNum,
-      exp_year: expYearNum < 100 ? 2000 + expYearNum : expYearNum,
-      nickname: cardName.trim(),
-      is_default: true,
-      // In production this is the Stripe (or equivalent) token. In the
-      // demo we mint a placeholder so the type is satisfied; no real
-      // payment processor is wired.
-      processor_token: `demo_tok_${Date.now().toString(36)}`,
-    };
-    addCardForBoater(boater.id, card);
-    markContractOnboardingStep(contract.id, "card_added_at");
-    onDone();
+    if (!canSign) return;
+    const dataUrl = capturePadDataUrl(canvasRef.current);
+    const now = new Date().toISOString();
+
+    upsertContract({
+      ...contract,
+      status: "executed",
+      signed_at: now,
+      signer_name: signerName.trim(),
+      signature_data_url: dataUrl,
+      signer_ip: "client",
+      onboarding: {
+        ...(contract.onboarding ?? {}),
+        signed_at: now,
+      },
+    });
+
+    onSigned();
   }
 
   return (
-    <div className="px-6 py-6">
-      <h2 className="text-[18px] font-semibold text-fg">Add a payment method</h2>
+    <div className="px-5 py-6">
+      <div className="mb-1 text-[11px] font-medium uppercase tracking-wide text-fg-tertiary">
+        Step 4 of 4
+      </div>
+      <h2 className="text-[20px] font-semibold text-fg">
+        Review &amp; sign
+      </h2>
       <p className="mt-1 text-[13px] text-fg-subtle">
-        Your marina will charge this card per your billing cadence. You can swap
-        it any time from your portal. Cards are tokenized — we never store the
-        full number.
+        Read your contract below, then sign and confirm.
       </p>
 
-      <div className="mt-5 space-y-3">
-        <label className="block">
-          <span className="text-[12px] font-medium text-fg-subtle">Name on card</span>
+      {/* Contract body — rendered as a real document on a white page
+          with letter-style margins. Wider than the rest of the wizard so
+          it reads professionally. Scroll inside, not page-scroll. */}
+      <div className="mt-4 max-h-[60vh] overflow-y-auto rounded-[12px] border border-hairline bg-white shadow-inner">
+        <div className="mx-auto max-w-[680px] px-10 py-12 text-[13.5px] leading-[1.65] text-[#1a1a1a]">
+          {resolvedBody ? (
+            <ContractBody markdown={resolvedBody} />
+          ) : (
+            <ContractSummaryFallback
+              contract={contract}
+              vessel={vessel}
+              slip={slip}
+            />
+          )}
+        </div>
+      </div>
+
+      {/* Signature capture */}
+      <div className="mt-5 space-y-3.5">
+        <Field label="Signer name" required>
           <input
             type="text"
-            value={cardName}
-            onChange={(e) => setCardName(e.target.value)}
-            className="mt-1 block h-10 w-full rounded-[8px] border border-hairline bg-surface-2 px-3 text-[14px] text-fg focus:border-hairline-strong focus:outline-none"
+            value={signerName}
+            onChange={(e) => setSignerName(e.target.value)}
+            className={inputCls}
           />
-        </label>
+        </Field>
 
-        <label className="block">
-          <span className="text-[12px] font-medium text-fg-subtle">Card number</span>
-          <input
-            type="text"
-            value={cardNumber}
-            onChange={(e) => setCardNumber(e.target.value)}
-            inputMode="numeric"
-            placeholder="4242 4242 4242 4242"
-            className="mt-1 block h-10 w-full rounded-[8px] border border-hairline bg-surface-2 px-3 font-mono text-[14px] text-fg focus:border-hairline-strong focus:outline-none"
-          />
-        </label>
-
-        <div className="grid grid-cols-3 gap-3">
-          <label className="block">
-            <span className="text-[12px] font-medium text-fg-subtle">Exp month</span>
-            <input
-              type="text"
-              value={expMonth}
-              onChange={(e) => setExpMonth(e.target.value.replace(/\D/g, "").slice(0, 2))}
-              placeholder="MM"
-              className="mt-1 block h-10 w-full rounded-[8px] border border-hairline bg-surface-2 px-3 font-mono text-[14px] text-fg focus:border-hairline-strong focus:outline-none"
+        <div>
+          <span className="text-[12px] font-medium text-fg-subtle">
+            Signature<span className="ml-0.5 text-status-danger">*</span>
+          </span>
+          <div className="mt-1">
+            <SignaturePad
+              canvasRef={canvasRef}
+              hasSignature={hasSignature}
+              onChange={setHasSignature}
+              signerName={signerName}
+              height={160}
             />
-          </label>
-          <label className="block">
-            <span className="text-[12px] font-medium text-fg-subtle">Exp year</span>
-            <input
-              type="text"
-              value={expYear}
-              onChange={(e) => setExpYear(e.target.value.replace(/\D/g, "").slice(0, 4))}
-              placeholder="YYYY"
-              className="mt-1 block h-10 w-full rounded-[8px] border border-hairline bg-surface-2 px-3 font-mono text-[14px] text-fg focus:border-hairline-strong focus:outline-none"
-            />
-          </label>
-          <label className="block">
-            <span className="text-[12px] font-medium text-fg-subtle">ZIP</span>
-            <input
-              type="text"
-              value={zip}
-              onChange={(e) => setZip(e.target.value)}
-              className="mt-1 block h-10 w-full rounded-[8px] border border-hairline bg-surface-2 px-3 text-[14px] text-fg focus:border-hairline-strong focus:outline-none"
-            />
-          </label>
+          </div>
         </div>
 
-        {digitsOnly.length >= 4 && (
-          <div className="rounded-[10px] border border-hairline bg-surface-2 px-3 py-2 text-[12px] text-fg-subtle">
-            We&apos;ll store{" "}
+        {/* Agreement checkbox */}
+        <label className="flex cursor-pointer items-start gap-3">
+          <input
+            type="checkbox"
+            checked={agreed}
+            onChange={(e) => setAgreed(e.target.checked)}
+            className="mt-0.5 size-4 accent-primary"
+          />
+          <span className="text-[13px] text-fg-subtle">
             <span className="font-medium text-fg">
-              {brand.toUpperCase()} •••• {last4}
-            </span>
-            {expMonth && expYear && (
-              <>
-                {" "}exp{" "}
-                <span className="font-medium text-fg">
-                  {expMonth.padStart(2, "0")}/{expYear.length === 4 ? expYear.slice(-2) : expYear}
-                </span>
-              </>
-            )}
-            .
-          </div>
-        )}
+              I have read and agree to all terms
+            </span>{" "}
+            in this contract (
+            <span className="font-mono text-[12px]">{contract.number}</span>
+            ). I understand this constitutes a legally binding agreement.
+          </span>
+        </label>
       </div>
 
       <div className="mt-6 flex items-center justify-between border-t border-hairline pt-4">
@@ -591,90 +1078,535 @@ function PayStep({
         >
           ← Back
         </button>
-        <Button variant="primary" size="md" onClick={commit} disabled={!canCommit}>
-          Save card and finish
+        <Button
+          variant="primary"
+          size="md"
+          onClick={commit}
+          disabled={!canSign}
+        >
+          Sign contract
         </Button>
       </div>
     </div>
   );
 }
 
-function guessBrand(digits: string): CardOnFile["brand"] {
-  if (digits.startsWith("4")) return "visa";
-  if (/^(5[1-5]|2[2-7])/.test(digits)) return "mastercard";
-  if (/^3[47]/.test(digits)) return "amex";
-  if (/^6(?:011|5)/.test(digits)) return "discover";
-  return "other";
+// ────────────────────────────────────────────────────────────────────────────
+// Contract body renderer (markdown → styled HTML)
+// Uses a minimal inline renderer so we don't pull in a full markdown dep.
+// ────────────────────────────────────────────────────────────────────────────
+
+function ContractBody({ markdown }: { markdown: string }) {
+  const html = React.useMemo(() => renderMarkdown(markdown), [markdown]);
+  return (
+    <div
+      className="prose prose-sm max-w-none text-[13px] text-fg [&_h1]:text-[15px] [&_h2]:text-[14px] [&_h3]:text-[13px] [&_p]:leading-relaxed [&_ul]:pl-4 [&_ol]:pl-4"
+      // eslint-disable-next-line react/no-danger
+      dangerouslySetInnerHTML={{ __html: html }}
+    />
+  );
 }
 
-// ── Step 3: Done ──────────────────────────────────────────────────────
+/**
+ * Minimal markdown → HTML converter sufficient for contract templates.
+ * Handles: headings (# ## ###), bold (**text**), italic (*text*),
+ * unordered lists (- item), ordered lists (1. item), blank-line paragraphs,
+ * horizontal rules (---), and line breaks.
+ *
+ * Not a full CommonMark parser — keeps the bundle impact zero and is
+ * enough for the standard marina contract template structure.
+ */
+function renderMarkdown(md: string): string {
+  const lines = md.split("\n");
+  const out: string[] = [];
+  let inList = false;
+  let listOrdered = false;
 
-function DoneStep({
+  function closeList() {
+    if (inList) {
+      out.push(listOrdered ? "</ol>" : "</ul>");
+      inList = false;
+    }
+  }
+
+  function inlineFormat(s: string): string {
+    return s
+      .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+      .replace(/\*(.+?)\*/g, "<em>$1</em>")
+      .replace(/`(.+?)`/g, "<code>$1</code>");
+  }
+
+  for (const rawLine of lines) {
+    const line = rawLine;
+
+    // Heading
+    const h3 = line.match(/^###\s+(.*)/);
+    const h2 = line.match(/^##\s+(.*)/);
+    const h1 = line.match(/^#\s+(.*)/);
+    if (h1 || h2 || h3) {
+      closeList();
+      const level = h3 ? 3 : h2 ? 2 : 1;
+      const text = (h3 ?? h2 ?? h1)![1];
+      out.push(`<h${level}>${inlineFormat(text)}</h${level}>`);
+      continue;
+    }
+
+    // HR
+    if (/^---+$/.test(line.trim())) {
+      closeList();
+      out.push("<hr />");
+      continue;
+    }
+
+    // Unordered list item
+    const ulMatch = line.match(/^[-*]\s+(.*)/);
+    if (ulMatch) {
+      if (!inList || listOrdered) {
+        closeList();
+        out.push("<ul>");
+        inList = true;
+        listOrdered = false;
+      }
+      out.push(`<li>${inlineFormat(ulMatch[1])}</li>`);
+      continue;
+    }
+
+    // Ordered list item
+    const olMatch = line.match(/^\d+\.\s+(.*)/);
+    if (olMatch) {
+      if (!inList || !listOrdered) {
+        closeList();
+        out.push("<ol>");
+        inList = true;
+        listOrdered = true;
+      }
+      out.push(`<li>${inlineFormat(olMatch[1])}</li>`);
+      continue;
+    }
+
+    // Blank line
+    if (line.trim() === "") {
+      closeList();
+      out.push("<br />");
+      continue;
+    }
+
+    // Regular paragraph line
+    closeList();
+    out.push(`<p>${inlineFormat(line)}</p>`);
+  }
+
+  closeList();
+  return out.join("\n");
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Fallback summary when no body_markdown is set on the contract/template
+// ────────────────────────────────────────────────────────────────────────────
+
+function ContractSummaryFallback({
   contract,
-  boater,
+  vessel,
+  slip,
 }: {
   contract: Contract;
-  boater: Boater;
+  vessel: Vessel | null | undefined;
+  slip: Slip | null | undefined;
 }) {
-  React.useEffect(() => {
-    if (!contract.onboarding?.welcomed_at) {
-      markContractOnboardingStep(contract.id, "welcomed_at");
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [contract.id]);
+  return (
+    <div className="space-y-2 text-[13px] text-fg">
+      <p className="font-medium">
+        Slip Lease Agreement — {contract.number}
+      </p>
+      <div className="rounded-[8px] border border-hairline bg-surface-1 px-3 py-2 text-[12px] space-y-1 text-fg-subtle">
+        <div>
+          <span className="font-medium text-fg">Slip: </span>
+          {slip ? `${slip.dock} · ${slip.number}` : "—"}
+        </div>
+        <div>
+          <span className="font-medium text-fg">Vessel: </span>
+          {vessel ? vessel.name : "—"}
+        </div>
+        <div>
+          <span className="font-medium text-fg">Term: </span>
+          {contract.effective_start} → {contract.effective_end}
+        </div>
+        {contract.annual_rate && (
+          <div>
+            <span className="font-medium text-fg">Rate: </span>
+            ${contract.annual_rate.toLocaleString()} / year ·{" "}
+            {contract.billing_cadence} billing
+          </div>
+        )}
+      </div>
+      <p className="text-[12px] text-fg-subtle">
+        By signing below you agree to occupy the assigned slip under the
+        marina&apos;s standard terms and conditions, and to pay all fees
+        when due. You may request a copy of the full agreement from your
+        marina at any time.
+      </p>
+    </div>
+  );
+}
+
+// ── Step 3 — Payment method ──────────────────────────────────────────────────
+//
+// Collects a payment method after the contract is signed.
+// In production this mounts Stripe Elements (or equivalent).
+// In the prototype we mock the card tokenization — the UI is complete
+// including Apple Pay / Google Pay button, card form, and ACH option.
+
+type PayMethod = "card" | "ach" | "wallet";
+
+function PaymentStep({
+  boater,
+  onDone,
+  onBack,
+}: {
+  boater: Boater;
+  onDone: () => void;
+  onBack: () => void;
+}) {
+  const [method, setMethod] = React.useState<PayMethod>("card");
+
+  // Card fields
+  const [cardNumber, setCardNumber] = React.useState("");
+  const [expiry, setExpiry] = React.useState("");
+  const [cvv, setCvv] = React.useState("");
+  const [zip, setZip] = React.useState("");
+  const [nameOnCard, setNameOnCard] = React.useState(boater.display_name ?? "");
+
+  // ACH fields
+  const [routingNum, setRoutingNum] = React.useState("");
+  const [accountNum, setAccountNum] = React.useState("");
+  const [accountType, setAccountType] = React.useState<"checking" | "savings">("checking");
+
+  const [saving, setSaving] = React.useState(false);
+  const [walletDone, setWalletDone] = React.useState(false);
+
+  // Validate card form completeness (prototype-level only — no Luhn check)
+  const cardReady =
+    cardNumber.replace(/\s/g, "").length >= 15 &&
+    expiry.length === 5 &&
+    cvv.length >= 3 &&
+    zip.length === 5 &&
+    nameOnCard.trim().length > 0;
+
+  const achReady =
+    routingNum.length === 9 &&
+    accountNum.length >= 4;
+
+  function formatCardNumber(v: string) {
+    const digits = v.replace(/\D/g, "").slice(0, 16);
+    return digits.replace(/(.{4})/g, "$1 ").trim();
+  }
+
+  function formatExpiry(v: string) {
+    const digits = v.replace(/\D/g, "").slice(0, 4);
+    if (digits.length >= 3) return `${digits.slice(0, 2)}/${digits.slice(2)}`;
+    return digits;
+  }
+
+  function saveCard() {
+    if (!cardReady || saving) return;
+    setSaving(true);
+    // Prototype: mock tokenization — store last4 + brand heuristic
+    const last4 = cardNumber.replace(/\s/g, "").slice(-4);
+    const first = cardNumber.replace(/\s/g, "")[0];
+    const brand: CardOnFile["brand"] =
+      first === "4" ? "visa" : first === "5" ? "mastercard" : first === "3" ? "amex" : "other";
+    const [expM, expY] = expiry.split("/");
+    const card: CardOnFile = {
+      id: `card_onboard_${Date.now()}`,
+      brand,
+      last4,
+      exp_month: parseInt(expM, 10),
+      exp_year: 2000 + parseInt(expY, 10),
+      is_default: true,
+      processor_token: `tok_prototype_${last4}`,
+    };
+    addCardForBoater(boater.id, card);
+    setSaving(false);
+    onDone();
+  }
+
+  function saveAch() {
+    if (!achReady || saving) return;
+    setSaving(true);
+    const card: CardOnFile = {
+      id: `ach_onboard_${Date.now()}`,
+      brand: "other",
+      last4: accountNum.slice(-4),
+      exp_month: 12,
+      exp_year: 2099,
+      nickname: `${accountType === "checking" ? "Checking" : "Savings"} ···${accountNum.slice(-4)}`,
+      is_default: true,
+      processor_token: `tok_ach_prototype_${routingNum.slice(-4)}`,
+    };
+    addCardForBoater(boater.id, card);
+    setSaving(false);
+    onDone();
+  }
+
+  function simulateWalletPay() {
+    // In production: window.PaymentRequest / Stripe's paymentRequest button
+    setWalletDone(true);
+    const card: CardOnFile = {
+      id: `wallet_onboard_${Date.now()}`,
+      brand: "visa",
+      last4: "0000",
+      exp_month: 12,
+      exp_year: 2099,
+      nickname: "Apple Pay",
+      is_default: true,
+      processor_token: "tok_wallet_prototype",
+    };
+    addCardForBoater(boater.id, card);
+    setTimeout(onDone, 600);
+  }
 
   return (
-    <div className="px-6 py-10 text-center">
-      <span className="mx-auto mb-3 flex size-12 items-center justify-center rounded-full bg-status-ok/10 text-status-ok">
-        <CheckCircle2 className="size-6" />
-      </span>
-      <h2 className="text-[22px] font-semibold text-fg">
-        You&apos;re all set, {boater.first_name}.
-      </h2>
-      <p className="mx-auto mt-1 max-w-md text-[13px] text-fg-subtle">
-        Your contract is active. A signed copy and receipt confirmation will
-        arrive in your inbox. Anything else — schedules, pump-outs, work orders
-        — lives in your boater portal.
-      </p>
+    <div className="space-y-5 p-6">
+      <div>
+        <div className="mb-1 text-[11px] font-medium uppercase tracking-wide text-fg-tertiary">
+          Step 3 of 4
+        </div>
+        <h2 className="text-[20px] font-semibold text-fg">Add a payment method</h2>
+        <p className="mt-1 text-[13px] text-fg-subtle">
+          We&apos;ll save this securely for your future invoices. Nothing is
+          charged today — your card kicks in once you sign and your slip
+          term begins.
+        </p>
+      </div>
 
-      <div className="mx-auto mt-6 grid max-w-md grid-cols-1 gap-2">
-        <a
-          href={`/portal/${boater.id}`}
-          className="inline-flex items-center justify-center gap-2 rounded-[10px] bg-primary px-4 py-2.5 text-[14px] font-medium text-on-primary hover:opacity-90"
+      {/* Method picker */}
+      <div className="grid grid-cols-3 gap-2">
+        {(["card", "ach", "wallet"] as PayMethod[]).map((m) => {
+          const labels: Record<PayMethod, string> = {
+            card: "Credit / Debit",
+            ach: "Bank account",
+            wallet: "Apple / Google Pay",
+          };
+          const icons: Record<PayMethod, React.ReactNode> = {
+            card: <CreditCard className="size-4" />,
+            ach: <FileText className="size-4" />,
+            wallet: <Smartphone className="size-4" />,
+          };
+          return (
+            <button
+              key={m}
+              type="button"
+              onClick={() => setMethod(m)}
+              className={cn(
+                "flex flex-col items-center gap-1.5 rounded-[10px] border px-2 py-3 text-[11px] font-medium transition-colors",
+                method === m
+                  ? "border-primary bg-primary/[0.05] text-primary"
+                  : "border-hairline bg-surface-2 text-fg-subtle hover:border-hairline-strong hover:text-fg"
+              )}
+            >
+              {icons[m]}
+              {labels[m]}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Card form */}
+      {method === "card" && (
+        <div className="space-y-3">
+          <PayField label="Name on card">
+            <input
+              value={nameOnCard}
+              onChange={(e) => setNameOnCard(e.target.value)}
+              placeholder="Jane Smith"
+              className="block w-full rounded-[8px] border border-hairline bg-surface-2 px-3 py-2.5 text-[14px] text-fg focus:border-primary focus:outline-none"
+            />
+          </PayField>
+          <PayField label="Card number">
+            <input
+              value={cardNumber}
+              onChange={(e) => setCardNumber(formatCardNumber(e.target.value))}
+              inputMode="numeric"
+              placeholder="4242 4242 4242 4242"
+              maxLength={19}
+              className="block w-full rounded-[8px] border border-hairline bg-surface-2 px-3 py-2.5 font-mono text-[14px] tracking-wider text-fg focus:border-primary focus:outline-none"
+            />
+          </PayField>
+          <div className="grid grid-cols-2 gap-3">
+            <PayField label="Expiry">
+              <input
+                value={expiry}
+                onChange={(e) => setExpiry(formatExpiry(e.target.value))}
+                inputMode="numeric"
+                placeholder="MM/YY"
+                maxLength={5}
+                className="block w-full rounded-[8px] border border-hairline bg-surface-2 px-3 py-2.5 font-mono text-[14px] text-fg focus:border-primary focus:outline-none"
+              />
+            </PayField>
+            <PayField label="CVV">
+              <input
+                value={cvv}
+                onChange={(e) => setCvv(e.target.value.replace(/\D/g, "").slice(0, 4))}
+                inputMode="numeric"
+                placeholder="123"
+                maxLength={4}
+                className="block w-full rounded-[8px] border border-hairline bg-surface-2 px-3 py-2.5 font-mono text-[14px] text-fg focus:border-primary focus:outline-none"
+              />
+            </PayField>
+          </div>
+          <PayField label="Billing ZIP">
+            <input
+              value={zip}
+              onChange={(e) => setZip(e.target.value.replace(/\D/g, "").slice(0, 5))}
+              inputMode="numeric"
+              placeholder="87935"
+              maxLength={5}
+              className="block w-full rounded-[8px] border border-hairline bg-surface-2 px-3 py-2.5 font-mono text-[14px] text-fg focus:border-primary focus:outline-none"
+            />
+          </PayField>
+        </div>
+      )}
+
+      {/* ACH form */}
+      {method === "ach" && (
+        <div className="space-y-3">
+          <div className="rounded-[8px] border border-status-info/30 bg-status-info/[0.05] px-3 py-2 text-[12px] text-status-info">
+            Bank transfers take 3–5 business days to verify. Marina staff will confirm once active.
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <PayField label="Account type" col={2}>
+              <div className="flex gap-2">
+                {(["checking", "savings"] as const).map((t) => (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={() => setAccountType(t)}
+                    className={cn(
+                      "flex-1 rounded-[8px] border py-2 text-[13px] font-medium capitalize transition-colors",
+                      accountType === t
+                        ? "border-primary bg-primary/[0.05] text-primary"
+                        : "border-hairline text-fg-subtle hover:border-hairline-strong"
+                    )}
+                  >
+                    {t}
+                  </button>
+                ))}
+              </div>
+            </PayField>
+          </div>
+          <PayField label="Routing number (9 digits)">
+            <input
+              value={routingNum}
+              onChange={(e) => setRoutingNum(e.target.value.replace(/\D/g, "").slice(0, 9))}
+              inputMode="numeric"
+              placeholder="021000021"
+              maxLength={9}
+              className="block w-full rounded-[8px] border border-hairline bg-surface-2 px-3 py-2.5 font-mono text-[14px] text-fg focus:border-primary focus:outline-none"
+            />
+          </PayField>
+          <PayField label="Account number">
+            <input
+              value={accountNum}
+              onChange={(e) => setAccountNum(e.target.value.replace(/\D/g, "").slice(0, 17))}
+              inputMode="numeric"
+              placeholder="000123456789"
+              className="block w-full rounded-[8px] border border-hairline bg-surface-2 px-3 py-2.5 font-mono text-[14px] text-fg focus:border-primary focus:outline-none"
+            />
+          </PayField>
+        </div>
+      )}
+
+      {/* Wallet */}
+      {method === "wallet" && (
+        <div className="flex flex-col items-center gap-3 py-4">
+          {walletDone ? (
+            <span className="flex size-10 items-center justify-center rounded-full bg-status-ok/15 text-status-ok">
+              <CheckCircle2 className="size-6" />
+            </span>
+          ) : (
+            <button
+              type="button"
+              onClick={simulateWalletPay}
+              className="flex w-full items-center justify-center gap-2 rounded-[10px] bg-fg px-5 py-3.5 text-[15px] font-medium text-canvas transition-opacity hover:opacity-90"
+            >
+              <Smartphone className="size-4" />
+              Pay with Apple / Google Pay
+            </button>
+          )}
+          <p className="text-center text-[11px] text-fg-tertiary">
+            Your device&apos;s native payment sheet will open. Nothing is charged today.
+          </p>
+        </div>
+      )}
+
+      {/* Security note */}
+      <div className="flex items-center gap-2 text-[11px] text-fg-tertiary">
+        <Lock className="size-3.5 shrink-0" />
+        Your payment info is encrypted and stored securely. Marina Stee never stores raw card numbers.
+      </div>
+
+      {/* Footer actions */}
+      <div className="flex items-center justify-between border-t border-hairline pt-4">
+        <button
+          type="button"
+          onClick={onBack}
+          className="text-[13px] text-fg-subtle hover:text-fg"
         >
-          <Sparkles className="size-3.5" />
-          Open your portal
-        </a>
-        <a
-          href={`mailto:?subject=Slip lease ${contract.number} confirmation`}
-          className="inline-flex items-center justify-center gap-2 rounded-[10px] border border-hairline bg-surface-1 px-4 py-2.5 text-[13px] text-fg-subtle hover:bg-surface-2"
-        >
-          <Mail className="size-3.5" />
-          Email me a copy
-        </a>
+          ← Back
+        </button>
+        {method === "card" && (
+          <button
+            type="button"
+            onClick={saveCard}
+            disabled={!cardReady || saving}
+            className={cn(
+              "rounded-[10px] px-5 py-2.5 text-[14px] font-medium transition-colors",
+              cardReady
+                ? "bg-primary text-on-primary hover:bg-primary-hover"
+                : "cursor-not-allowed bg-surface-3 text-fg-tertiary"
+            )}
+          >
+            {saving ? "Saving…" : "Save card →"}
+          </button>
+        )}
+        {method === "ach" && (
+          <button
+            type="button"
+            onClick={saveAch}
+            disabled={!achReady || saving}
+            className={cn(
+              "rounded-[10px] px-5 py-2.5 text-[14px] font-medium transition-colors",
+              achReady
+                ? "bg-primary text-on-primary hover:bg-primary-hover"
+                : "cursor-not-allowed bg-surface-3 text-fg-tertiary"
+            )}
+          >
+            {saving ? "Saving…" : "Save account →"}
+          </button>
+        )}
+        {method === "wallet" && !walletDone && (
+          <span className="text-[12px] text-fg-tertiary">Use the button above</span>
+        )}
       </div>
     </div>
   );
 }
 
-// ── Shared subcomponents ──────────────────────────────────────────────
-
-function SummaryCard({
-  icon,
+function PayField({
   label,
+  col,
   children,
 }: {
-  icon: React.ReactNode;
   label: string;
+  col?: number;
   children: React.ReactNode;
 }) {
   return (
-    <div className="rounded-[10px] border border-hairline bg-surface-2 px-4 py-3">
-      <div className="mb-1 flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-fg-tertiary">
-        {icon}
+    <div className={col === 2 ? "col-span-2" : ""}>
+      <label className="mb-1 block text-[11px] font-medium uppercase tracking-wide text-fg-tertiary">
         {label}
-      </div>
-      <div className="text-[13px] text-fg">{children}</div>
+      </label>
+      {children}
     </div>
   );
 }

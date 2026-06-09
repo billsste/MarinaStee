@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { LocalTime } from "@/components/ui/local-time";
 import { cn } from "@/lib/utils";
 import { usePicklistLabel } from "@/lib/client-store";
 import {
@@ -172,10 +173,7 @@ export function WoCard({
         {(wo.start_date || wo.due_date) && (
           <span className="inline-flex items-center gap-0.5">
             <Calendar className="size-3" />
-            {new Date(wo.start_date ?? wo.due_date!).toLocaleDateString(undefined, {
-              month: "short",
-              day: "numeric",
-            })}
+            <LocalTime iso={wo.start_date ?? wo.due_date!} fmt="short_date" />
           </span>
         )}
       </div>

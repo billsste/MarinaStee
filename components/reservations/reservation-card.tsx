@@ -19,7 +19,7 @@ export function ReservationCard({
   variant,
 }: {
   reservation: Reservation;
-  variant: "arrival" | "departure" | "upcoming";
+  variant: "arrival" | "departure" | "upcoming" | "on_dock";
 }) {
   const boater = BOATERS.find((b) => b.id === reservation.boater_id);
   const vessel = VESSELS.find((v) => v.id === reservation.vessel_id);
@@ -37,7 +37,7 @@ export function ReservationCard({
           <div className="flex items-center gap-1.5">
             {boater ? (
               <Link
-                href={`/holders/${boater.id}`}
+                href={`/members/${boater.id}`}
                 className="truncate text-[13px] font-medium text-fg hover:text-primary"
               >
                 {boater.display_name}
@@ -83,6 +83,12 @@ export function ReservationCard({
                 {reservation.arrival_date}
               </Badge>
             )}
+            {variant === "on_dock" && (
+              <Badge tone="info" size="sm">
+                <Calendar className="size-3" />
+                Departs {reservation.departure_date}
+              </Badge>
+            )}
           </div>
         </div>
         <div className="flex shrink-0 flex-col items-end gap-1">
@@ -108,7 +114,7 @@ export function ReservationCard({
           )}
           {variant === "upcoming" && boater && (
             <Button variant="ghost" size="sm" asChild>
-              <Link href={`/holders/${boater.id}`}>View</Link>
+              <Link href={`/members/${boater.id}`}>View</Link>
             </Button>
           )}
         </div>

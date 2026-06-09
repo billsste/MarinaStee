@@ -2,14 +2,17 @@
 
 import * as React from "react";
 import { Mail, MessageCircle, Phone, Power, Save } from "lucide-react";
+import { anyApi } from "convex/server";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   updateCommTemplate,
   useCommTemplates,
 } from "@/lib/client-store";
-import type { CommTemplate } from "@/lib/types";
+import type { CommTemplate, CommTemplateKind } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { useTenantMutation } from "@/lib/use-tenant-mutation";
+import { useTenantQuery } from "@/lib/use-tenant-query";
 
 /*
  * Settings → Comm Templates editor. Each system-generated comm (receipt,
@@ -20,7 +23,54 @@ import { cn } from "@/lib/utils";
  *
  * Editor is a master-detail layout: list on left, full editor on right
  * for the selected template. Save commits to the store immediately.
+ *
+ * Phase 3 migration target (see docs/architecture-convex.md +
+ * docs/migration-page-recipe.md). Reads route through `useTenantQuery`,
+ * which transparently falls back to the mock store when Convex isn't
+ * online (NEXT_PUBLIC_CONVEX_URL unset). Writes still go to the mock
+ * store until Phase 4 — `convex/commTemplates.ts → update` is wired
+ * and ready.
  */
+
+// Shape returned by `convex/commTemplates.ts:list`. Differs from the
+// mock `CommTemplate` only in the id field names (Convex doc
+// convention uses `_id` + `tenantId`). The adapter below reshapes
+// Convex rows back to the mock-friendly shape the component already
+// consumes.
+interface ConvexCommTemplate {
+  _id: string;
+  tenantId: string;
+  kind: string;
+  name: string;
+  description?: string;
+  channel: CommTemplate["channel"];
+  subject: string;
+  body_markdown: string;
+  active: boolean;
+  available_tokens: string[];
+}
+
+function convexCommTemplatesToMock(rows: ConvexCommTemplate[]): CommTemplate[] {
+  return rows.map((r) => ({
+    id: r._id,
+    tenant_id: r.tenantId,
+    // Convex stores `kind` as a free string; cast back to the mock's
+    // enum. New rows always go through the seed which constrains to
+    // the enum values.
+    kind: r.kind as CommTemplateKind,
+    name: r.name,
+    description: r.description,
+    channel: r.channel,
+    subject: r.subject,
+    body_markdown: r.body_markdown,
+    active: r.active,
+    available_tokens: r.available_tokens,
+  }));
+}
+
+// Stable empty args — referential identity matters to Convex's
+// useQuery dedupe.
+const EMPTY_ARGS = {} as const;
 
 function channelIcon(c: CommTemplate["channel"]) {
   if (c === "email") return <Mail className="size-3.5" />;
@@ -29,7 +79,16 @@ function channelIcon(c: CommTemplate["channel"]) {
 }
 
 export function CommTemplatesView() {
-  const templates = useCommTemplates();
+  // Mock subscription stays unconditional so React's hook order is
+  // stable regardless of whether Convex is online. `useTenantQuery`
+  // picks between the two sources at return time.
+  const mockTemplates = useCommTemplates();
+  const templates = useTenantQuery<CommTemplate[], ConvexCommTemplate[]>({
+    mock: mockTemplates,
+    convexRef: anyApi.commTemplates.list,
+    convexArgs: EMPTY_ARGS,
+    convexAdapter: convexCommTemplatesToMock,
+  });
   const [selectedId, setSelectedId] = React.useState<string | undefined>(
     templates[0]?.id
   );
@@ -98,6 +157,26 @@ function TemplateEditor({ template }: { template: CommTemplate }) {
   const [active, setActive] = React.useState(template.active);
   const [savedFlash, setSavedFlash] = React.useState(false);
 
+  // Phase 4 — single mutation surface for the editor. Carries `id`
+  // through the args object so the same hook handles every template
+  // selection without re-mounting.
+  type SavePayload = {
+    id: string;
+    patch: {
+      name: string;
+      description: string;
+      channel: CommTemplate["channel"];
+      subject: string;
+      body_markdown: string;
+      active: boolean;
+    };
+  };
+  const saveTemplate = useTenantMutation<SavePayload, void>({
+    mock: ({ id, patch }) => updateCommTemplate(id, patch),
+    convexRef: anyApi.commTemplates.update,
+    convexArgsAdapter: ({ id, patch }) => ({ id, patch }),
+  });
+
   const dirty =
     name !== template.name ||
     description !== (template.description ?? "") ||
@@ -107,13 +186,16 @@ function TemplateEditor({ template }: { template: CommTemplate }) {
     active !== template.active;
 
   function save() {
-    updateCommTemplate(template.id, {
-      name,
-      description,
-      channel,
-      subject,
-      body_markdown: body,
-      active,
+    void saveTemplate({
+      id: template.id,
+      patch: {
+        name,
+        description,
+        channel,
+        subject,
+        body_markdown: body,
+        active,
+      },
     });
     setSavedFlash(true);
     setTimeout(() => setSavedFlash(false), 1500);

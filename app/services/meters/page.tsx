@@ -1,20 +1,8 @@
-import { RentalsAsk } from "@/components/rentals/rentals-ask";
 import { MetersManager } from "@/components/rentals/meters-manager";
 
 export const metadata = { title: "Meter Readings — Marina Stee Docks" };
 
+// Agent prompt lives in app/services/layout.tsx.
 export default function MetersPage() {
-  return (
-    <div className="space-y-5">
-      <RentalsAsk
-        placeholder="Ask about meters — e.g. 'generate utility charges for May readings'"
-        suggestions={[
-          "Generate utility charges for May",
-          "Why is pedestal A04 high?",
-          "Schedule a meter walk for Damsite C",
-        ]}
-      />
-      <MetersManager />
-    </div>
-  );
+  return <MetersManager />;
 }

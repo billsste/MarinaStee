@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { LocalTime } from "@/components/ui/local-time";
 import { BOATERS } from "@/lib/mock-data";
 import { addCommunication } from "@/lib/client-store";
 import { formatPhone } from "@/lib/utils";
@@ -144,7 +145,7 @@ export function SignaturePanel({ quote: initialQuote }: { quote: Quote }) {
           </div>
           <div>
             <span className="text-fg-tertiary">Signed:</span>{" "}
-            <span className="text-fg">{new Date(quote.signed_at).toLocaleString()}</span>
+            <LocalTime iso={quote.signed_at} fmt="datetime" className="text-fg" />
           </div>
           {quote.signature_token && (
             <div>
@@ -180,7 +181,7 @@ export function SignaturePanel({ quote: initialQuote }: { quote: Quote }) {
           {quote.sent_at && (
             <div>
               <span className="text-fg-tertiary">Sent:</span>{" "}
-              <span className="text-fg">{new Date(quote.sent_at).toLocaleString()}</span>
+              <LocalTime iso={quote.sent_at} fmt="datetime" className="text-fg" />
               {boater && (
                 <>
                   {" "}<span className="text-fg-tertiary">to</span>{" "}
@@ -196,7 +197,7 @@ export function SignaturePanel({ quote: initialQuote }: { quote: Quote }) {
           {quote.viewed_at && (
             <div>
               <span className="text-fg-tertiary">Viewed:</span>{" "}
-              <span className="text-fg">{new Date(quote.viewed_at).toLocaleString()}</span>
+              <LocalTime iso={quote.viewed_at} fmt="datetime" className="text-fg" />
             </div>
           )}
         </div>

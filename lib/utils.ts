@@ -40,3 +40,78 @@ export function phoneDigitCount(value: string | null | undefined): number {
   if (!value) return 0;
   return value.replace(/\D/g, "").length;
 }
+
+/**
+ * Days between two ISO date strings (YYYY-MM-DD). Positive when `toIso`
+ * is after `fromIso`, negative when before, 0 same day. Uses UTC-midnight
+ * anchoring to avoid the timezone-DST drift that bites `new Date("YYYY-MM-DD")`.
+ */
+export function daysBetween(fromIso: string, toIso: string): number {
+  const a = new Date(fromIso + "T00:00:00Z").getTime();
+  const b = new Date(toIso + "T00:00:00Z").getTime();
+  return Math.round((b - a) / 86_400_000);
+}
+
+/** Capitalize the first character. Returns "" for empty input. */
+export function capitalize(s: string): string {
+  if (!s) return "";
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+/**
+ * Escape a single CSV cell value. RFC 4180 compatible:
+ *  - null / undefined → empty
+ *  - contains comma, double quote, or newline → wrap in double quotes
+ *    and escape embedded quotes by doubling them
+ *  - everything else → stringified as-is
+ *
+ * Use this for every CSV cell. Do NOT strip commas — that silently
+ * corrupts names like "Smith, Jr." into "Smith Jr" which then loads
+ * to the wrong row in downstream tools (Gusto, ADP, QuickBooks).
+ */
+export function csvEscape(value: unknown): string {
+  if (value === null || value === undefined) return "";
+  const s = String(value);
+  if (/[",\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+  return s;
+}
+
+/**
+ * Build a CSV blob from rows + headers and trigger a browser download.
+ * Browser-only — guard on `typeof document !== "undefined"` if you
+ * ever import this from a server context (currently all call sites
+ * are operator-facing client components).
+ *
+ * `rows` may be objects keyed by column or arrays of cell values; the
+ * helper resolves cells via the `columns[i].key` when rows are
+ * objects. Each cell goes through csvEscape.
+ */
+export function downloadCsv(args: {
+  columns: Array<{ key: string; label: string }>;
+  rows: Array<Record<string, unknown>>;
+  /** Optional footer row (e.g. totals). Same shape as a data row. */
+  totalRow?: Record<string, unknown>;
+  /** File basename without .csv extension. */
+  filename: string;
+}): void {
+  const { columns, rows, totalRow, filename } = args;
+  const lines: string[] = [];
+  lines.push(columns.map((c) => csvEscape(c.label)).join(","));
+  for (const r of rows) {
+    lines.push(columns.map((c) => csvEscape(r[c.key])).join(","));
+  }
+  if (totalRow) {
+    lines.push(columns.map((c) => csvEscape(totalRow[c.key])).join(","));
+  }
+  const blob = new Blob([lines.join("\n")], {
+    type: "text/csv;charset=utf-8;",
+  });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${filename}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}

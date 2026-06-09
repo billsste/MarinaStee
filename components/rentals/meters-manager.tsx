@@ -1,9 +1,10 @@
 "use client";
 
 import * as React from "react";
-import { AlertTriangle, Camera, Gauge, Plus, Zap } from "lucide-react";
+import { AlertTriangle, Camera, Gauge, Plus, Search, Zap } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ListFilterSelect } from "@/components/ui/list-filter-select";
 import { RecordEditDialog, type FieldSpec } from "@/components/record-edit-dialog";
 import {
   RENTAL_GROUPS,
@@ -67,11 +68,51 @@ export function MetersManager() {
   const [editing, setEditing] = React.useState<MeterReading | undefined>();
   const [genSummary, setGenSummary] = React.useState<string | null>(null);
 
+  // Toolbar filter state — slip-page list pattern.
+  const [query, setQuery] = React.useState("");
+  const [groupFilter, setGroupFilter] = React.useState<string>("all");
+  const [statusFilter, setStatusFilter] = React.useState<string>("all");
+
   const totalCharges = meters.reduce((sum, m) => sum + meterCharge(m), 0);
   const anomalies = meters.filter(meterAnomaly);
   const billable = meters.filter(
     (m) => !meterAnomaly(m) && meterCharge(m) > 0 && !m.billed_into_invoice_id
   );
+
+  // Unique groups present, derived from the joined RENTAL_GROUPS via
+  // space → group_id. Drives the Group filter dropdown options so the
+  // operator only sees groups that have meters.
+  const groupOptions = React.useMemo(() => {
+    const seen = new Map<string, string>();
+    for (const m of meters) {
+      const space = RENTAL_SPACES.find((s) => s.id === m.space_id);
+      const group = space ? RENTAL_GROUPS.find((g) => g.id === space.group_id) : undefined;
+      if (group && !seen.has(group.id)) seen.set(group.id, group.name);
+    }
+    return Array.from(seen.entries()).map(([id, name]) => ({ value: id, label: name }));
+  }, [meters]);
+
+  // Filtered meters — applied to the table render below.
+  const filtered = React.useMemo(() => {
+    return meters.filter((m) => {
+      const space = RENTAL_SPACES.find((s) => s.id === m.space_id);
+      const group = space ? RENTAL_GROUPS.find((g) => g.id === space.group_id) : undefined;
+      const anomaly = meterAnomaly(m);
+      const isBilled = Boolean(m.billed_into_invoice_id);
+      if (groupFilter !== "all" && group?.id !== groupFilter) return false;
+      if (statusFilter !== "all") {
+        if (statusFilter === "anomaly" && !anomaly) return false;
+        if (statusFilter === "billed" && !isBilled) return false;
+        if (statusFilter === "unbilled" && (isBilled || anomaly)) return false;
+      }
+      if (query.trim().length > 0) {
+        const q = query.trim().toLowerCase();
+        const hay = `${space?.number ?? ""} ${m.meter_number ?? ""} ${group?.name ?? ""}`.toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
+      return true;
+    });
+  }, [meters, query, groupFilter, statusFilter]);
 
   function openAdd() {
     setEditing(undefined);
@@ -160,43 +201,72 @@ export function MetersManager() {
         />
       </div>
 
-      <div className="rounded-[12px] border border-hairline bg-surface-1">
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-hairline px-4 py-2.5">
-          <h3 className="inline-flex items-center gap-2 text-[13px] font-medium text-fg">
-            <Gauge className="size-3.5 text-fg-subtle" />
-            Meter readings
-          </h3>
-          <div className="flex items-center gap-2">
-            {canCreate && (
-              <Button variant="secondary" size="sm" onClick={openAdd}>
-                <Camera className="size-3.5" />
-                New reading
-              </Button>
-            )}
-            <Button
-              variant="primary"
-              size="sm"
-              onClick={handleGenerateCharges}
-              disabled={billable.length === 0}
-            >
-              <Zap className="size-3.5" />
-              Generate utility charges
-            </Button>
-          </div>
+      {/* Single-row toolbar — matches the slip page pattern. */}
+      <div className="flex flex-wrap items-center gap-2 rounded-[12px] border border-hairline bg-surface-1 p-2">
+        <div className="relative min-w-[220px] flex-1">
+          <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-fg-tertiary" />
+          <input
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Space, meter, or group…"
+            className="w-full rounded-[8px] border border-hairline bg-surface-2 py-1.5 pl-8 pr-3 text-[12px] text-fg placeholder:text-fg-tertiary focus:border-hairline-strong focus:outline-none"
+          />
         </div>
 
-        {genSummary && (
-          <div className="border-b border-hairline bg-status-info/10 px-4 py-2 text-[12px] text-status-info">
-            {genSummary}
-          </div>
+        <ListFilterSelect
+          value={groupFilter}
+          onChange={setGroupFilter}
+          label="Group"
+          options={[
+            { value: "all", label: "All groups" },
+            ...groupOptions,
+          ]}
+        />
+
+        <ListFilterSelect
+          value={statusFilter}
+          onChange={setStatusFilter}
+          label="Status"
+          options={[
+            { value: "all", label: `All · ${meters.length}` },
+            { value: "anomaly", label: `Anomaly · ${anomalies.length}` },
+            { value: "unbilled", label: `Unbilled · ${billable.length}` },
+            { value: "billed", label: `Billed · ${meters.filter((m) => m.billed_into_invoice_id).length}` },
+          ]}
+        />
+
+        {canCreate && (
+          <Button variant="secondary" size="sm" onClick={openAdd}>
+            <Camera className="size-3.5" />
+            New reading
+          </Button>
         )}
+        <Button
+          variant="primary"
+          size="sm"
+          onClick={handleGenerateCharges}
+          disabled={billable.length === 0}
+        >
+          <Zap className="size-3.5" />
+          Generate charges
+        </Button>
+      </div>
+
+      {genSummary && (
+        <div className="rounded-[10px] border border-status-info/30 bg-status-info/[0.06] px-4 py-2 text-[12px] text-status-info">
+          {genSummary}
+        </div>
+      )}
+
+      <div className="overflow-hidden rounded-[12px] border border-hairline bg-surface-1">
 
         <div className="overflow-x-auto">
           <table className="w-full text-[13px]">
             <thead>
-              <tr className="border-b border-hairline text-[11px] uppercase tracking-wide text-fg-tertiary">
-                <Th>Group</Th>
+              <tr className="border-b border-hairline bg-surface-2 text-[10px] font-medium uppercase tracking-wide text-fg-tertiary">
                 <Th>Space</Th>
+                <Th>Group</Th>
                 <Th>Meter</Th>
                 <Th className="text-right">Current</Th>
                 <Th className="text-right">Prev</Th>
@@ -206,7 +276,7 @@ export function MetersManager() {
               </tr>
             </thead>
             <tbody>
-              {meters.map((m) => {
+              {filtered.map((m) => {
                 const space = RENTAL_SPACES.find((s) => s.id === m.space_id);
                 const group = space ? RENTAL_GROUPS.find((g) => g.id === space.group_id) : undefined;
                 const delta = meterDelta(m);
@@ -221,8 +291,8 @@ export function MetersManager() {
                       (anomaly ? "bg-status-danger/[0.04] hover:bg-status-danger/[0.08]" : "hover:bg-surface-2")
                     }
                   >
-                    <Td className="text-fg-subtle">{group?.name ?? "—"}</Td>
                     <Td className="font-mono text-[12px] font-medium text-fg">{space?.number ?? "—"}</Td>
+                    <Td className="text-fg-subtle">{group?.name ?? "—"}</Td>
                     <Td className="font-mono text-[12px] text-fg-subtle">{m.meter_number}</Td>
                     <Td className="text-right text-fg">{m.current_reading}</Td>
                     <Td className="text-right text-fg-subtle">{m.prev_reading}</Td>

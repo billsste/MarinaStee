@@ -1,5 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
+import { BOATERS, SEED_TENANT_ID, VESSELS } from "@/lib/mock-data";
+import {
+  buildTokenizationMap,
+  detokenize,
+  tokenize,
+} from "@/lib/pii-tokenizer";
 
 /*
  * POST /api/draft-contract
@@ -75,6 +81,7 @@ export async function POST(req: NextRequest) {
     template_body?: string;
     template_name?: string;
     context?: Record<string, unknown>;
+    tenant_id?: string;
   };
   try {
     body = await req.json();
@@ -85,13 +92,26 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const { template_body, template_name, context } = body;
+  const { template_body, template_name, context, tenant_id } = body;
   if (!template_body || !context) {
     return NextResponse.json(
       { error: "template_body and context are required" },
       { status: 400 }
     );
   }
+  // Tenant scope for the PII tokenizer. Without this, a Lakeside-tenant
+  // contract draft would be salted with the GLOBAL BOATERS map — any
+  // Marina Stee boater names that happened to appear in the rendered
+  // template body would silently get cross-tenant-tokenized + leaked
+  // back via the detokenize step. Falls back to the seed tenant when
+  // no tenant_id is passed (single-marina demo mode); when Clerk's
+  // org context is wired this becomes a request-required field.
+  const effectiveTenantId = tenant_id ?? SEED_TENANT_ID;
+  const scopedBoaters = BOATERS.filter(
+    (b) => (b.tenant_id ?? SEED_TENANT_ID) === effectiveTenantId,
+  );
+  const scopedBoaterIds = new Set(scopedBoaters.map((b) => b.id));
+  const scopedVessels = VESSELS.filter((v) => scopedBoaterIds.has(v.boater_id));
 
   // Pre-compute a couple of friendly views the template can reference
   // even if the caller didn't explicitly pass them. Keeps prompts and
@@ -130,6 +150,22 @@ export async function POST(req: NextRequest) {
 
   try {
     const anthropic = new Anthropic({ apiKey });
+
+    // PII tokenization. The context object contains boater + vessel
+    // identifiable strings — names, emails, phones, addresses, vessel
+    // names, hull VINs. Tokenize the JSON before it crosses to
+    // Anthropic; the LLM produces the filled markdown using our tokens;
+    // we detokenize the response on the way back.
+    //
+    // Our `{{boater_b_42}}` style doesn't collide with the template's
+    // `{{boater.display_name}}` style because the merge tokens contain
+    // dots while PII tokens don't.
+    const tokenMap = buildTokenizationMap({ boaters: scopedBoaters, vessels: scopedVessels });
+    const tokenizedContext = tokenize(JSON.stringify(enriched, null, 2), tokenMap);
+    // Template body itself contains merge tokens, not real PII —
+    // tokenize it too in case anyone hand-edited a boater name in.
+    const tokenizedTemplate = tokenize(template_body, tokenMap);
+
     const message = await anthropic.messages.create({
       model: "claude-sonnet-4-5",
       max_tokens: 4096,
@@ -141,12 +177,12 @@ export async function POST(req: NextRequest) {
 
 Context (JSON):
 \`\`\`json
-${JSON.stringify(enriched, null, 2)}
+${tokenizedContext}
 \`\`\`
 
 Template body (markdown):
 \`\`\`markdown
-${template_body}
+${tokenizedTemplate}
 \`\`\`
 
 Return the filled markdown. ONLY the filled markdown.`,
@@ -154,11 +190,14 @@ Return the filled markdown. ONLY the filled markdown.`,
       ],
     });
 
-    const text = message.content
+    const rawText = message.content
       .filter((b): b is Anthropic.Messages.TextBlock => b.type === "text")
       .map((b) => b.text)
       .join("\n")
       .trim();
+
+    // Re-hydrate before returning to the caller.
+    const text = detokenize(rawText, tokenMap);
 
     if (!text) {
       // Defensive: if Claude returns empty, fall back to local fill so

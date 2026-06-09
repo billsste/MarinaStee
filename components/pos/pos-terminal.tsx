@@ -16,10 +16,12 @@ import {
   Plus,
   Minus,
   CheckCheck,
+  Pencil,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { RecordEditDialog, type FieldSpec } from "@/components/record-edit-dialog";
 import { cn } from "@/lib/utils";
 import {
   BOATERS,
@@ -36,6 +38,8 @@ import {
   nextLedgerId,
   nextPosOrderId,
   nextPosOrderNumber,
+  nextPosItemId,
+  upsertPosItem,
   useActivePosLocations,
   useFeesByScope,
   usePosCatalogForLocation,
@@ -70,12 +74,28 @@ const LOCATION_ICON: Record<PosLocationKey, React.ComponentType<{ className?: st
   harbormaster: Anchor,
 };
 
+// Inline catalog-item editor for the POS terminal. Same fields as the
+// /ledger Catalog Manager (kept in sync intentionally) but operators
+// don't have to leave the terminal to add a menu item or correct a
+// price — common ask the morning a restaurant opens.
+const POS_ITEM_FIELDS: FieldSpec<PosCatalogItem>[] = [
+  { key: "name", label: "Item name", kind: "text", required: true, col: 2, placeholder: "Marina burger" },
+  { key: "sku", label: "SKU", kind: "text", required: true, col: 2, placeholder: "BURGER", hint: "Shown on receipts. Stable — renaming is OK; historical orders keep the old SKU." },
+  { key: "category", label: "Category", kind: "text", required: true, col: 2, placeholder: "Mains", hint: "Free-text; items group by this on the palette." },
+  { key: "price", label: "Price ($)", kind: "money", required: true, col: 2, step: "0.01" },
+  { key: "cost", label: "Cost of goods ($)", kind: "money", col: 2, step: "0.01", hint: "Optional. Enables margin reports." },
+  { key: "taxable", label: "Taxable", kind: "boolean", col: 2 },
+  { key: "active", label: "Active in catalog", kind: "boolean", col: 2, hint: "Inactive items are hidden from the palette but historical orders still resolve." },
+];
+
 export function PosTerminal() {
   const [locationKey, setLocationKey] = React.useState<PosLocationKey>("ship_store");
   const [items, setItems] = React.useState<LineItem[]>([]);
   const [customer, setCustomer] = React.useState<CustomerSelection>({ kind: "anonymous" });
   const [paymentMethod, setPaymentMethod] = React.useState<PosPaymentMethod | null>(null);
   const [completedAt, setCompletedAt] = React.useState<string | null>(null);
+  const [newItemOpen, setNewItemOpen] = React.useState(false);
+  const [editingItem, setEditingItem] = React.useState<PosCatalogItem | undefined>();
 
   const locations = useActivePosLocations();
   const location = locations.find((l) => l.key === locationKey)!;
@@ -148,6 +168,40 @@ export function PosTerminal() {
     setCustomer({ kind: "anonymous" });
     setPaymentMethod(null);
     setCompletedAt(null);
+  }
+
+  function openNewItem() {
+    setEditingItem(undefined);
+    setNewItemOpen(true);
+  }
+  function openEditItem(c: PosCatalogItem) {
+    // Don't allow editing the synthetic "Service Fees" rows — those live
+    // in the fees catalog and are surfaced via useFeesByScope.
+    if (c.id.startsWith("pos_fee_")) return;
+    setEditingItem(c);
+    setNewItemOpen(true);
+  }
+  function handleSaveItem(values: PosCatalogItem) {
+    const id = values.id || nextPosItemId();
+    upsertPosItem({
+      ...values,
+      id,
+      price: Number(values.price) || 0,
+      cost:
+        values.cost !== undefined && values.cost !== null && String(values.cost) !== ""
+          ? Number(values.cost)
+          : undefined,
+      sku: values.sku || `SKU-${id.slice(-6).toUpperCase()}`,
+      category: values.category || "Uncategorized",
+      taxable: values.taxable !== false,
+      active: values.active !== false,
+      // Pre-seed the active location so the new item shows up on the
+      // current register immediately.
+      location_keys:
+        values.location_keys && values.location_keys.length > 0
+          ? values.location_keys
+          : [locationKey],
+    });
   }
 
   function complete(method: PosPaymentMethod) {
@@ -264,55 +318,103 @@ export function PosTerminal() {
     <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1.2fr_1fr_1fr] xl:grid-cols-[1.4fr_1fr_1fr]">
       {/* LEFT — item palette */}
       <div className="order-2 rounded-[12px] border border-hairline bg-surface-1 lg:order-1">
-        <div className="flex flex-wrap items-center gap-1 border-b border-hairline px-3 py-2">
-          {locations.map((l) => {
-            const Icon = LOCATION_ICON[l.key];
-            const active = l.key === locationKey;
-            return (
-              <button
-                key={l.id}
-                type="button"
-                onClick={() => setLocationKey(l.key)}
-                className={cn(
-                  "inline-flex items-center gap-1.5 rounded-[8px] px-2.5 py-1.5 text-[12px] font-medium transition-colors",
-                  active
-                    ? "bg-surface-3 text-fg"
-                    : "text-fg-subtle hover:bg-surface-2 hover:text-fg"
-                )}
-              >
-                <Icon className="size-3.5" />
-                {l.name}
-              </button>
-            );
-          })}
+        <div className="flex flex-wrap items-center justify-between gap-1 border-b border-hairline px-3 py-2">
+          <div className="flex flex-wrap items-center gap-1">
+            {locations.map((l) => {
+              const Icon = LOCATION_ICON[l.key];
+              const active = l.key === locationKey;
+              return (
+                <button
+                  key={l.id}
+                  type="button"
+                  onClick={() => setLocationKey(l.key)}
+                  className={cn(
+                    "inline-flex items-center gap-1.5 rounded-[8px] px-2.5 py-1.5 text-[12px] font-medium transition-colors",
+                    active
+                      ? "bg-surface-3 text-fg"
+                      : "text-fg-subtle hover:bg-surface-2 hover:text-fg"
+                  )}
+                >
+                  <Icon className="size-3.5" />
+                  {l.name}
+                </button>
+              );
+            })}
+          </div>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={openNewItem}
+            title={`Add a new item to ${location.name}`}
+          >
+            <Plus className="size-3.5" />
+            New item
+          </Button>
         </div>
 
         <div className="space-y-3 p-3">
-          {Object.entries(grouped).map(([cat, list]) => (
-            <div key={cat}>
-              <div className="mb-1.5 text-[10px] font-medium uppercase tracking-wide text-fg-tertiary">
-                {cat}
+          {catalog.length === 0 && posFees.length === 0 ? (
+            <div className="rounded-[8px] border border-dashed border-hairline-strong bg-surface-2 px-4 py-10 text-center">
+              <div className="text-[13px] font-medium text-fg">
+                No items in {location.name} yet
               </div>
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                {list.map((c) => (
-                  <button
-                    key={c.sku}
-                    type="button"
-                    onClick={() => addItem(c)}
-                    className="flex flex-col items-start rounded-[8px] border border-hairline bg-surface-2 p-2 text-left transition-colors hover:border-primary/40 hover:bg-primary-soft/40"
-                  >
-                    <div className="text-[12px] font-medium leading-tight text-fg">{c.name}</div>
-                    <div className="money-display mt-1 text-[15px] text-fg">
-                      {formatMoney(c.price)}
-                    </div>
-                    <div className="mt-0.5 text-[9px] font-mono uppercase text-fg-tertiary">
-                      {c.sku}
-                    </div>
-                  </button>
-                ))}
-              </div>
+              <p className="mx-auto mt-1 max-w-xs text-[12px] leading-relaxed text-fg-subtle">
+                Add your first menu item — name it, price it, set the category, and it
+                appears here ready to ring up.
+              </p>
+              <Button variant="primary" size="sm" className="mt-3" onClick={openNewItem}>
+                <Plus className="size-3.5" />
+                Add first item
+              </Button>
             </div>
-          ))}
+          ) : (
+            Object.entries(grouped).map(([cat, list]) => (
+              <div key={cat}>
+                <div className="mb-1.5 text-[10px] font-medium uppercase tracking-wide text-fg-tertiary">
+                  {cat}
+                </div>
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                  {list.map((c) => {
+                    const isFee = c.id.startsWith("pos_fee_");
+                    return (
+                      <div
+                        key={c.sku}
+                        className="group relative flex flex-col items-start rounded-[8px] border border-hairline bg-surface-2 transition-colors hover:border-primary/40 hover:bg-primary-soft/40"
+                      >
+                        <button
+                          type="button"
+                          onClick={() => addItem(c)}
+                          className="flex w-full flex-col items-start p-2 text-left"
+                        >
+                          <div className="text-[12px] font-medium leading-tight text-fg">{c.name}</div>
+                          <div className="money-display mt-1 text-[15px] text-fg">
+                            {formatMoney(c.price)}
+                          </div>
+                          <div className="mt-0.5 text-[9px] font-mono uppercase text-fg-tertiary">
+                            {c.sku}
+                          </div>
+                        </button>
+                        {!isFee && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              openEditItem(c);
+                            }}
+                            className="absolute right-1 top-1 rounded-[4px] bg-surface-1/70 p-1 text-fg-tertiary opacity-0 transition-opacity hover:bg-surface-1 hover:text-fg group-hover:opacity-100"
+                            aria-label={`Edit ${c.name}`}
+                            title="Edit item"
+                          >
+                            <Pencil className="size-3" />
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))
+          )}
         </div>
       </div>
 
@@ -490,6 +592,20 @@ export function PosTerminal() {
           )}
         </div>
       </div>
+
+      <RecordEditDialog<PosCatalogItem>
+        open={newItemOpen}
+        onOpenChange={setNewItemOpen}
+        title={editingItem ? `Edit item — ${editingItem.name}` : `New item — ${location.name}`}
+        description={
+          editingItem
+            ? "Changes apply immediately on every register that carries this item."
+            : `Adds a new item to ${location.name}'s palette. Pick a category to group it under.`
+        }
+        record={editingItem}
+        fields={POS_ITEM_FIELDS}
+        onSave={handleSaveItem}
+      />
     </div>
   );
 }

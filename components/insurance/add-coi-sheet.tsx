@@ -4,7 +4,6 @@ import * as React from "react";
 import { Upload } from "lucide-react";
 import { CreateSheet, Field, NumberInput, Select, TextInput } from "@/components/create-sheet";
 import { Button } from "@/components/ui/button";
-import { BOATERS, getVesselsForBoater } from "@/lib/mock-data";
 import {
   addInsuranceCertificate,
   nextCoiId,
@@ -30,16 +29,16 @@ export function AddCoiSheet({
   defaultVesselId?: string;
   uploadedBy?: "marina" | "boater";
 }) {
-  const liveBoaters = useBoaters();
-  const boaters = liveBoaters.length > 0 ? liveBoaters : BOATERS;
+  // Tenant-scoped boater list — useBoaters() already filters by the
+  // active marina. Empty list at first paint is fine; the sheet only
+  // opens when there's something to pick.
+  const boaters = useBoaters();
 
   const [boaterId, setBoaterId] = React.useState(defaultBoaterId ?? "");
-  const liveVessels = useVesselsForBoater(boaterId);
-  const vessels = boaterId
-    ? liveVessels.length > 0
-      ? liveVessels
-      : getVesselsForBoater(boaterId)
-    : [];
+  // useVesselsForBoater returns store-backed (live) vessels — no
+  // need to fall back to a static seed snapshot anymore. Call with
+  // empty boaterId returns [], honoring rules-of-hooks.
+  const vessels = useVesselsForBoater(boaterId);
 
   const [vesselId, setVesselId] = React.useState(defaultVesselId ?? "");
   const [carrier, setCarrier] = React.useState("");

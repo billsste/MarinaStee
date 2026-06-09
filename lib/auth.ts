@@ -42,7 +42,9 @@ export type Entity =
   | "waitlist"
   | "rental_group"  // docks / jet-ski racks / buoy fields / dry storage
   | "rental_space"  // individual slip / berth / bay
-  | "gas";          // fuel dock readings + pricing
+  | "gas"           // fuel dock readings + pricing
+  | "club_subscription"  // Rental Club membership
+  | "club_booking";      // Rental Club scheduled day
 
 export type Action = "view" | "create" | "edit" | "delete";
 
@@ -69,6 +71,8 @@ const PERMISSIONS: Record<Role, Partial<Record<Entity, Action[]>>> = {
     rental_group: ["view", "create", "edit", "delete"],
     rental_space: ["view", "create", "edit", "delete"],
     gas: ["view", "create", "edit", "delete"],
+    club_subscription: ["view", "create", "edit", "delete"],
+    club_booking: ["view", "create", "edit", "delete"],
   },
   manager: {
     rate: ["view", "create", "edit", "delete"],
@@ -90,6 +94,8 @@ const PERMISSIONS: Record<Role, Partial<Record<Entity, Action[]>>> = {
     rental_group: ["view", "create", "edit", "delete"],
     rental_space: ["view", "create", "edit", "delete"],
     gas: ["view", "create", "edit"],
+    club_subscription: ["view", "create", "edit", "delete"],
+    club_booking: ["view", "create", "edit", "delete"],
   },
   accounting: {
     // Financial domain — full access. Slip/dock ops — read-only.
@@ -112,6 +118,10 @@ const PERMISSIONS: Record<Role, Partial<Record<Entity, Action[]>>> = {
     rental_group: ["view"],
     rental_space: ["view"],
     gas: ["view"],
+    // Accounting needs full club access to bill membership fees +
+    // process refunds for cancelled bookings.
+    club_subscription: ["view", "create", "edit", "delete"],
+    club_booking: ["view", "edit"],
   },
   dockhand: {
     // Daily ops — make stuff happen on the docks. No money / no contracts.
@@ -134,6 +144,10 @@ const PERMISSIONS: Record<Role, Partial<Record<Entity, Action[]>>> = {
     rental_group: ["view"],
     rental_space: ["view", "edit"],
     gas: ["view", "edit"],
+    // Dockhands see bookings (to know who's arriving) + can check them
+    // in / mark no-show, but don't manage subscriptions or money.
+    club_subscription: ["view"],
+    club_booking: ["view", "edit"],
   },
   read_only: {
     rate: ["view"],
@@ -155,6 +169,8 @@ const PERMISSIONS: Record<Role, Partial<Record<Entity, Action[]>>> = {
     rental_group: ["view"],
     rental_space: ["view"],
     gas: ["view"],
+    club_subscription: ["view"],
+    club_booking: ["view"],
   },
 };
 

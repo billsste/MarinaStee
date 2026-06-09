@@ -3,10 +3,12 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { FilePlus2, FileText, Plus, RefreshCw } from "lucide-react";
+import { FilePlus2, FileText, Plus, RefreshCw, Search } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ListFilterSelect } from "@/components/ui/list-filter-select";
 import { RecordEditDialog, type FieldSpec } from "@/components/record-edit-dialog";
+import { ContractWizard } from "@/components/financials/contract-wizard";
 import { BOATERS, formatMoney } from "@/lib/mock-data";
 import {
   deleteContract,
@@ -19,6 +21,11 @@ import {
   useContractTemplates,
   useContracts,
 } from "@/lib/client-store";
+import {
+  EXPIRING_SOON_WINDOW_MS,
+  classifyContractStatus,
+  localIsoDate,
+} from "@/lib/contracts";
 import type {
   Contract,
   ContractStatus,
@@ -109,11 +116,21 @@ export function ContractsView() {
   const router = useRouter();
   const templates = useContractTemplates();
   const active = contracts.filter((c) => c.status === "active");
-  const expiringSoon = contracts.filter((c) => {
-    if (c.status !== "active" || !c.effective_end) return false;
-    const days = (new Date(c.effective_end).getTime() - Date.now()) / 86_400_000;
-    return days <= 90 && days >= 0;
-  });
+  // ISO-string cutoffs computed once per render so the KPI calc is
+  // timezone-stable. NOTE: this still narrows on `status === "active"`
+  // via the active.filter scope below — flagged in the migration report
+  // as a real reporting gap (executed-but-not-yet-active contracts
+  // currently invisible to the expiring KPI), preserved here so the
+  // visible KPI number doesn't change without product sign-off.
+  const todayIso = localIsoDate();
+  const ninetyDaysOutIso = localIsoDate(
+    new Date(Date.now() + EXPIRING_SOON_WINDOW_MS),
+  );
+  const expiringSoon = contracts.filter(
+    (c) =>
+      c.status === "active" &&
+      classifyContractStatus(c, todayIso, ninetyDaysOutIso) === "expiring",
+  );
   const totalAnnualValue = active.reduce((sum, c) => sum + (c.annual_rate ?? 0), 0);
 
   // Dialog state
@@ -121,6 +138,35 @@ export function ContractsView() {
   const [editingContract, setEditingContract] = React.useState<Contract | undefined>();
   const [templateOpen, setTemplateOpen] = React.useState(false);
   const [editingTemplate, setEditingTemplate] = React.useState<ContractTemplate | undefined>();
+  // The "+ New contract" affordance opens the multi-step ContractWizard
+  // instead of the inline edit dialog — editing an existing row still uses
+  // RecordEditDialog (preserved below) so quick patches stay fast.
+  const [wizardOpen, setWizardOpen] = React.useState(false);
+
+  // Toolbar filter state — slip-page list pattern.
+  const [query, setQuery] = React.useState("");
+  const [statusFilter, setStatusFilter] = React.useState<string>("all");
+  const [templateFilter, setTemplateFilter] = React.useState<string>("all");
+
+  const statusCounts = React.useMemo(() => {
+    const out: Record<string, number> = { all: contracts.length };
+    for (const c of contracts) out[c.status] = (out[c.status] ?? 0) + 1;
+    return out;
+  }, [contracts]);
+
+  const filteredContracts = React.useMemo(() => {
+    return contracts.filter((c) => {
+      if (statusFilter !== "all" && c.status !== statusFilter) return false;
+      if (templateFilter !== "all" && c.template_id !== templateFilter) return false;
+      if (query.trim().length > 0) {
+        const q = query.trim().toLowerCase();
+        const boater = BOATERS.find((b) => b.id === c.boater_id);
+        const hay = `${c.number ?? ""} ${boater?.display_name ?? ""} ${c.id}`.toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
+      return true;
+    });
+  }, [contracts, query, statusFilter, templateFilter]);
 
   // Inject dynamic options into the contract field schema
   const contractFields = React.useMemo<FieldSpec<Contract>[]>(() => {
@@ -177,21 +223,59 @@ export function ContractsView() {
         </div>
       </section>
 
-      <section>
-        <div className="mb-2 flex items-center justify-between">
-          <h2 className="text-[14px] font-medium text-fg">Contracts ({contracts.length})</h2>
-          <Button variant="primary" size="sm" onClick={() => { setEditingContract(undefined); setContractOpen(true); }}>
+      <section className="space-y-3">
+        {/* Single-row toolbar — matches the slip page pattern. */}
+        <div className="flex flex-wrap items-center gap-2 rounded-[12px] border border-hairline bg-surface-1 p-2">
+          <div className="relative min-w-[220px] flex-1">
+            <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-fg-tertiary" />
+            <input
+              type="search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Contract number, holder…"
+              className="w-full rounded-[8px] border border-hairline bg-surface-2 py-1.5 pl-8 pr-3 text-[12px] text-fg placeholder:text-fg-tertiary focus:border-hairline-strong focus:outline-none"
+            />
+          </div>
+
+          <ListFilterSelect
+            value={statusFilter}
+            onChange={setStatusFilter}
+            label="Status"
+            options={[
+              { value: "all", label: `All · ${contracts.length}` },
+              { value: "draft", label: `Draft · ${statusCounts.draft ?? 0}` },
+              { value: "sent", label: `Sent · ${statusCounts.sent ?? 0}` },
+              { value: "partially_signed", label: `Partial · ${statusCounts.partially_signed ?? 0}` },
+              { value: "executed", label: `Executed · ${statusCounts.executed ?? 0}` },
+              { value: "active", label: `Active · ${statusCounts.active ?? 0}` },
+              { value: "expired", label: `Expired · ${statusCounts.expired ?? 0}` },
+              { value: "terminated", label: `Terminated · ${statusCounts.terminated ?? 0}` },
+            ]}
+          />
+
+          <ListFilterSelect
+            value={templateFilter}
+            onChange={setTemplateFilter}
+            label="Template"
+            options={[
+              { value: "all", label: "All templates" },
+              ...templates.map((t) => ({ value: t.id, label: t.name })),
+            ]}
+          />
+
+          <Button variant="primary" size="sm" onClick={() => setWizardOpen(true)}>
             <Plus className="size-3.5" />
             New contract
           </Button>
         </div>
-        <div className="rounded-[12px] border border-hairline bg-surface-1">
+
+        <div className="overflow-hidden rounded-[12px] border border-hairline bg-surface-1">
           <div className="overflow-x-auto">
             <table className="w-full text-[13px]">
               <thead>
-                <tr className="border-b border-hairline text-[11px] uppercase tracking-wide text-fg-tertiary">
+                <tr className="border-b border-hairline bg-surface-2 text-[10px] font-medium uppercase tracking-wide text-fg-tertiary">
                   <Th>Number</Th>
-                  <Th>Holder</Th>
+                  <Th>Member</Th>
                   <Th>Template</Th>
                   <Th>Effective</Th>
                   <Th className="text-right">Annual</Th>
@@ -199,7 +283,7 @@ export function ContractsView() {
                 </tr>
               </thead>
               <tbody>
-                {contracts.map((c) => (
+                {filteredContracts.map((c) => (
                   <ContractRow
                     key={c.id}
                     c={c}
@@ -207,13 +291,15 @@ export function ContractsView() {
                     // Row click drills into the contract detail / renewal
                     // workflow page, not the inline edit dialog. The
                     // detail page exposes its own edit affordance.
-                    onClick={() => router.push(`/slips/contracts/${c.id}`)}
+                    onClick={() => router.push(`/services/contracts/${c.id}`)}
                   />
                 ))}
-                {contracts.length === 0 && (
+                {filteredContracts.length === 0 && (
                   <tr>
                     <td colSpan={6} className="px-4 py-6 text-center text-fg-subtle">
-                      No contracts yet.
+                      {contracts.length === 0
+                        ? "No contracts yet."
+                        : "No contracts match these filters."}
                     </td>
                   </tr>
                 )}
@@ -222,6 +308,8 @@ export function ContractsView() {
           </div>
         </div>
       </section>
+
+      <ContractWizard open={wizardOpen} onOpenChange={setWizardOpen} />
 
       <RecordEditDialog<Contract>
         open={contractOpen}
@@ -373,7 +461,7 @@ function ContractRow({
         {boater ? (
           // stopPropagation so clicking the boater link doesn't also open the edit dialog
           <Link
-            href={`/holders/${boater.id}`}
+            href={`/members/${boater.id}`}
             className="text-primary hover:underline"
             onClick={(e) => e.stopPropagation()}
           >
