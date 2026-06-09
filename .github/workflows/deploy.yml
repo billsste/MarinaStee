@@ -132,7 +132,7 @@ jobs:
           # IPs at the edge so a curl from here would get a bot
           # challenge HTML even when the app is healthy.
           ssh root@${{ secrets.SERVER_HOST }} \
-            "chmod +x /tmp/marina-stee-smoke.sh && PORT=3600 /tmp/marina-stee-smoke.sh"
+            "chmod +x /tmp/marina-stee-smoke.sh && PORT=3700 /tmp/marina-stee-smoke.sh"
 
       - name: Report image hash
         if: always()

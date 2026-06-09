@@ -1,10 +1,10 @@
 # Marina Stee — production docker-compose (droplet).
 #
-# Bind 127.0.0.1:3600:3000 so only Cloudflare/Nginx talks to the app.
+# Bind 127.0.0.1:3700:3000 so only Cloudflare/Nginx talks to the app.
 # Public traffic terminates at Cloudflare; the droplet exposes nothing
 # directly to the open internet.
 #
-# Port 3600 is reserved for marina-stee in the workspace App Registry
+# Port 3700 is reserved for marina-stee in the workspace App Registry
 # (CLAUDE.md §8). If another app claims it, update the App Registry
 # table AND this file in lockstep.
 #
@@ -23,7 +23,7 @@ services:
     restart: always
     ports:
       # 127.0.0.1 not 0.0.0.0 — Cloudflare-or-nothing.
-      - "127.0.0.1:3600:3000"
+      - "127.0.0.1:3700:3000"
     environment:
       NODE_ENV: production
       PORT: "3000"
