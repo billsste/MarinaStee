@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Marina Stee — droplet-side smoke test.
 #
-# Runs FROM the droplet against localhost:3700 (the docker-compose
+# Runs FROM the droplet against localhost:4300 (the docker-compose
 # host port). MUST run on the droplet itself, not from a GitHub
 # Actions runner — runner IPs are blocked at the Cloudflare edge
 # and would fail with a bot-challenge HTML page even when the app
@@ -15,7 +15,7 @@
 
 set -euo pipefail
 
-PORT="${PORT:-3700}"
+PORT="${PORT:-4300}"
 URL="http://localhost:${PORT}"
 MAX_ATTEMPTS=24
 INTERVAL=5

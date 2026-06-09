@@ -7,12 +7,12 @@ This guide assumes the workspace conventions are already familiar — see `~/Des
 ## Target environment
 
 - **Public hostname**: `marina.stee-suite.com` (subdomain of the stee-suite root). Eventual marketing domain `marinastee.com` will redirect here, then flip the canonical when Convex + Clerk land.
-- **Droplet**: `138.197.80.16` (alias `stee-suite-droplet`) — shared with `admin.stee-suite.com` (port 3500) + support/dashboard DBs (5433/5434). Marina Stee binds port **3700**.
+- **Droplet**: `138.197.80.16` (alias `stee-suite-droplet`) — shared with `admin.stee-suite.com` (port 3500) + support/dashboard DBs (5433/5434). Marina Stee binds port **4300**.
 - **Cloudflare zone**: `stee-suite.com` (proxy enabled, orange cloud). SSL mode Full (Strict) with the same origin cert Nginx already terminates for `admin.stee-suite.com`.
 
 ## Port reservation
 
-Marina Stee claims **port 3700** on the host (bound `127.0.0.1:3700` → container `:3000`). Workspace App Registry currently uses:
+Marina Stee claims **port 4300** on the host (bound `127.0.0.1:4300` → container `:3000`). Workspace App Registry currently uses:
 
 | Port | App |
 |---|---|
@@ -22,7 +22,7 @@ Marina Stee claims **port 3700** on the host (bound `127.0.0.1:3700` → contain
 | 3300 | Zayid Law CRM |
 | 3400 | FieldPass |
 | 3500 | support-server (Stee-Suite) |
-| **3700** | **Marina Stee** |
+| **4300** | **Marina Stee** |
 | 5433 / 5434 | support / dashboard databases |
 
 Add the row to the App Registry table in `~/Desktop/Claude/CLAUDE.md` §8 when this lands.
@@ -134,7 +134,7 @@ server {
   ssl_certificate_key /etc/ssl/cloudflare/stee-suite.com.key;
 
   location / {
-    proxy_pass         http://127.0.0.1:3700;
+    proxy_pass         http://127.0.0.1:4300;
     proxy_http_version 1.1;
     proxy_set_header   Host              $host;
     proxy_set_header   X-Real-IP         $remote_addr;
@@ -211,11 +211,11 @@ Image pruning runs after every successful deploy, but the most recent 2–3 SHAs
 # Build the same image GHA will build
 docker build --build-arg CACHEBUST=$(git rev-parse HEAD) -t marina-stee-local .
 
-# Run it locally on 3700 to catch standalone-build regressions
+# Run it locally on 4300 to catch standalone-build regressions
 APP_IMAGE=marina-stee-local docker compose up
 
 # Then in another shell
-curl http://localhost:3700/apply  # should return 200 with no-referrer header
+curl http://localhost:4300/apply  # should return 200 with no-referrer header
 ```
 
 If this works locally, the GHA pipeline will work — the only delta is the SSH ship step.
