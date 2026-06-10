@@ -1058,20 +1058,33 @@ const BASE_CONTRACT_TEMPLATES: ContractTemplate[] = [
     version: 1,
     default_term_months: 12,
     default_billing_cadence: "annual",
-    body_preview: "This Space Rental Agreement is between Marina Vista, dba Marina Del Sur, Damsite Marina (LANDLORD) and the TENANT. By signing, the TENANT confirms all information provided during onboarding is accurate and agrees to the terms below.",
+    body_preview: "This Space Rental Agreement is between {{marina.legal_name}} (LANDLORD) and the TENANT. By signing, the TENANT confirms all information provided during onboarding is accurate and agrees to the terms below.",
     required_signers: ["boater", "manager"],
     auto_renew: true,
     body_markdown: `# SPACE RENTAL AGREEMENT
 
-**Marina Vista, dba Marina Del Sur, Damsite Marina**
-101 South Highway 195 – PO Box 1070 Elephant Butte NM 87935  Office # (575) 744-5567
-www.marinadelsur.us & www.thedamsite.com
+**{{marina.legal_name}}**
+{{marina.address}}  Office # {{marina.phone}}
+{{marina.website}}
 
-This Space Rental Agreement is entered into between **Marina Vista**, County of Sierra, State of New Mexico (hereinafter LANDLORD) and the TENANT identified during onboarding. This AGREEMENT is for the period specified at registration, inclusive and may be renewable for additional periods upon agreement of both parties as to rates, conditions, space involved and payment of all specified fees and services.
+This Space Rental Agreement is entered into between **{{marina.legal_name}}** of {{marina.city}}, {{marina.state}} (hereinafter LANDLORD) and **{{boater.full_name}}** (hereinafter TENANT), of {{boater.address}}, contact {{boater.email}} / {{boater.phone}}. This AGREEMENT is for the period **{{contract.effective_start}}** through **{{contract.effective_end}}**, inclusive and may be renewable for additional periods upon agreement of both parties as to rates, conditions, space involved and payment of all specified fees and services.
+
+## Holder & Slip
+
+- **Tenant:** {{boater.full_name}}
+- **Address:** {{boater.address}}
+- **Email / Phone:** {{boater.email}} · {{boater.phone}}
+- **Slip:** {{slip.number}} · Dock {{slip.dock}} (max LOA {{slip.max_loa}})
+- **Vessel:** {{vessel.year}} {{vessel.make}} {{vessel.model}} — "{{vessel.name}}"
+- **Vessel registration:** {{vessel.registration}} ({{vessel.length_feet}} ft LOA)
+- **Contract #:** {{contract.number}}
+- **Term:** {{contract.effective_start}} → {{contract.effective_end}}
+- **Annual rate:** {{contract.annual_rate}}
+- **Billing cadence:** {{contract.billing_cadence}}
 
 **TENANT payments for slip fees, electricity, and POS items are due on the FIRST of each month.** A twelve-dollar charge is added to each billing except annual. TENANT Agrees that all charges for space rental, repairs, gas, oil, hardware, lines or any other services or accessories accruing under the terms of this contract shall give the LANDLORD a valid lien upon TENANT'S boat and/or motor and that no boat shall be removed from the LANDLORD'S premises until all charges are fully paid.
 
-It is agreed that this contract is performable, and venue shall be in the State and County of LANDLORD. All notices required by this Boat Space Rental Agreement shall be to the addresses provided during registration.
+It is agreed that this contract is performable, and venue shall be in the State and County of LANDLORD. All notices required by this Boat Space Rental Agreement shall be sent to {{boater.full_name}} at {{boater.address}} ({{boater.email}}).
 
 **I (we) acknowledge receipt of a copy of this agreement.**
 
@@ -1133,7 +1146,7 @@ It is agreed that this contract is performable, and venue shall be in the State 
 
 28. ENTIRE AGREEMENT: This agreement contains the entire understanding between the TENANT and the LANDLORD and no other representation or inducement, verbal or written, has been made which is not contained in this agreement. LANDLORD and TENANT agree that if any paragraph or provision violates the law and is unenforceable, the rest of the contract will be valid.
 
-29. In case of on-site sale of craft, BOR requires that the seller use Marina Vista as the broker. There is a 10% brokerage fee plus applicable taxes required for each sale. No craft may be sold on the Marina without this brokerage contract in place. All other sales must take place off-site, and no signage advertising craft is allowed.
+29. In case of on-site sale of craft, BOR requires that the seller use {{marina.legal_name}} as the broker. There is a 10% brokerage fee plus applicable taxes required for each sale. No craft may be sold on the Marina without this brokerage contract in place. All other sales must take place off-site, and no signage advertising craft is allowed.
 
 It is agreed that this contract is performable, and venue shall be in the State and County of LANDLORD. All notices required by this Boat Space Rental Agreement or the Law shall be to the addresses stated herein.
 
@@ -1141,13 +1154,15 @@ It is agreed that this contract is performable, and venue shall be in the State 
 
 ---
 
-**By signing below, I certify that all information I provided during this registration (contact details, vessel information, emergency contacts, and insurance information) is accurate and complete. I agree to notify Marina Vista promptly of any changes. I have read, understood, and agree to all terms and conditions above.**
+**By signing below, I certify that all information I provided during this registration (contact details, vessel information, emergency contacts, and insurance information) is accurate and complete. I agree to notify {{marina.legal_name}} promptly of any changes. I have read, understood, and agree to all terms and conditions above.**
 
 **Tenant signature:** ______________________________ Date: ____________
+{{boater.full_name}}
 
 **Secondary tenant (if applicable):** ______________________________ Date: ____________
 
 **Marina Manager:** ______________________________ Date: ____________
+{{marina.legal_name}}
 `,
   },
   {
@@ -1163,7 +1178,7 @@ It is agreed that this contract is performable, and venue shall be in the State 
     auto_renew: false,
     body_markdown: `# Seasonal Slip Lease Agreement
 
-**Marina:** Marina Stee
+**Marina:** {{marina.short_name}}
 **Holder:** {{boater.display_name}} ({{boater.code}})
 **Slip:** {{slip.number}} · {{slip.dock}}
 **Vessel:** {{vessel.name}}
@@ -1172,7 +1187,7 @@ It is agreed that this contract is performable, and venue shall be in the State 
 ---
 
 ## 1. Slip Assignment
-Marina Stee grants the Holder use of slip **{{slip.number}}** for the season specified above. The Holder must remove the vessel by the end-of-season date; daily storage fees apply thereafter.
+{{marina.short_name}} grants the Holder use of slip **{{slip.number}}** for the season specified above. The Holder must remove the vessel by the end-of-season date; daily storage fees apply thereafter.
 
 ## 2. Term
 This Agreement covers a single season and does **not** auto-renew. A new agreement is required for the following season.
@@ -1194,7 +1209,7 @@ Identical to the Annual Slip Lease. No live-aboard, no commercial use, abide by 
 {{boater.display_name}}
 
 **Marina Manager:** ______________________________ Date: ____________
-Marina Stee
+{{marina.short_name}}
 `,
   },
   {
@@ -1204,12 +1219,12 @@ Marina Stee
     version: 1,
     default_term_months: 1,
     default_billing_cadence: "transient",
-    body_preview: "Marina Stee will winterize the vessel described below…",
+    body_preview: "{{marina.short_name}} will winterize the vessel described below…",
     required_signers: ["boater"],
     auto_renew: false,
     body_markdown: `# Winterization Service Agreement
 
-**Marina:** Marina Stee
+**Marina:** {{marina.short_name}}
 **Holder:** {{boater.display_name}}
 **Vessel:** {{vessel.name}} ({{vessel.year}} {{vessel.make}} {{vessel.model}})
 **Scheduled date:** {{contract.effective_start}}
@@ -1217,7 +1232,7 @@ Marina Stee
 ---
 
 ## Scope of Work
-Marina Stee will perform standard winterization on the vessel above:
+{{marina.short_name}} will perform standard winterization on the vessel above:
 - Engine flush + fuel stabilizer
 - Plumbing antifreeze (fresh water + head)
 - Battery disconnect + trickle-charge setup

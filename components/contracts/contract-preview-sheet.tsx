@@ -6,8 +6,11 @@ import {
   Calendar,
   Check,
   ChevronLeft,
+  ChevronDown,
   Edit3,
   Loader2,
+  Mail,
+  MessageSquare,
   Send,
   Sparkles,
   User,
@@ -15,17 +18,26 @@ import {
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { BOATERS, SLIPS, VESSELS, formatMoney } from "@/lib/mock-data";
+import {
+  BOATERS,
+  CONTRACT_TEMPLATES,
+  SLIPS,
+  VESSELS,
+  formatMoney,
+} from "@/lib/mock-data";
 import {
   addCommunication,
   mintContractSignatureToken,
   updateContract,
   useCurrentTenant,
   useContracts,
+  useMarinaProfile,
   logAuditLocal,
 } from "@/lib/client-store";
+import { resolveContractTokens } from "@/lib/contract-tokens";
 import type { Communication } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { ContractMarkdown } from "@/components/contracts/contract-markdown";
 
 /*
  * Contract Preview Sheet
@@ -62,6 +74,7 @@ export function ContractPreviewSheet({
 }) {
   const contracts = useContracts();
   const tenant = useCurrentTenant();
+  const marina = useMarinaProfile();
   const contract = contractId
     ? contracts.find((c) => c.id === contractId)
     : undefined;
@@ -93,10 +106,60 @@ export function ContractPreviewSheet({
     ? VESSELS.find((v) => v.id === contract.vessel_id)
     : undefined;
   const slip = SLIPS.find((s) => s.id === contract.slip_id);
-  const body = contract.drafted_body_markdown ?? "";
+
+  // Effective body = whatever the operator sees rendered. A freshly-
+  // generated contract has an empty `drafted_body_markdown` and the
+  // body falls back to the template, with merge tokens resolved against
+  // the boater/vessel/slip/contract record. Previously `body` only
+  // pulled from `drafted_body_markdown`, so `hasBody` was false and the
+  // Send button silently disabled — clicks did nothing.
+  const template = CONTRACT_TEMPLATES.find(
+    (t) => t.id === contract.template_id,
+  );
+  const body =
+    contract.drafted_body_markdown && contract.drafted_body_markdown.trim()
+      ? contract.drafted_body_markdown
+      : boater
+        ? resolveContractTokens(
+            contract,
+            boater,
+            vessel,
+            slip,
+            template?.body_markdown,
+            marina,
+          )
+        : "";
 
   const hasBody = body.trim().length > 0;
   const alreadySent = contract.status !== "draft";
+
+  // What the operator will actually send. Computed here so the preview
+  // card and the send handler stay in lockstep — change either, change
+  // both. Kept simple (no template engine) — the same `${...}` flavor
+  // sendToCustomer() uses inline.
+  const outbound = (() => {
+    if (!boater) return null;
+    const channel = boater.communication_prefs.preferred_channel;
+    const recipient =
+      channel === "email"
+        ? (boater.primary_contact.email ?? "")
+        : (boater.primary_contact.phone ?? "");
+    const subject = slip
+      ? `Welcome to your slip ${slip.number} — complete onboarding`
+      : "Welcome — complete onboarding";
+    const greeting = `Hi ${boater.first_name},`;
+    const slipLine = slip
+      ? `Your slip ${slip.number} at ${slip.dock} is reserved. `
+      : "";
+    const bodyPlain =
+      `${greeting}\n\n` +
+      `${slipLine}Please complete the following to activate your contract:\n\n` +
+      `  1. Review and sign your agreement\n` +
+      `  2. Add a payment method\n\n` +
+      `It takes about 2 minutes — we'll email a secure link as soon as you click Send.\n\n` +
+      `Reply to this message if you have any questions.`;
+    return { channel, recipient, subject, body: bodyPlain };
+  })();
 
   function saveEdits() {
     if (editingBody.trim() === body.trim()) {
@@ -174,6 +237,21 @@ export function ContractPreviewSheet({
   function sendToCustomer() {
     if (!contract || !boater) return;
     setSending(true);
+    // If the operator never opened "Edit text" / "Ask agent", the
+    // contract's `drafted_body_markdown` is still empty even though
+    // they're looking at a fully-rendered template body. Snapshot
+    // what's on screen so the signed copy preserves the exact text
+    // that was shown at send time.
+    if (
+      hasBody &&
+      (!contract.drafted_body_markdown ||
+        !contract.drafted_body_markdown.trim())
+    ) {
+      updateContract(contract.id, {
+        drafted_body_markdown: body,
+        drafted_at: new Date().toISOString(),
+      });
+    }
     // Mint the signature token + dispatch the onboarding comm. Same
     // logic that used to live in the wizard's submit handler; moved
     // here so the operator's "Send" click is what actually pushes the
@@ -316,8 +394,8 @@ export function ContractPreviewSheet({
                   </div>
                 )}
                 {hasBody && (
-                  <article className="prose-marina max-w-none text-[13.5px] leading-relaxed text-fg">
-                    <RenderedMarkdown body={body} />
+                  <article className="max-w-none">
+                    <ContractMarkdown body={body} variant="preview" />
                   </article>
                 )}
               </div>
@@ -421,6 +499,13 @@ export function ContractPreviewSheet({
               )}
             </div>
 
+            {/* What will be sent — preview the outbound message so the
+                operator can see EXACTLY what lands in the boater's inbox
+                before clicking Send. Hidden once already sent. */}
+            {!alreadySent && outbound && (
+              <OutboundPreview outbound={outbound} />
+            )}
+
             {/* Manual edit + send */}
             <div className="flex flex-1 flex-col gap-2 px-4 py-3">
               <Button
@@ -493,117 +578,78 @@ export function ContractPreviewSheet({
   );
 }
 
+// Markdown rendering lives in components/contracts/contract-markdown.tsx
+// as the single source of truth across operator + holder surfaces.
+
 /**
- * Lightweight markdown renderer for the contract body. Contract
- * templates use a constrained subset — headings, paragraphs, lists,
- * bold/italic — so we don't need a full markdown library. This
- * keeps the component dependency-free and the rendered output
- * deterministic for the preview.
+ * OutboundPreview — collapsed-by-default card showing the operator
+ * exactly what will land in the boater's inbox / SMS when they click
+ * Send to customer. The actual subject + body are computed in the
+ * parent so the preview and the send action can't drift.
  */
-function RenderedMarkdown({ body }: { body: string }) {
-  // Split into blocks separated by blank lines. Each block becomes a
-  // heading, list, or paragraph.
-  const blocks = body.split(/\n\s*\n/);
+function OutboundPreview({
+  outbound,
+}: {
+  outbound: {
+    channel: "email" | "sms" | "voice";
+    recipient: string;
+    subject: string;
+    body: string;
+  };
+}) {
+  const [expanded, setExpanded] = React.useState(false);
+  const ChannelIcon = outbound.channel === "email" ? Mail : MessageSquare;
+  const channelLabel =
+    outbound.channel === "email"
+      ? "Email"
+      : outbound.channel === "sms"
+        ? "SMS"
+        : "Voice";
+
   return (
-    <>
-      {blocks.map((block, i) => {
-        const trimmed = block.trim();
-        if (!trimmed) return null;
-
-        // Heading
-        const h = trimmed.match(/^(#{1,6})\s+(.*)$/m);
-        if (h && !trimmed.includes("\n")) {
-          const level = h[1].length;
-          const text = h[2];
-          const cls =
-            level === 1
-              ? "text-[22px] font-semibold text-fg mt-6 mb-3"
-              : level === 2
-                ? "text-[17px] font-semibold text-fg mt-5 mb-2"
-                : "text-[14px] font-semibold text-fg mt-4 mb-1.5";
-          return (
-            <div key={i} className={cls}>
-              {renderInline(text)}
-            </div>
-          );
-        }
-
-        // List (ordered or unordered)
-        if (/^[*-]\s/.test(trimmed) || /^\d+\.\s/.test(trimmed)) {
-          const isOrdered = /^\d+\.\s/.test(trimmed);
-          const items = trimmed
-            .split(/\n/)
-            .map((l) => l.replace(/^([*-]|\d+\.)\s+/, ""))
-            .filter(Boolean);
-          if (isOrdered) {
-            return (
-              <ol
-                key={i}
-                className="my-2 ml-5 list-decimal space-y-1 text-fg-muted"
-              >
-                {items.map((it, j) => (
-                  <li key={j}>{renderInline(it)}</li>
-                ))}
-              </ol>
-            );
-          }
-          return (
-            <ul
-              key={i}
-              className="my-2 ml-5 list-disc space-y-1 text-fg-muted"
-            >
-              {items.map((it, j) => (
-                <li key={j}>{renderInline(it)}</li>
-              ))}
-            </ul>
-          );
-        }
-
-        // Paragraph (may contain multiple soft-wrapped lines)
-        return (
-          <p key={i} className="my-2 text-fg-muted">
-            {trimmed.split("\n").map((line, j, arr) => (
-              <React.Fragment key={j}>
-                {renderInline(line)}
-                {j < arr.length - 1 && <br />}
-              </React.Fragment>
-            ))}
-          </p>
-        );
-      })}
-    </>
+    <div className="border-b border-hairline px-4 py-3">
+      <button
+        type="button"
+        onClick={() => setExpanded((v) => !v)}
+        className="flex w-full items-center justify-between gap-2 text-left"
+        aria-expanded={expanded}
+      >
+        <div className="flex min-w-0 flex-1 items-center gap-1.5">
+          <ChannelIcon className="size-3 shrink-0 text-fg-tertiary" />
+          <span className="text-[10px] font-medium uppercase tracking-wider text-fg-tertiary">
+            Will send via {channelLabel}
+          </span>
+        </div>
+        <ChevronDown
+          className={cn(
+            "size-3.5 shrink-0 text-fg-tertiary transition-transform",
+            expanded && "rotate-180",
+          )}
+        />
+      </button>
+      <div className="mt-1.5 truncate text-[12px] text-fg-subtle">
+        To: <span className="text-fg">{outbound.recipient || "—"}</span>
+      </div>
+      <div className="mt-0.5 truncate text-[12px] text-fg-subtle">
+        Subject:{" "}
+        <span className="text-fg" title={outbound.subject}>
+          {outbound.subject}
+        </span>
+      </div>
+      {expanded && (
+        <pre className="mt-2 max-h-[200px] overflow-auto whitespace-pre-wrap rounded-[6px] border border-hairline bg-surface-1 p-2.5 font-sans text-[11.5px] leading-[1.5] text-fg">
+          {outbound.body}
+        </pre>
+      )}
+      {!expanded && (
+        <button
+          type="button"
+          onClick={() => setExpanded(true)}
+          className="mt-1.5 text-[11px] font-medium text-primary hover:underline"
+        >
+          Show full message
+        </button>
+      )}
+    </div>
   );
-}
-
-/**
- * Inline tokens — bold (**x**), italic (*x* or _x_). Simple regex
- * splitter; contract templates don't need link/code/etc.
- */
-function renderInline(text: string): React.ReactNode {
-  const parts: React.ReactNode[] = [];
-  // Bold first (** has priority over *), then italic.
-  const tokens = text.split(/(\*\*[^*]+\*\*|\*[^*]+\*|_[^_]+_)/g);
-  for (let i = 0; i < tokens.length; i++) {
-    const t = tokens[i];
-    if (!t) continue;
-    if (t.startsWith("**") && t.endsWith("**")) {
-      parts.push(
-        <strong key={i} className="font-semibold text-fg">
-          {t.slice(2, -2)}
-        </strong>,
-      );
-    } else if (
-      (t.startsWith("*") && t.endsWith("*")) ||
-      (t.startsWith("_") && t.endsWith("_"))
-    ) {
-      parts.push(
-        <em key={i} className="italic">
-          {t.slice(1, -1)}
-        </em>,
-      );
-    } else {
-      parts.push(<React.Fragment key={i}>{t}</React.Fragment>);
-    }
-  }
-  return parts;
 }

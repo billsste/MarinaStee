@@ -143,7 +143,7 @@ const STEPS: WizardStep[] = [
   { id: "customer", label: "Customer" },
   { id: "job", label: "Job" },
   { id: "scope", label: "Scope" },
-  { id: "schedule", label: "Schedule & estimate" },
+  { id: "schedule", label: "Schedule" },
   { id: "review", label: "Review" },
 ];
 
@@ -344,10 +344,22 @@ export function NewWorkOrderWizard({
   // empty (fresh open, no persisted state), seed the boater in. Only
   // meaningful for the service branch; cleaning derives its boater from
   // the source pick.
+  //
+  // The Customer step itself is bypassed via next()/back() (see
+  // skipCustomerStep), not via auto-advance on open — that way the Class
+  // step still runs first and the operator picks Service vs Cleaning
+  // before we decide whether to skip ahead.
   React.useEffect(() => {
     if (!open) return;
     if (defaultBoaterId && draft.boaterId === "" && !draft.subjectDirty) {
       setDraft((d) => ({ ...d, boaterId: defaultBoaterId }));
+    }
+    // ALSO recover from a stale persisted state: if a previous run got
+    // saved on the Customer step (step 1) and the wizard is now being
+    // re-opened from a customer profile, jump past it. Stops them
+    // landing on the locked card with no way forward except Continue.
+    if (defaultBoaterId && persisted.step === 1 && draft.workClass === "service") {
+      setStepIdx(2);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, defaultBoaterId]);
@@ -563,11 +575,24 @@ export function NewWorkOrderWizard({
   ][stepIdx];
 
   // ── Actions ──────────────────────────────────────────────────────────
+  // When launched from a customer profile (defaultBoaterId set), the
+  // service-branch Customer step has no choices — holder is locked, no
+  // walk-in option. Skip past it in both directions so the operator's
+  // Continue/Back clicks don't land on a dead-weight step. The cleaning
+  // branch still uses the Customer step (source = booking/rental).
+  const skipCustomerStep =
+    !!defaultBoaterId && draft.workClass === "service";
   function next() {
-    if (stepIdx < STEPS.length - 1) setStepIdx((i) => i + 1);
+    if (stepIdx < STEPS.length - 1) {
+      const jump = stepIdx === 0 && skipCustomerStep ? 2 : 1;
+      setStepIdx((i) => i + jump);
+    }
   }
   function back() {
-    if (stepIdx > 0) setStepIdx((i) => i - 1);
+    if (stepIdx > 0) {
+      const jump = stepIdx === 2 && skipCustomerStep ? 2 : 1;
+      setStepIdx((i) => i - jump);
+    }
   }
   function close() {
     clearPersisted();
@@ -788,6 +813,39 @@ export function NewWorkOrderWizard({
       {/* Step 1 — Customer (service: holder/walk-in; cleaning: source) */}
       {stepIdx === 1 && draft.workClass === "service" && (
         <div className="space-y-4">
+          {defaultBoaterId && selectedBoater ? (
+            // Launched from a customer profile — the holder is fixed.
+            // No walk-in toggle, no picker. Just a read-only confirmation
+            // card so the operator sees who the work order is being
+            // attached to. This step also auto-advances on open (see
+            // the defaultBoaterId effect above), so this view only shows
+            // if the operator navigates back to it.
+            <div className="rounded-[10px] border border-hairline bg-surface-2 p-4">
+              <div className="text-[11px] uppercase tracking-wide text-fg-tertiary">
+                Work order for
+              </div>
+              <div className="mt-1 flex items-baseline justify-between gap-3">
+                <div className="text-[15px] font-semibold text-fg">
+                  {selectedBoater.display_name}
+                </div>
+                {selectedBoater.code && (
+                  <div className="text-[11px] uppercase tracking-wide text-fg-tertiary">
+                    {selectedBoater.code}
+                  </div>
+                )}
+              </div>
+              <div className="mt-1 text-[12.5px] text-fg-subtle">
+                {selectedBoater.primary_contact?.email || "no email"} ·{" "}
+                {selectedBoater.primary_contact?.phone || "no phone"}
+              </div>
+              <p className="mt-3 text-[11.5px] text-fg-tertiary">
+                Launched from this holder&apos;s profile. To create a
+                walk-in work order or pick a different holder, start from
+                the Work Orders tab instead.
+              </p>
+            </div>
+          ) : (
+            <>
           {/* Customer-kind toggle. Holder is the default because most
               work orders are for existing customers, but walk-ins are
               a real path. Picking walk-in skips the picker and surfaces
@@ -954,6 +1012,8 @@ export function NewWorkOrderWizard({
                 </Select>
               </Field>
             </div>
+          )}
+            </>
           )}
         </div>
       )}

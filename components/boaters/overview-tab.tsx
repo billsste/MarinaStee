@@ -233,61 +233,90 @@ export function OverviewTab({
           />
         )}
         <Panel title="Contact">
-          <div className="space-y-1">
-            <ContactRow
-              icon={<Mail className="size-3.5" />}
-              label="Email"
-              value={boater.primary_contact.email}
-              placeholder="add email"
-              onSave={(next) =>
-                updateBoater(boater.id, {
-                  primary_contact: { ...boater.primary_contact, email: next },
-                })
-              }
-            />
-            <ContactRow
-              icon={<Phone className="size-3.5" />}
-              label="Phone"
-              value={boater.primary_contact.phone ?? ""}
-              format={(v) => formatPhone(v) ?? v}
-              placeholder="add phone"
-              onSave={(next) =>
-                updateBoater(boater.id, {
-                  primary_contact: { ...boater.primary_contact, phone: next },
-                })
-              }
-            />
-            <ContactRow
-              icon={<MapPin className="size-3.5" />}
-              label="Street"
-              value={boater.address.line1}
-              onSave={(next) =>
-                updateBoater(boater.id, {
-                  address: { ...boater.address, line1: next },
-                })
-              }
-            />
-            <ContactRow
-              icon={<MapPin className="size-3.5 opacity-0" />}
-              label="City / State / Zip"
-              value={`${boater.address.city}, ${boater.address.state} ${boater.address.zip}`}
-              placeholder="add city, state zip"
-              onSave={(next) => {
-                // Parse "City, ST Zip" — best-effort, falls back to leaving
-                // the current values when the format doesn't match.
-                const m = next.match(/^\s*([^,]+?)\s*,\s*([A-Za-z]{2})\s+(\S+)\s*$/);
-                if (!m) return;
-                updateBoater(boater.id, {
-                  address: {
-                    ...boater.address,
-                    city: m[1],
-                    state: m[2].toUpperCase(),
-                    zip: m[3],
-                  },
-                });
-              }}
-            />
-          </div>
+          {(() => {
+            // Build the city/state/zip line in an empty-safe way so the
+            // operator sees the placeholder when nothing is set, not a
+            // bare comma like ", ". Mirrors the address rendering used
+            // on the printed contract.
+            const city = boater.address.city?.trim() ?? "";
+            const state = boater.address.state?.trim() ?? "";
+            const zip = boater.address.zip?.trim() ?? "";
+            const cityStateZip =
+              city && state
+                ? `${city}, ${state}${zip ? ` ${zip}` : ""}`
+                : city || state || zip
+                  ? [city, state, zip].filter(Boolean).join(" ")
+                  : "";
+            return (
+              <div className="-mx-1 grid gap-0.5">
+                <ContactRow
+                  icon={<Mail className="size-3.5" />}
+                  label="Email"
+                  value={boater.primary_contact.email}
+                  placeholder="Add email"
+                  onSave={(next) =>
+                    updateBoater(boater.id, {
+                      primary_contact: {
+                        ...boater.primary_contact,
+                        email: next,
+                      },
+                    })
+                  }
+                />
+                <ContactRow
+                  icon={<Phone className="size-3.5" />}
+                  label="Phone"
+                  value={boater.primary_contact.phone ?? ""}
+                  format={(v) => formatPhone(v) ?? v}
+                  placeholder="Add phone"
+                  onSave={(next) =>
+                    updateBoater(boater.id, {
+                      primary_contact: {
+                        ...boater.primary_contact,
+                        phone: next,
+                      },
+                    })
+                  }
+                />
+                <ContactRow
+                  icon={<MapPin className="size-3.5" />}
+                  label="Street"
+                  value={boater.address.line1}
+                  placeholder="Add street"
+                  onSave={(next) =>
+                    updateBoater(boater.id, {
+                      address: { ...boater.address, line1: next },
+                    })
+                  }
+                />
+                <ContactRow
+                  // Same MapPin slot, intentionally blank so the row
+                  // aligns with Street above without a duplicate icon.
+                  icon={null}
+                  label="City, State ZIP"
+                  value={cityStateZip}
+                  placeholder="Add city, state ZIP"
+                  onSave={(next) => {
+                    // Parse "City, ST Zip" — best-effort, falls back to
+                    // leaving the current values when the format doesn't
+                    // match.
+                    const m = next.match(
+                      /^\s*([^,]+?)\s*,\s*([A-Za-z]{2})\s+(\S+)\s*$/,
+                    );
+                    if (!m) return;
+                    updateBoater(boater.id, {
+                      address: {
+                        ...boater.address,
+                        city: m[1],
+                        state: m[2].toUpperCase(),
+                        zip: m[3],
+                      },
+                    });
+                  }}
+                />
+              </div>
+            );
+          })()}
           {boater.additional_contacts.length > 0 && (
             <div className="mt-3 border-t border-hairline pt-2.5">
               <div className="mb-1.5 text-[10px] uppercase tracking-wide text-fg-tertiary">
@@ -304,12 +333,27 @@ export function OverviewTab({
               </ul>
             </div>
           )}
-          <div className="mt-3 border-t border-hairline pt-2.5 text-[11px] text-fg-tertiary">
-            Prefers <span className="font-medium capitalize text-fg-subtle">{boater.communication_prefs.preferred_channel}</span>
+          <div className="mt-3 flex flex-wrap items-center gap-x-1.5 gap-y-1 border-t border-hairline pt-2.5 text-[11px] text-fg-tertiary">
+            <span className="inline-flex items-center gap-1 rounded-full bg-surface-2 px-2 py-0.5">
+              Prefers
+              <span className="font-medium capitalize text-fg">
+                {boater.communication_prefs.preferred_channel}
+              </span>
+            </span>
             {boater.communication_prefs.do_not_contact_after && (
-              <> · Quiet after {boater.communication_prefs.do_not_contact_after}</>
+              <span className="inline-flex items-center gap-1 rounded-full bg-surface-2 px-2 py-0.5">
+                Quiet after
+                <span className="font-medium text-fg">
+                  {boater.communication_prefs.do_not_contact_after}
+                </span>
+              </span>
             )}
-            <> · Language <span className="uppercase text-fg-subtle">{boater.communication_prefs.language}</span></>
+            <span className="inline-flex items-center gap-1 rounded-full bg-surface-2 px-2 py-0.5">
+              Language
+              <span className="font-medium uppercase text-fg">
+                {boater.communication_prefs.language}
+              </span>
+            </span>
           </div>
         </Panel>
 
@@ -853,7 +897,7 @@ function ContactRow({
   value,
   onSave,
   format,
-  placeholder = "add",
+  placeholder = "Add",
 }: {
   icon: React.ReactNode;
   label: string;
@@ -864,20 +908,37 @@ function ContactRow({
   format?: (v: string) => string;
   placeholder?: string;
 }) {
+  const isEmpty = !value;
   return (
-    <div className="group flex items-start gap-2 py-1 text-[13px]">
-      <span className="mt-0.5 text-fg-tertiary">{icon}</span>
-      <div className="min-w-0 flex-1">
-        <div className="text-[11px] text-fg-tertiary">{label}</div>
-        <div className="text-fg">
+    <div
+      className={cn(
+        // Two-column grid: 22px icon gutter + value column. Locked column
+        // widths mean Street and City/State ZIP rows align cleanly even
+        // though only Street has a leading map-pin icon.
+        "group grid grid-cols-[22px_minmax(0,1fr)] items-start gap-x-2 rounded-[8px] px-1 py-1.5 text-[13px] transition-colors hover:bg-surface-2/60",
+      )}
+    >
+      <span className="mt-[2px] flex h-4 items-center justify-center text-fg-tertiary">
+        {icon}
+      </span>
+      <div className="min-w-0">
+        <div className="text-[10.5px] uppercase tracking-wide text-fg-tertiary">
+          {label}
+        </div>
+        <div className="mt-0.5 text-fg">
           {onSave ? (
             <InlineEditCell
               value={value ?? ""}
               placeholder={placeholder}
               onSave={(next) => onSave(String(next))}
-              format={(v) => (v ? (format ? format(String(v)) : String(v)) : placeholder)}
+              format={(v) =>
+                v ? (format ? format(String(v)) : String(v)) : placeholder
+              }
               inputClassName="w-full max-w-[280px]"
-              className="text-[13px] text-fg"
+              className={cn(
+                "text-[13.5px]",
+                isEmpty ? "text-fg-tertiary" : "text-fg",
+              )}
             />
           ) : (
             <span className="truncate">{value ?? "—"}</span>

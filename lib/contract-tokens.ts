@@ -2,7 +2,8 @@
  * resolveContractTokens
  *
  * Replaces all {{token}} merge fields in a contract body_markdown
- * with values drawn from the boater, vessel, slip, and contract records.
+ * with values drawn from the boater, vessel, slip, contract, and
+ * marina profile records.
  *
  * Token catalogue:
  *   {{boater.first_name}}          {{boater.last_name}}
@@ -19,12 +20,24 @@
  *   {{contract.number}}            {{contract.effective_start}}
  *   {{contract.effective_end}}     {{contract.annual_rate}}
  *   {{contract.billing_cadence}}
+ *   {{marina.name}}                {{marina.legal_name}}
+ *   {{marina.email}}               {{marina.phone}}
+ *   {{marina.website}}             {{marina.address}}
+ *   {{marina.address_line1}}       {{marina.city}}
+ *   {{marina.state}}               {{marina.zip}}
+ *   {{marina.country}}
  *
  * Any unrecognised {{token}} is left as-is so templates that contain
  * tokens outside this catalogue can still render partially.
  */
 
-import type { Boater, Contract, Slip, Vessel } from "@/lib/types";
+import type {
+  Boater,
+  Contract,
+  MarinaProfile,
+  Slip,
+  Vessel,
+} from "@/lib/types";
 
 export function resolveContractTokens(
   contract: Contract,
@@ -36,7 +49,14 @@ export function resolveContractTokens(
    * when the contract hasn't been individually drafted yet. Falls back
    * to contract.drafted_body_markdown when not provided.
    */
-  bodyOverride?: string
+  bodyOverride?: string,
+  /**
+   * Optional marina profile — when provided, {{marina.*}} tokens
+   * resolve to the operator's tenant config (name, address, contact).
+   * When omitted, {{marina.*}} tokens are left as the literal placeholder
+   * so the contract still renders for preview purposes.
+   */
+  marina?: MarinaProfile | null | undefined,
 ): string {
   const body = bodyOverride ?? contract.drafted_body_markdown ?? "";
   if (!body) return "";
@@ -103,6 +123,33 @@ export function resolveContractTokens(
         : "—",
     "contract.billing_cadence": contract.billing_cadence,
   };
+
+  // Marina (tenant operator profile) ─────────────────────────────────────
+  if (marina) {
+    const marinaAddress = [
+      marina.address_line1,
+      marina.address_line2,
+      marina.city && marina.state
+        ? `${marina.city}, ${marina.state} ${marina.postal_code ?? ""}`.trim()
+        : marina.city ?? marina.state ?? marina.postal_code ?? "",
+    ]
+      .filter(Boolean)
+      .join(", ")
+      .trim();
+
+    tokens["marina.name"] = marina.display_name;
+    tokens["marina.legal_name"] = marina.display_name; // alias for now
+    tokens["marina.short_name"] = marina.short_name;
+    tokens["marina.email"] = marina.email ?? "";
+    tokens["marina.phone"] = marina.phone ?? "";
+    tokens["marina.website"] = marina.website ?? "";
+    tokens["marina.address"] = marinaAddress;
+    tokens["marina.address_line1"] = marina.address_line1 ?? "";
+    tokens["marina.city"] = marina.city ?? "";
+    tokens["marina.state"] = marina.state ?? "";
+    tokens["marina.zip"] = marina.postal_code ?? "";
+    tokens["marina.country"] = marina.country ?? "";
+  }
 
   // Replace all {{token}} occurrences ──────────────────────────────────────
   return body.replace(/\{\{([^}]+)\}\}/g, (_match: string, key: string) => {

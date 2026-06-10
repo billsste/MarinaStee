@@ -15,7 +15,13 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { SignaturePad, capturePadDataUrl } from "@/components/sign/signature-pad";
-import { BOATERS, SLIPS, VESSELS } from "@/lib/mock-data";
+import {
+  BOATERS,
+  MARINA_PROFILES_BY_TENANT,
+  SEED_TENANT_ID,
+  SLIPS,
+  VESSELS,
+} from "@/lib/mock-data";
 import {
   addCardForBoater,
   getContractByToken as getContractByTokenFromStore,
@@ -31,6 +37,7 @@ import { resolveContractTokens } from "@/lib/contract-tokens";
 import type { CardOnFile } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import type { Boater, Contract, Slip, Vessel } from "@/lib/types";
+import { ContractMarkdown } from "@/components/contracts/contract-markdown";
 
 /*
  * Boater-facing onboarding wizard. Resolves a Contract by its
@@ -967,9 +974,25 @@ function ReviewSignStep({
   const templates = useContractTemplates();
   const template = templates.find((t) => t.id === contract.template_id);
 
+  // Holder onboarding is unauthenticated — the operator's marina profile
+  // is looked up by the boater's tenant_id directly from the seed table
+  // (no Clerk session is in scope here). Falls back to the seed tenant
+  // when the boater predates per-row tenant scoping. {{marina.*}} tokens
+  // render as literal placeholders if no profile matches.
+  const tenantId = boater.tenant_id ?? SEED_TENANT_ID;
+  const marina = MARINA_PROFILES_BY_TENANT[tenantId];
+
   const resolvedBody = React.useMemo(
-    () => resolveContractTokens(contract, boater, vessel, slip, template?.body_markdown),
-    [contract, boater, vessel, slip, template?.body_markdown]
+    () =>
+      resolveContractTokens(
+        contract,
+        boater,
+        vessel,
+        slip,
+        template?.body_markdown,
+        marina,
+      ),
+    [contract, boater, vessel, slip, template?.body_markdown, marina],
   );
 
   const canSign =
@@ -1014,7 +1037,7 @@ function ReviewSignStep({
       <div className="mt-4 max-h-[60vh] overflow-y-auto rounded-[12px] border border-hairline bg-white shadow-inner">
         <div className="mx-auto max-w-[680px] px-10 py-12 text-[13.5px] leading-[1.65] text-[#1a1a1a]">
           {resolvedBody ? (
-            <ContractBody markdown={resolvedBody} />
+            <ContractMarkdown body={resolvedBody} variant="compact" />
           ) : (
             <ContractSummaryFallback
               contract={contract}
@@ -1091,114 +1114,9 @@ function ReviewSignStep({
   );
 }
 
-// ────────────────────────────────────────────────────────────────────────────
-// Contract body renderer (markdown → styled HTML)
-// Uses a minimal inline renderer so we don't pull in a full markdown dep.
-// ────────────────────────────────────────────────────────────────────────────
-
-function ContractBody({ markdown }: { markdown: string }) {
-  const html = React.useMemo(() => renderMarkdown(markdown), [markdown]);
-  return (
-    <div
-      className="prose prose-sm max-w-none text-[13px] text-fg [&_h1]:text-[15px] [&_h2]:text-[14px] [&_h3]:text-[13px] [&_p]:leading-relaxed [&_ul]:pl-4 [&_ol]:pl-4"
-      // eslint-disable-next-line react/no-danger
-      dangerouslySetInnerHTML={{ __html: html }}
-    />
-  );
-}
-
-/**
- * Minimal markdown → HTML converter sufficient for contract templates.
- * Handles: headings (# ## ###), bold (**text**), italic (*text*),
- * unordered lists (- item), ordered lists (1. item), blank-line paragraphs,
- * horizontal rules (---), and line breaks.
- *
- * Not a full CommonMark parser — keeps the bundle impact zero and is
- * enough for the standard marina contract template structure.
- */
-function renderMarkdown(md: string): string {
-  const lines = md.split("\n");
-  const out: string[] = [];
-  let inList = false;
-  let listOrdered = false;
-
-  function closeList() {
-    if (inList) {
-      out.push(listOrdered ? "</ol>" : "</ul>");
-      inList = false;
-    }
-  }
-
-  function inlineFormat(s: string): string {
-    return s
-      .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
-      .replace(/\*(.+?)\*/g, "<em>$1</em>")
-      .replace(/`(.+?)`/g, "<code>$1</code>");
-  }
-
-  for (const rawLine of lines) {
-    const line = rawLine;
-
-    // Heading
-    const h3 = line.match(/^###\s+(.*)/);
-    const h2 = line.match(/^##\s+(.*)/);
-    const h1 = line.match(/^#\s+(.*)/);
-    if (h1 || h2 || h3) {
-      closeList();
-      const level = h3 ? 3 : h2 ? 2 : 1;
-      const text = (h3 ?? h2 ?? h1)![1];
-      out.push(`<h${level}>${inlineFormat(text)}</h${level}>`);
-      continue;
-    }
-
-    // HR
-    if (/^---+$/.test(line.trim())) {
-      closeList();
-      out.push("<hr />");
-      continue;
-    }
-
-    // Unordered list item
-    const ulMatch = line.match(/^[-*]\s+(.*)/);
-    if (ulMatch) {
-      if (!inList || listOrdered) {
-        closeList();
-        out.push("<ul>");
-        inList = true;
-        listOrdered = false;
-      }
-      out.push(`<li>${inlineFormat(ulMatch[1])}</li>`);
-      continue;
-    }
-
-    // Ordered list item
-    const olMatch = line.match(/^\d+\.\s+(.*)/);
-    if (olMatch) {
-      if (!inList || !listOrdered) {
-        closeList();
-        out.push("<ol>");
-        inList = true;
-        listOrdered = true;
-      }
-      out.push(`<li>${inlineFormat(olMatch[1])}</li>`);
-      continue;
-    }
-
-    // Blank line
-    if (line.trim() === "") {
-      closeList();
-      out.push("<br />");
-      continue;
-    }
-
-    // Regular paragraph line
-    closeList();
-    out.push(`<p>${inlineFormat(line)}</p>`);
-  }
-
-  closeList();
-  return out.join("\n");
-}
+// Markdown rendering lives in components/contracts/contract-markdown.tsx —
+// shared with the operator-side Contract Preview Sheet so both surfaces
+// see identical structure + numbering.
 
 // ────────────────────────────────────────────────────────────────────────────
 // Fallback summary when no body_markdown is set on the contract/template

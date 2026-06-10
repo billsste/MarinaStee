@@ -63,8 +63,12 @@ export function WizardProgress({
           // step reachable. clickable = visited (always) OR future-and-
           // clickAny (edit mode).
           const clickable = isVisited || (clickAny && !isCurrent);
+          // No `truncate` — labels wrap to a second line on narrow modals
+          // instead of clipping with `…` (which produced "SCHEDULE & ESTIMA…"
+          // on the 6-step work-order stepper). `leading-tight` keeps the
+          // wrapped row from blowing out the header height.
           const baseCls = cn(
-            "flex-1 truncate text-[11px] uppercase tracking-wide transition-colors",
+            "flex-1 text-[11px] uppercase leading-tight tracking-wide transition-colors break-words",
             isCurrent && "font-medium text-fg",
             clickable && !isCurrent && "text-fg-subtle hover:text-fg cursor-pointer",
             isFuture && !clickable && "text-fg-tertiary"
