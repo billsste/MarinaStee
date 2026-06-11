@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Plus, Sparkles, Trash2 } from "lucide-react";
+import { ChevronDown, Plus, Sparkles, Trash2 } from "lucide-react";
 import { Combobox } from "@/components/ui/combobox";
 import { Field, TextInput, Select, Textarea } from "@/components/create-sheet";
 import { WizardShell } from "@/components/wizard/wizard-shell";
@@ -132,36 +132,36 @@ type DraftState = {
   internalNotes: string;
 };
 
-// v3 — dropped haul_storage from WorkOrderClass, added a Class step at
-// the front, repurposed recurrence to cleaning, and added the cleaning
-// source picker. v2 drafts wouldn't hydrate cleanly into this shape so
-// the key bump intentionally orphans them.
-const STORAGE_KEY = "new-work-order-wizard:v3";
+// v4 — collapsed Job + Scope + Schedule into one "Details" step and
+// dropped the redundant Subject field (auto-derived from activity +
+// vessel at submit). v3 drafts won't hydrate cleanly into the new
+// stepIdx mapping (Review moved from 5 → 3) so the key bump
+// intentionally orphans them.
+const STORAGE_KEY = "new-work-order-wizard:v4";
 
+// stepIdx ↔ rail entry
+//   0 = class       (Service vs Cleaning) — skipped from profile launch
+//   1 = customer    (Holder/Walk-in OR cleaning source) — skipped from profile launch (service)
+//   2 = details     (activity + priority + vessel + slip + description + photos + optional schedule)
+//   3 = review
 const STEPS: WizardStep[] = [
   { id: "class", label: "Class" },
   { id: "customer", label: "Customer" },
-  { id: "job", label: "Job" },
-  { id: "scope", label: "Scope" },
-  { id: "schedule", label: "Schedule" },
+  { id: "details", label: "Details" },
   { id: "review", label: "Review" },
 ];
 
 const STEP_TITLES = [
   "What kind of work order?",
   "Who's the work order for?",
-  "What's the job?",
-  "Scope and details",
-  "Schedule and estimate",
+  "What's the work?",
   "Review and create",
 ];
 
 const STEP_SUBTITLES = [
   "Service covers everything tied to a holder's own boat. Cleaning covers fleet-boat turnover after a club booking or a paid rental.",
   "", // overridden inline based on class
-  "Pick the activity type, give it a one-line subject, and set the priority.",
-  "", // overridden inline based on class
-  "Optional dates, assignee, ballpark estimate, and staff-only notes.",
+  "Pick the activity, vessel, slip, and what needs to happen. Schedule + assignee + estimate are tucked in an optional section at the bottom.",
   "Confirm and we'll create the work order.",
 ];
 
@@ -556,42 +556,94 @@ export function NewWorkOrderWizard({
       : draft.customerKind === "holder"
         ? draft.boaterId.length > 0
         : walkInFormValid;
-  const canStep2 = draft.subject.trim().length > 0;
-  const canStep3 = true; // vessel/slip optional on service; derived on cleaning
-  // Recurring cleanings need a start date — the create_work_order
-  // handler only stamps `recurring_next_date` when start_date is set
+  // Details step gate — subject is auto-derived from activity+vessel
+  // (the visible field was dropped in v4), so it's almost always set
+  // by the time the operator hits Continue. The remaining real check
+  // is the recurring-cleaning anchor: the create_work_order handler
+  // only stamps `recurring_next_date` when start_date is set
   // (see agent-actions.ts), and a recurring WO without an anchor is
-  // dead weight: the walker never picks it up. Require start_date
-  // explicitly when the operator flips Recurring on.
-  const canStep4 = draft.isRecurring ? draft.startDate.trim().length > 0 : true;
-  const canStep5 = canStep1 && canStep2; // matches the original canSubmit
-  const canContinue = [
-    canStep0,
-    canStep1,
-    canStep2,
-    canStep3,
-    canStep4,
-    canStep5,
-  ][stepIdx];
+  // dead weight — the walker never picks it up.
+  const canStep2 =
+    draft.subject.trim().length > 0 &&
+    (draft.isRecurring ? draft.startDate.trim().length > 0 : true);
+  // Review step gate — all upstream gates must clear.
+  const canStep3 = canStep0 && canStep1 && canStep2;
+  const canContinue = [canStep0, canStep1, canStep2, canStep3][stepIdx];
 
   // ── Actions ──────────────────────────────────────────────────────────
   // When launched from a customer profile (defaultBoaterId set), the
-  // service-branch Customer step has no choices — holder is locked, no
-  // walk-in option. Skip past it in both directions so the operator's
-  // Continue/Back clicks don't land on a dead-weight step. The cleaning
-  // branch still uses the Customer step (source = booking/rental).
+  // Customer step has no choices (holder is locked, walk-in n/a) AND
+  // the Class step is moot — Cleaning is for fleet boats only, so a
+  // holder-profile launch is always a Service. Skip both in
+  // navigation so the operator goes straight to Details.
+  const skipClassStep = !!defaultBoaterId;
   const skipCustomerStep =
     !!defaultBoaterId && draft.workClass === "service";
+
+  // Stepper rail hides any skipped slots — earlier revs only made
+  // navigation jump, but the skipped step still appeared (filled-in)
+  // in the rail. That confused operators who saw a step they never
+  // visited marked as complete.
+  const visibleSteps = React.useMemo(
+    () =>
+      STEPS.filter((s) => {
+        if (skipClassStep && s.id === "class") return false;
+        if (skipCustomerStep && s.id === "customer") return false;
+        return true;
+      }),
+    [skipClassStep, skipCustomerStep],
+  );
+
+  // Translate between original stepIdx (canonical 0=class, 1=customer,
+  // 2=details, 3=review) and the visible rail index. visibleCurrentIdx
+  // is what we pass to the WizardProgress component.
+  const visibleCurrentIdx = React.useMemo(() => {
+    // Walk STEPS from 0..stepIdx and count how many are visible up
+    // through (and including) the current step.
+    let count = 0;
+    for (let i = 0; i <= stepIdx; i++) {
+      const step = STEPS[i];
+      if (skipClassStep && step.id === "class") continue;
+      if (skipCustomerStep && step.id === "customer") continue;
+      count++;
+    }
+    // count is the 1-based visible position; convert to 0-based index.
+    return Math.max(0, count - 1);
+  }, [stepIdx, skipClassStep, skipCustomerStep]);
+
+  // Rail clicks come back as visible indices; translate to original.
+  function onStepClick(visibleIdx: number) {
+    const target = visibleSteps[visibleIdx];
+    if (!target) return;
+    const originalIdx = STEPS.findIndex((s) => s.id === target.id);
+    if (originalIdx >= 0) setStepIdx(originalIdx);
+  }
+
+  // next() / back() walk through STEPS but skip the hidden slots,
+  // so a profile-launched Service flow goes details → review on Continue
+  // (no dead-weight Class or Customer stop) and back through review →
+  // details only.
+  function isVisible(idx: number): boolean {
+    const step = STEPS[idx];
+    if (!step) return false;
+    if (skipClassStep && step.id === "class") return false;
+    if (skipCustomerStep && step.id === "customer") return false;
+    return true;
+  }
   function next() {
-    if (stepIdx < STEPS.length - 1) {
-      const jump = stepIdx === 0 && skipCustomerStep ? 2 : 1;
-      setStepIdx((i) => i + jump);
+    for (let i = stepIdx + 1; i < STEPS.length; i++) {
+      if (isVisible(i)) {
+        setStepIdx(i);
+        return;
+      }
     }
   }
   function back() {
-    if (stepIdx > 0) {
-      const jump = stepIdx === 2 && skipCustomerStep ? 2 : 1;
-      setStepIdx((i) => i - jump);
+    for (let i = stepIdx - 1; i >= 0; i--) {
+      if (isVisible(i)) {
+        setStepIdx(i);
+        return;
+      }
     }
   }
   function close() {
@@ -607,7 +659,7 @@ export function NewWorkOrderWizard({
   }
 
   function submit() {
-    if (!canStep5) return;
+    if (!canStep3) return;
     setSubmitting(true);
     try {
       const isCleaning = draft.workClass === "cleaning";
@@ -717,16 +769,17 @@ export function NewWorkOrderWizard({
 
   if (!open) return null;
 
-  // Step subtitle is mostly static but two steps depend on class.
+  // Step subtitle is mostly static but Customer + Details depend on
+  // workClass for clearer copy.
   const stepSubtitle =
     stepIdx === 1
       ? draft.workClass === "cleaning"
         ? "Cleaning rides on a club booking or a paid rental. Pick the source — the customer and fleet boat fill in from there."
         : "Pick an existing holder or capture a walk-in customer. Either way everything downstream — vessels, slips, billing — ties back to this person."
-      : stepIdx === 3
+      : stepIdx === 2
         ? draft.workClass === "cleaning"
-          ? "The fleet boat is set from the source. Edit the checklist and turn on a recurring cleaning program if this isn't a one-off."
-          : "Vessel and slip, the customer-facing scope, and any photos."
+          ? "Set the fleet boat, slip, checklist, and (optionally) turn on a recurring cleaning program. Schedule + assignee are in the expander below."
+          : "Pick the activity, vessel, slip, and what needs to happen. Schedule + assignee + estimate are tucked in an optional section at the bottom."
         : STEP_SUBTITLES[stepIdx];
 
   // Cleaning source options for the Combobox — labels show customer +
@@ -769,9 +822,9 @@ export function NewWorkOrderWizard({
       eyebrow="New work order"
       title={STEP_TITLES[stepIdx]}
       subtitle={stepSubtitle}
-      steps={STEPS}
-      currentIdx={stepIdx}
-      onStepClick={(idx) => setStepIdx(idx)}
+      steps={visibleSteps}
+      currentIdx={visibleCurrentIdx}
+      onStepClick={onStepClick}
       stepsClickAny={true}
       rightRail={undefined}
       chrome="modal"
@@ -1130,12 +1183,21 @@ export function NewWorkOrderWizard({
         </div>
       )}
 
-      {/* Step 2 — Job */}
+      {/* Step 2 — Details (Job + Scope merged; Schedule lives below as a
+          collapsible "Optional" expander). The Subject field was dropped
+          in v4 — it auto-filled from activity+vessel anyway, so we
+          derive it at submit and let operators rename from the WO
+          detail page in the rare case they want something custom. */}
       {stepIdx === 2 && (
         <div className="space-y-4">
           <div className="grid gap-3 sm:grid-cols-2">
-            <Field label="Activity type">
-              <Select
+            <FieldLabel label="Activity type">
+              {/* Combobox per CLAUDE.md §6.3 — activity_type has 8
+                  options on the seeded marina (Winterization, Bottom
+                  paint, Service/repair, Inspection, Haul-out, Pump-out,
+                  Staff task, Other) so a search-as-you-type list is
+                  required. */}
+              <Combobox
                 value={draft.activityType}
                 onChange={(v) =>
                   setDraft((d) => ({
@@ -1143,14 +1205,14 @@ export function NewWorkOrderWizard({
                     activityType: v as WorkOrderActivityType,
                   }))
                 }
-              >
-                {activityTypeOptions.map((o) => (
-                  <option key={o.id} value={o.value}>
-                    {o.label}
-                  </option>
-                ))}
-              </Select>
-            </Field>
+                options={activityTypeOptions.map((o) => ({
+                  value: o.value,
+                  label: o.label,
+                }))}
+                placeholder="Pick an activity…"
+                searchPlaceholder="Search activities…"
+              />
+            </FieldLabel>
             <FieldLabel label="Priority">
               <div className="grid grid-cols-4 gap-1.5">
                 {(
@@ -1173,37 +1235,12 @@ export function NewWorkOrderWizard({
               </div>
             </FieldLabel>
           </div>
-
-          <Field
-            label="Subject"
-            required
-            hint={
-              draft.subjectDirty
-                ? undefined
-                : "Auto-filled from the activity + vessel. Type to override."
-            }
-          >
-            <TextInput
-              value={draft.subject}
-              onChange={(e) =>
-                setDraft((d) => ({
-                  ...d,
-                  subject: e.target.value,
-                  subjectDirty: true,
-                }))
-              }
-              placeholder={
-                subjectVesselName
-                  ? `${activityLabel(draft.activityType)} — ${subjectVesselName}`
-                  : `${activityLabel(draft.activityType)} — vessel name`
-              }
-            />
-          </Field>
         </div>
       )}
 
-      {/* Step 3 — Scope */}
-      {stepIdx === 3 && draft.workClass === "service" && (
+      {/* Scope fields — service variant. Renders in the same Details
+          step as the activity+priority block above. */}
+      {stepIdx === 2 && draft.workClass === "service" && (
         <div className="space-y-4">
           <Field
             label="Vessel"
@@ -1366,7 +1403,8 @@ export function NewWorkOrderWizard({
         </div>
       )}
 
-      {stepIdx === 3 && draft.workClass === "cleaning" && (
+      {/* Scope fields — cleaning variant. Same Details step. */}
+      {stepIdx === 2 && draft.workClass === "cleaning" && (
         <div className="space-y-4">
           {/* Vessel — auto-derived from the source pick. Read-only card. */}
           <FieldLabel
@@ -1582,9 +1620,25 @@ export function NewWorkOrderWizard({
         </div>
       )}
 
-      {/* Step 4 — Schedule & estimate */}
-      {stepIdx === 4 && (
-        <div className="space-y-4">
+      {/* Schedule, assignee, estimate, internal notes — all optional
+          power-user fields. Lives inside the Details step as a
+          collapsible expander so the default form is short. Most work
+          orders are filed without any of these set; the operator who
+          cares can open the panel and fill them in. Uses native
+          <details> for accessibility (Tab + Enter toggles, screen
+          readers announce expanded/collapsed). */}
+      {stepIdx === 2 && (
+        <details className="group rounded-[10px] border border-hairline bg-surface-2/30 transition-colors">
+          <summary className="flex cursor-pointer items-center justify-between rounded-[10px] px-4 py-2.5 text-[13px] font-medium text-fg hover:bg-surface-2/60 [&::-webkit-details-marker]:hidden">
+            <span className="flex items-center gap-2 text-fg-subtle">
+              <span>+ Schedule, assignee &amp; estimate</span>
+              <span className="text-[11px] font-normal text-fg-tertiary">
+                (optional)
+              </span>
+            </span>
+            <ChevronDown className="size-4 text-fg-tertiary transition-transform group-open:rotate-180" />
+          </summary>
+          <div className="space-y-4 border-t border-hairline px-4 pb-4 pt-4">
           <div className="grid gap-3 sm:grid-cols-3">
             <Field label="Start">
               <TextInput
@@ -1680,11 +1734,13 @@ export function NewWorkOrderWizard({
               placeholder="Tech-only context: warranty status, prior failed parts, customer quirks…"
             />
           </Field>
-        </div>
+          </div>
+        </details>
       )}
 
-      {/* Step 5 — Review */}
-      {stepIdx === 5 && (
+      {/* Review (now at stepIdx 3 since Job + Scope + Schedule
+          collapsed into Details at stepIdx 2). */}
+      {stepIdx === 3 && (
         <div className="space-y-3">
           <ReviewBlock
             label="Work class"
@@ -1762,7 +1818,7 @@ export function NewWorkOrderWizard({
               <ReviewBlock
                 label="Vessel"
                 value={selectedVessel ? selectedVessel.name : "—"}
-                onEdit={() => setStepIdx(3)}
+                onEdit={() => setStepIdx(2)}
               />
               <ReviewBlock
                 label="Slip"
@@ -1774,7 +1830,7 @@ export function NewWorkOrderWizard({
                       )})`
                     : "—"
                 }
-                onEdit={() => setStepIdx(3)}
+                onEdit={() => setStepIdx(2)}
               />
             </>
           )}
@@ -1782,7 +1838,7 @@ export function NewWorkOrderWizard({
             <ReviewBlock
               label="Description"
               value={draft.description.trim()}
-              onEdit={() => setStepIdx(3)}
+              onEdit={() => setStepIdx(2)}
             />
           )}
           {draft.attachmentNames.length > 0 && (
@@ -1791,7 +1847,7 @@ export function NewWorkOrderWizard({
               value={`${draft.attachmentNames.length} file${
                 draft.attachmentNames.length === 1 ? "" : "s"
               } · ${draft.attachmentNames.join(", ")}`}
-              onEdit={() => setStepIdx(3)}
+              onEdit={() => setStepIdx(2)}
             />
           )}
           {draft.workClass === "cleaning" && draft.checklist.length > 0 && (
@@ -1803,7 +1859,7 @@ export function NewWorkOrderWizard({
                 .map((c) => c.label)
                 .filter(Boolean)
                 .join(", ")}`}
-              onEdit={() => setStepIdx(3)}
+              onEdit={() => setStepIdx(2)}
             />
           )}
           {draft.workClass === "cleaning" && draft.isRecurring && (
@@ -1814,7 +1870,7 @@ export function NewWorkOrderWizard({
               ).toLowerCase()}${
                 draft.startDate ? ` · next after ${draft.startDate}` : ""
               }`}
-              onEdit={() => setStepIdx(3)}
+              onEdit={() => setStepIdx(2)}
             />
           )}
           {(draft.startDate || draft.endDate || draft.dueDate) && (
@@ -1827,7 +1883,7 @@ export function NewWorkOrderWizard({
               ]
                 .filter(Boolean)
                 .join(" · ")}
-              onEdit={() => setStepIdx(4)}
+              onEdit={() => setStepIdx(2)}
             />
           )}
           <ReviewBlock
@@ -1837,7 +1893,7 @@ export function NewWorkOrderWizard({
                 ? `${selectedAssignee.name} · ${selectedAssignee.role}`
                 : "Unassigned"
             }
-            onEdit={() => setStepIdx(4)}
+            onEdit={() => setStepIdx(2)}
           />
           {(draft.estimatedHours.trim() || draft.estimatedTotal.trim()) && (
             <ReviewBlock
@@ -1849,14 +1905,14 @@ export function NewWorkOrderWizard({
               ]
                 .filter(Boolean)
                 .join(" · ")}
-              onEdit={() => setStepIdx(4)}
+              onEdit={() => setStepIdx(2)}
             />
           )}
           {draft.internalNotes.trim().length > 0 && (
             <ReviewBlock
               label="Internal notes"
               value={draft.internalNotes.trim()}
-              onEdit={() => setStepIdx(4)}
+              onEdit={() => setStepIdx(2)}
             />
           )}
 
@@ -1883,8 +1939,8 @@ export function NewWorkOrderWizard({
       )}
 
       <WizardFooter
-        stepIndex={stepIdx}
-        totalSteps={STEPS.length}
+        stepIndex={visibleCurrentIdx}
+        totalSteps={visibleSteps.length}
         stepLabel={STEPS[stepIdx].label}
         onBack={back}
         onContinue={stepIdx === STEPS.length - 1 ? submit : next}

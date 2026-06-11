@@ -1035,7 +1035,12 @@ function ReviewSignStep({
           with letter-style margins. Wider than the rest of the wizard so
           it reads professionally. Scroll inside, not page-scroll. */}
       <div className="mt-4 max-h-[60vh] overflow-y-auto rounded-[12px] border border-hairline bg-white shadow-inner">
-        <div className="mx-auto max-w-[680px] px-10 py-12 text-[13.5px] leading-[1.65] text-[#1a1a1a]">
+        {/* Contract document ink — intentionally hard-coded #3C4E63
+            (Soft Navy) regardless of the operator's app theme so the
+            printed/scanned signed copy looks the same as the holder's
+            on-screen render. NOT a brand token because contract bodies
+            must be theme-independent. */}
+        <div className="mx-auto max-w-[680px] px-10 py-12 text-[13.5px] leading-[1.65] text-[#3C4E63]">
           {resolvedBody ? (
             <ContractMarkdown body={resolvedBody} variant="compact" />
           ) : (

@@ -9,6 +9,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ListFilterSelect } from "@/components/ui/list-filter-select";
+import { cn } from "@/lib/utils";
 import { formatMoney, getCurrentReservation, getOpenBalance, getSlip, initialsOf } from "@/lib/mock-data";
 import {
   useBoaters,
@@ -268,8 +269,14 @@ export function BoaterList() {
     | "lapsed"
     | "pending"
     | "vacant";
+  // Lifecycle segment — "Members" hides waitlist-only prospects from
+  // the operator's default view (no point seeing 500 prospects when
+  // working the slip-holder roster). "Waitlist" inverts that;
+  // "All" shows the unified list. Tag-based so the cost is O(1).
+  type LifecycleSegment = "members" | "waitlist" | "all";
   const [cadence, setCadence] = React.useState<CadenceFilter>("all");
   const [status, setStatus] = React.useState<StatusFilter>("all");
+  const [segment, setSegment] = React.useState<LifecycleSegment>("members");
 
   // counts + filtered both read row.rowStatus (pre-classified in the rows
   // memo) — no per-render classification, no Date.now() instability.
@@ -286,9 +293,30 @@ export function BoaterList() {
     return c;
   }, [rows]);
 
+  // Lifecycle segment counts — used as labels on the segmented control.
+  const segmentCounts = React.useMemo(() => {
+    let waitlist = 0;
+    for (const r of rows) {
+      if ((r.boater.tags ?? []).includes("waitlist-only")) waitlist++;
+    }
+    return { members: rows.length - waitlist, waitlist, all: rows.length };
+  }, [rows]);
+
   const filtered = React.useMemo(() => {
     const q = query.trim().toLowerCase();
     let out = rows;
+
+    // Lifecycle segment first so the count badges on the cadence /
+    // status filters below reflect the active segment.
+    if (segment === "members") {
+      out = out.filter(
+        (r) => !(r.boater.tags ?? []).includes("waitlist-only"),
+      );
+    } else if (segment === "waitlist") {
+      out = out.filter((r) =>
+        (r.boater.tags ?? []).includes("waitlist-only"),
+      );
+    }
 
     if (cadence !== "all") {
       out = out.filter((r) => r.boater.billing_cadence === cadence);
@@ -309,7 +337,7 @@ export function BoaterList() {
         r.currentReservation?.slip_id.toLowerCase().includes(q)
       );
     });
-  }, [rows, query, cadence, status]);
+  }, [rows, query, cadence, status, segment]);
 
   return (
     // The agent lives on the parent layout (members-client.tsx) so it
@@ -327,6 +355,36 @@ export function BoaterList() {
             placeholder="Find a boater by name, code, slip…"
             className="w-full rounded-[8px] border border-hairline bg-surface-2 py-1.5 pl-8 pr-3 text-[12px] text-fg placeholder:text-fg-tertiary focus:border-hairline-strong focus:outline-none"
           />
+        </div>
+        {/* Lifecycle segment — three-way toggle for the audience the
+            operator is working: active members, waitlist prospects,
+            or everyone. Tags drive the partition (see ensureWaitlist-
+            Boater for the source of the "waitlist-only" tag). */}
+        <div className="inline-flex rounded-[8px] border border-hairline bg-surface-2 p-0.5">
+          {(
+            [
+              { id: "members", label: `Members · ${segmentCounts.members}` },
+              {
+                id: "waitlist",
+                label: `Waitlist · ${segmentCounts.waitlist}`,
+              },
+              { id: "all", label: `All · ${segmentCounts.all}` },
+            ] as { id: LifecycleSegment; label: string }[]
+          ).map((s) => (
+            <button
+              key={s.id}
+              type="button"
+              onClick={() => setSegment(s.id)}
+              className={cn(
+                "rounded-[6px] px-2.5 py-1 text-[11.5px] font-medium transition-colors",
+                segment === s.id
+                  ? "bg-surface-1 text-fg shadow-sm"
+                  : "text-fg-subtle hover:text-fg",
+              )}
+            >
+              {s.label}
+            </button>
+          ))}
         </div>
         <ListFilterSelect
           value={cadence}

@@ -2096,6 +2096,137 @@ export function addWaitlistEntry(e: WaitlistEntry) {
   notify();
 }
 
+/**
+ * Set the boater_id on an existing waitlist entry — used by the lazy-
+ * mint path (a guest entry that gets promoted to a real Boater record
+ * when an operator clicks through to the profile). Distinct from
+ * updateWaitlistEntry's allowed-fields list because boater_id is the
+ * tenancy anchor for the entry and shouldn't be quietly editable.
+ */
+export function linkWaitlistEntryToBoater(
+  entryId: string,
+  boaterId: string,
+): void {
+  state = {
+    ...state,
+    waitlist: state.waitlist.map((w) =>
+      w.id === entryId
+        ? {
+            ...w,
+            boater_id: boaterId,
+            // Once linked, the guest_* fields are dead weight — the
+            // Boater record is the source of truth for name + contact.
+            // Clearing them prevents "did the operator edit the
+            // boater?" / "did they edit the entry?" drift.
+            guest_name: undefined,
+            guest_email: undefined,
+            guest_phone: undefined,
+          }
+        : w,
+    ),
+  };
+  notify();
+  logAuditLocal({
+    actor_user_id: "u_current",
+    actor_label: "Operator",
+    action_type: "waitlist.link_boater",
+    target_entity: "waitlist_entry",
+    target_id: entryId,
+    payload_delta: JSON.stringify({ boater_id: boaterId }),
+  });
+}
+
+/**
+ * Lazy-mint helper — guarantees the entry has a backing Boater.
+ *
+ * Returns the boater_id for the entry. If the entry already has one,
+ * returns it unchanged. Otherwise:
+ *   - Parses the guest_name into first/last (handles both "First Last"
+ *     and "Last, First" forms)
+ *   - Builds a minimal Boater shell tagged "waitlist-only" so the
+ *     /members default-active filter excludes them by default
+ *   - Inserts it, links the entry, returns the new id
+ *
+ * This is the API the row-click handler calls before navigating to
+ * /members/[id]. Callers don't need to know whether a mint happened —
+ * the return value is the right id to navigate to either way.
+ */
+export function ensureWaitlistBoater(entry: WaitlistEntry): string {
+  if (entry.boater_id) return entry.boater_id;
+
+  const guestName = (entry.guest_name ?? "").trim();
+  // Parse "Last, First" → first="First", last="Last"; otherwise split
+  // on whitespace and take last token as surname.
+  let firstName = "";
+  let lastName = "";
+  if (guestName.includes(",")) {
+    const [last, first] = guestName.split(",").map((s) => s.trim());
+    firstName = first ?? "";
+    lastName = last ?? "";
+  } else if (guestName.length > 0) {
+    const parts = guestName.split(/\s+/);
+    lastName = parts.pop() ?? "";
+    firstName = parts.join(" ");
+  }
+  if (!firstName) firstName = "—";
+  if (!lastName) lastName = guestName || "Prospect";
+
+  const newId = `b_wl_${Date.now()}_${Math.random()
+    .toString(36)
+    .slice(2, 8)}`;
+  const display =
+    firstName !== "—" ? `${lastName}, ${firstName}` : lastName;
+
+  const boater: Boater = {
+    id: newId,
+    tenant_id: entry.tenant_id ?? state.currentTenantId,
+    display_name: display,
+    first_name: firstName,
+    last_name: lastName,
+    active: true,
+    billing_cadence: "transient",
+    // Tag so /members can filter waitlist-only prospects out of the
+    // default-active list. The /services/waitlist queue is the surface
+    // operators use to work this segment.
+    tags: ["waitlist-only"],
+    communication_prefs: {
+      preferred_channel: "email",
+      language: "en",
+    },
+    primary_contact: {
+      id: `contact_${newId}_primary`,
+      name: display,
+      role: "self",
+      email: entry.guest_email,
+      phone: entry.guest_phone,
+      preferred_channel: "email",
+      can_be_billed: true,
+    },
+    additional_contacts: [],
+    address: {
+      line1: "",
+      city: "",
+      state: "",
+      zip: "",
+      country: "US",
+    },
+  };
+  addBoater(boater);
+  linkWaitlistEntryToBoater(entry.id, newId);
+  logAuditLocal({
+    actor_user_id: "u_current",
+    actor_label: "Operator",
+    action_type: "boater.mint_from_waitlist",
+    target_entity: "boater",
+    target_id: newId,
+    payload_delta: JSON.stringify({
+      waitlist_entry_id: entry.id,
+      source: "lazy_mint_on_profile_click",
+    }),
+  });
+  return newId;
+}
+
 export function getWaitlistByClaimToken(token: string): WaitlistEntry | undefined {
   return state.waitlist.find((w) => w.claim_token === token);
 }

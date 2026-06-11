@@ -628,6 +628,34 @@ export type AgentAction =
       body: string;
       reason?: string;         // e.g. "renewal follow-up"
     }
+  // ── Help-desk (build-side support) ──────────────────────────
+  // File a ticket with the Marina Stee SaaS team. Distinct from
+  // /support (multi-tenant boater→marina queue). Executor commits to
+  // lib/help-desk.ts's store; renders on /help → My tickets.
+  | {
+      kind: "create_help_ticket";
+      label: string;
+      subject: string;
+      description: string;
+      type: "issue" | "enhancement" | "question";
+      priority: "low" | "normal" | "high" | "urgent";
+      area:
+        | "members"
+        | "slips_docks"
+        | "contracts"
+        | "ledger_pos"
+        | "comms"
+        | "bookings_rentals"
+        | "work_orders"
+        | "inbox"
+        | "agent"
+        | "onboarding"
+        | "settings"
+        | "auth"
+        | "general";
+      steps_to_reproduce?: string;
+      page_url?: string;
+    }
   // ── Holder portal actions ────────────────────────────────────
   // Every holder_* action originates from the boater portal. Executors
   // create staff-visible artifacts (work orders, communications,
@@ -1829,6 +1857,56 @@ export function generateAgentResponse(
       stream: [
         `Open the "+ New boater" sheet on the Boaters page, `,
         `or give me a name like "onboard a new boater named John Smith".`,
+      ],
+    };
+  }
+
+  // ── INTENT: file a help-desk ticket (build-side support) ────
+  // Catches phrases like "file a bug", "report an issue", "request a
+  // feature", "submit feedback". The simulated path can't know exactly
+  // which area is affected, so it asks the operator for a one-liner if
+  // none is provided in the prompt. With the live model + the schema,
+  // the LLM fills in subject + description + area directly.
+  if (
+    /\b(file|submit|open|report|log)\s+(a\s+)?(bug|issue|ticket|feature\s+request|enhancement|complaint|feedback)\b/.test(
+      lp,
+    ) ||
+    /\bsupport\s+(ticket|request)\b/.test(lp)
+  ) {
+    // Try to extract a quoted subject or a "that" clause for the body.
+    const quoted = p.match(/["“]([^"”]+)["”]/);
+    const aboutMatch = p.match(/\b(?:about|regarding|that|because)\s+(.+)/i);
+    const subject = (quoted?.[1] ?? aboutMatch?.[1] ?? "").trim().slice(0, 80);
+    const isFeature = /\b(feature|enhancement|request)\b/.test(lp);
+    const isQuestion = /\bquestion\b/.test(lp);
+    const type: "issue" | "enhancement" | "question" = isFeature
+      ? "enhancement"
+      : isQuestion
+        ? "question"
+        : "issue";
+    const priority: "low" | "normal" | "high" | "urgent" =
+      /\burgent|down|broken|cant\s+(work|use)\b/.test(lp) ? "urgent" : "normal";
+    if (subject.length >= 3) {
+      return {
+        stream: [
+          `Drafting a ${type === "issue" ? "bug" : type} ticket for the Marina Stee team. `,
+          `Approve below to file it — you'll find it on /help once committed.`,
+        ],
+        action: {
+          kind: "create_help_ticket",
+          label: `File a ${type === "issue" ? "bug" : type} ticket: ${subject}`,
+          subject,
+          description: subject, // operator can refine in the modal post-commit
+          type,
+          priority,
+          area: "general",
+        },
+      };
+    }
+    return {
+      stream: [
+        `Tell me what's wrong (one line is enough — e.g. "the work-order stepper truncates 'SCHEDULE & ESTIMA…'") `,
+        `and I'll file it on /help. Or open it manually from the sidebar → Help & feedback.`,
       ],
     };
   }

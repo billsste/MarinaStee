@@ -15,6 +15,7 @@ import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn, downloadCsv, formatPhone } from "@/lib/utils";
+import { formatMoney } from "@/lib/mock-data";
 import { useStore } from "@/lib/client-store";
 import type { AgentAction } from "@/lib/simulated-agent";
 import { executeAgentAction } from "@/lib/agent-actions";
@@ -630,7 +631,7 @@ function ActionCard({
       )}
       {action.kind === "record_payment" && (
         <p className="mt-1 max-w-md text-[12px] text-fg-subtle">
-          ${action.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })} · {action.method}
+          {formatMoney(action.amount)} · {action.method}
           {action.notes && ` · ${action.notes}`}
         </p>
       )}
@@ -700,8 +701,8 @@ function ActionCard({
       )}
       {action.kind === "create_pos_item" && (
         <p className="mt-1 max-w-md text-[12px] text-fg-subtle">
-          {action.location_name} · {action.category} · ${action.price.toFixed(2)}
-          {action.cost != null && ` (cost $${action.cost.toFixed(2)})`}
+          {action.location_name} · {action.category} · {formatMoney(action.price)}
+          {action.cost != null && ` (cost ${formatMoney(action.cost)})`}
         </p>
       )}
       {action.kind === "update_pos_item" && (

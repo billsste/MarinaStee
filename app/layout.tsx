@@ -1,19 +1,45 @@
 import type { Metadata, Viewport } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Fraunces, IBM_Plex_Mono, Outfit } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
 import { AppShell } from "@/components/app-shell";
 import { ServiceWorkerRegister } from "@/components/service-worker-register";
 import { ConvexClerkProvider } from "@/components/providers/convex-clerk-provider";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+/*
+ * Marina Stee — Nantucket type system.
+ *
+ *  - Fraunces (light)  → display warmth (h1, hero numbers, large titles)
+ *  - Outfit            → interface text (body, UI, controls)
+ *  - IBM Plex Mono     → labels + tabular readings (money, units, counts)
+ *
+ * Numbers use tabular figures (`font-variant-numeric: tabular-nums`)
+ * so columns of money / occupancy / hours stay vertically aligned.
+ * Plex Mono is bound to `--font-mono` so any existing Tailwind
+ * `font-mono` class picks it up automatically; the `.tabular` and
+ * `.money-display` utilities in globals.css also resolve to Plex Mono.
+ */
+
+const fraunces = Fraunces({
+  variable: "--font-fraunces",
   subsets: ["latin"],
+  weight: ["300", "400", "500", "600"],
+  style: ["normal", "italic"],
+  display: "swap",
 });
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+const outfit = Outfit({
+  variable: "--font-outfit",
   subsets: ["latin"],
+  weight: ["300", "400", "500", "600", "700"],
+  display: "swap",
+});
+
+const plexMono = IBM_Plex_Mono({
+  variable: "--font-plex-mono",
+  subsets: ["latin"],
+  weight: ["400", "500", "600"],
+  display: "swap",
 });
 
 export const metadata: Metadata = {
@@ -37,9 +63,10 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
+  // Nantucket palette — White on light, Soft Navy on dark.
   themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#fafafa" },
-    { media: "(prefers-color-scheme: dark)", color: "#050608" },
+    { media: "(prefers-color-scheme: light)", color: "#FBFBF8" },
+    { media: "(prefers-color-scheme: dark)", color: "#1F2A38" },
   ],
 };
 
@@ -50,7 +77,7 @@ export default function RootLayout({
     <html
       lang="en"
       suppressHydrationWarning
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${fraunces.variable} ${outfit.variable} ${plexMono.variable} h-full antialiased`}
     >
       <head>
         {/*

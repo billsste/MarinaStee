@@ -810,7 +810,7 @@ function MeterView({ onDone }: { onDone: (m: string) => void }) {
           Current reading
         </label>
         <input
-          type="number"
+          type="text"
           inputMode="decimal"
           value={reading}
           onChange={(e) => setReading(e.target.value)}
@@ -1003,7 +1003,7 @@ function FuelView({ onDone }: { onDone: (m: string) => void }) {
           Gallons
         </label>
         <input
-          type="number"
+          type="text"
           inputMode="decimal"
           step="0.1"
           min="0"
@@ -1204,7 +1204,7 @@ function ReturnForm({
         </label>
         <div className="mt-1 flex items-baseline gap-2">
           <input
-            type="number"
+            type="text"
             inputMode="decimal"
             min="0"
             max="100"
@@ -1226,7 +1226,7 @@ function ReturnForm({
             Engine hours
           </label>
           <input
-            type="number"
+            type="text"
             inputMode="decimal"
             value={hoursIn}
             onChange={(e) => setHoursIn(e.target.value)}
@@ -1254,7 +1254,7 @@ function ReturnForm({
           <div className="flex items-center gap-1">
             <span className="text-[14px] text-fg-subtle">$</span>
             <input
-              type="number"
+              type="text"
               inputMode="decimal"
               min="0"
               step="0.01"

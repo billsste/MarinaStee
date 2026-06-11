@@ -157,10 +157,12 @@ export function QuoteBuilder({
                 </Td>
                 <Td className="text-right">
                   {editable ? (
+                    // type="text" + inputMode="decimal" per CLAUDE.md §6.2
+                    // (no native number spinner). 0.5-step quantity entry
+                    // is still possible — the value is parsed at change.
                     <input
-                      type="number"
-                      step="0.5"
-                      min="0"
+                      type="text"
+                      inputMode="decimal"
                       value={li.qty}
                       onChange={(e) => updateLine(li.id, { qty: Number(e.target.value) || 0 })}
                       className="w-[56px] rounded-[6px] border border-hairline bg-surface-2 px-1.5 py-1 text-right text-[13px] text-fg tabular-nums focus:border-hairline-strong focus:outline-none"
@@ -172,9 +174,8 @@ export function QuoteBuilder({
                 <Td className="text-right">
                   {editable ? (
                     <input
-                      type="number"
-                      step="0.01"
-                      min="0"
+                      type="text"
+                      inputMode="decimal"
                       value={li.unit_price}
                       onChange={(e) => updateLine(li.id, { unit_price: Number(e.target.value) || 0 })}
                       className="w-[88px] rounded-[6px] border border-hairline bg-surface-2 px-1.5 py-1 text-right text-[13px] text-fg tabular-nums focus:border-hairline-strong focus:outline-none"

@@ -49,6 +49,7 @@ import {
 } from "@/lib/client-store";
 import { InlineEditCell } from "@/components/ui/inline-edit-cell";
 import { StaffNotesCard } from "@/components/notes/staff-notes-card";
+import { WaitlistCard } from "@/components/boaters/waitlist-card";
 import { AttachedFeesList } from "@/components/financials/attached-fees-list";
 import type {
   BoatRental,
@@ -212,6 +213,13 @@ export function OverviewTab({
       {draftContract && (
         <ContractDraftPanel contract={draftContract} boater={boater} />
       )}
+
+    {/* Waitlist context — full-width when present, above all other
+        Overview cards. This is "what's pending for this person":
+        position in queue, slip preferences, decline history, and the
+        most-used quick actions. Renders nothing when the boater has
+        no active waitlist entries. */}
+    <WaitlistCard boater={boater} />
 
     <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
       {/* Identity rail — narrower left column on desktop */}

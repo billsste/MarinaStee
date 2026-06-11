@@ -33,9 +33,11 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
+  // Nantucket — match the root layout's theme color so the dock-PWA
+  // chrome doesn't flash a different hue when the install target loads.
   themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#fafafa" },
-    { media: "(prefers-color-scheme: dark)", color: "#0a0c10" },
+    { media: "(prefers-color-scheme: light)", color: "#FBFBF8" },
+    { media: "(prefers-color-scheme: dark)", color: "#1F2A38" },
   ],
 };
 

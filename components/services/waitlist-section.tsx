@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   Archive,
   Check,
@@ -23,6 +24,7 @@ import { BOATERS, SLIPS, formatInches } from "@/lib/mock-data";
 import {
   acceptWaitlistOffer,
   archiveWaitlistEntries,
+  ensureWaitlistBoater,
   bulkStampLastContact,
   declineWaitlistOffer,
   expireWaitlistOffers,
@@ -113,7 +115,25 @@ function inLengthBand(loaInches: number | undefined, band: LengthBand): boolean 
 type CadenceFilter = "all" | WaitlistEntry["reservation_type"];
 
 export function WaitlistSection() {
+  const router = useRouter();
   const entries = useWaitlist();
+
+  /**
+   * Open the boater profile for a waitlist entry — same destination as
+   * clicking a member row, so the experience stays consistent across
+   * the tool. Guest entries (no boater_id yet) get lazy-minted into a
+   * lightweight Boater first so they HAVE a profile to navigate to.
+   * Per the carve-out architecture, every person who interacts with
+   * the marina ends up represented as a Boater eventually; this is
+   * just the moment of conversion for those who came in via the
+   * waitlist queue.
+   */
+  function openProfileForEntry(entryId: string) {
+    const entry = entries.find((e) => e.id === entryId);
+    if (!entry) return;
+    const boaterId = ensureWaitlistBoater(entry);
+    router.push(`/members/${boaterId}`);
+  }
   const [tab, setTab] = useTabUrlState<WaitlistTab>(
     "wl",
     isWaitlistTab,
@@ -549,7 +569,7 @@ export function WaitlistSection() {
                 setPrefilledSlipId(undefined);
                 setFireOpen(true);
               }}
-              onOpen={(entryId) => setSelectedApplicantId(entryId)}
+              onOpen={openProfileForEntry}
               filtersDirty={filtersDirty}
             />
           ) : (
@@ -562,7 +582,7 @@ export function WaitlistSection() {
                   selected={selectedIds.has(entry.id)}
                   onToggle={() => toggleOne(entry.id)}
                   variant={tab}
-                  onOpen={() => setSelectedApplicantId(entry.id)}
+                  onOpen={() => openProfileForEntry(entry.id)}
                   onFire={() => {
                     setPrefilledSlipId(undefined);
                     setFireOpen(true);

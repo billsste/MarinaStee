@@ -17,6 +17,7 @@ import * as React from "react";
 import { Clock4, AlertTriangle, Pencil, Sparkles } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ListFilterSelect } from "@/components/ui/list-filter-select";
 import {
   adjustTimeEntry,
   deriveTimeEntryStatus,
@@ -188,28 +189,31 @@ export function TimeClockSection() {
               Click any row to adjust. Locked once a payroll period closes.
             </p>
           </div>
+          {/* Filter chips — use the standardized ListFilterSelect so
+              this surface matches every other list page in the app
+              (Slips, Contracts, Service rates, Fees, etc.). The Staff
+              filter is dynamic but operator-side staff lists rarely
+              exceed ListFilterSelect's comfort zone of ~10 entries. */}
           <div className="flex items-center gap-2">
-            <select
-              className="rounded-[8px] border border-hairline bg-surface-1 px-2 py-1 text-[12px] text-fg"
+            <ListFilterSelect
               value={filterStaff}
-              onChange={(e) => setFilterStaff(e.target.value)}
-            >
-              <option value="">All staff</option>
-              {staff.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                </option>
-              ))}
-            </select>
-            <select
-              className="rounded-[8px] border border-hairline bg-surface-1 px-2 py-1 text-[12px] text-fg"
-              value={rangeDays}
-              onChange={(e) => setRangeDays(Number(e.target.value) as 7 | 14 | 30)}
-            >
-              <option value={7}>Last 7 days</option>
-              <option value={14}>Last 14 days</option>
-              <option value={30}>Last 30 days</option>
-            </select>
+              onChange={setFilterStaff}
+              label="Staff"
+              options={[
+                { value: "", label: "All staff" },
+                ...staff.map((s) => ({ value: s.id, label: s.name })),
+              ]}
+            />
+            <ListFilterSelect
+              value={String(rangeDays)}
+              onChange={(v) => setRangeDays(Number(v) as 7 | 14 | 30)}
+              label="Range"
+              options={[
+                { value: "7", label: "Last 7 days" },
+                { value: "14", label: "Last 14 days" },
+                { value: "30", label: "Last 30 days" },
+              ]}
+            />
           </div>
         </div>
 

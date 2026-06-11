@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Combobox } from "@/components/ui/combobox";
 import {
   updateMarinaProfile,
   upsertSlip,
@@ -469,17 +470,17 @@ function StaffStep({ onNext }: { onNext: () => void }) {
             <WizInput value={email} onChange={setEmail} placeholder="tiffany@…" />
           </WizField>
           <WizField label="Role">
-            <select
+            {/* 9+ seeded roles, plus operator-defined ones — per
+                CLAUDE.md §6.3 lists with > 5 options must be a
+                searchable combobox so the picker stays scrollable on
+                smaller marinas and typeahead-quick on larger ones. */}
+            <Combobox
               value={roleId}
-              onChange={(e) => setRoleId(e.target.value)}
-              className="w-full rounded-[8px] border border-hairline bg-surface-1 px-3 py-2 text-[13px] text-fg focus:border-hairline-strong focus:outline-none"
-            >
-              {roles.map((r) => (
-                <option key={r.id} value={r.id}>
-                  {r.name}
-                </option>
-              ))}
-            </select>
+              onChange={setRoleId}
+              options={roles.map((r) => ({ value: r.id, label: r.name }))}
+              placeholder="Pick a role…"
+              searchPlaceholder="Search roles…"
+            />
           </WizField>
         </FieldGrid>
         <div className="mt-3 flex items-center justify-end">

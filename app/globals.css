@@ -1,67 +1,76 @@
 @import "tailwindcss";
 
 /*
- * Marina Stee design tokens
- * Linear-derived surface ladder + teal/naval accent + operational status colors.
- * Light tokens live on :root; dark tokens override on .dark (set by next-themes).
+ * Marina Stee — Nantucket palette
+ *
+ *   #7E9BB8  Hydrangea   → primary, info accents, identity pills
+ *   #9C8574  Cedar       → secondary warmth (warm warnings, secondary CTAs)
+ *   #D5D7D2  Cloud       → hairlines + soft surface layer
+ *   #FBFBF8  White       → canvas + surface-1
+ *   #3C4E63  Soft Navy   → primary ink + dark-mode canvas
+ *
+ * Status colors stay legible against the palette without injecting
+ * loud Material reds/greens. Light tokens live on :root; dark tokens
+ * override on .dark (set by next-themes pre-hydration script in layout.tsx).
  */
 
 :root {
-  --canvas: #fafafa;
-  --surface-1: #ffffff;
-  --surface-2: #f4f5f7;
-  --surface-3: #ebedf0;
-  --surface-4: #e2e5ea;
+  --canvas: #FBFBF8;            /* Nantucket White */
+  --surface-1: #FFFFFF;          /* slightly brighter than canvas for cards */
+  --surface-2: #F4F1EC;          /* warm cream — softer than Cloud */
+  --surface-3: #ECE9E2;          /* warm hairline-tinted layer */
+  --surface-4: #D5D7D2;          /* Cloud — deepest surface step */
 
-  --hairline: #e5e7eb;
-  --hairline-strong: #d4d7dc;
-  --hairline-tertiary: #c1c4ca;
+  --hairline: #D5D7D2;           /* Cloud */
+  --hairline-strong: #B5B7B2;
+  --hairline-tertiary: #9DA09B;
 
-  /* Warm-tinted ink (Stripe + Superhuman convention — never pure black) */
-  --fg-primary: #1a1a1c;
-  --fg-muted: #44464d;
-  --fg-subtle: #696c73;
-  --fg-tertiary: #97999f;
+  /* Soft Navy ink ladder — Nantucket convention, warm not cold */
+  --fg-primary: #3C4E63;         /* Soft Navy */
+  --fg-muted: #56697F;
+  --fg-subtle: #7A8694;
+  --fg-tertiary: #A4ACB5;
 
-  --primary: #0d9488;
-  --primary-hover: #14b8a6;
-  --primary-pressed: #0f766e;
-  --primary-soft: #ccfbf1;
-  --on-primary: #ffffff;
+  --primary: #7E9BB8;            /* Hydrangea */
+  --primary-hover: #6E8CAB;
+  --primary-pressed: #587896;
+  --primary-soft: #DDE6F0;       /* tinted Hydrangea wash */
+  --on-primary: #FBFBF8;
 
-  --status-ok: #10b981;
-  --status-warn: #f59e0b;
-  --status-danger: #ef4444;
-  --status-info: #3b82f6;
+  /* Status — tuned to feel coastal, not corporate */
+  --status-ok: #6F9B7E;           /* sea-grass sage */
+  --status-warn: #9C8574;         /* Cedar */
+  --status-danger: #B66A6A;       /* muted brick */
+  --status-info: #7E9BB8;         /* Hydrangea — primary doubles as info */
 }
 
 .dark {
-  --canvas: #050608;
-  --surface-1: #0f1011;
-  --surface-2: #141516;
-  --surface-3: #18191a;
-  --surface-4: #1c1d1e;
+  --canvas: #1F2A38;             /* deepened Soft Navy for dark canvas */
+  --surface-1: #28344A;
+  --surface-2: #313D55;
+  --surface-3: #3C4E63;           /* Soft Navy at full */
+  --surface-4: #4A5F77;
 
-  --hairline: #1f2226;
-  --hairline-strong: #2a2d33;
-  --hairline-tertiary: #3a3d44;
+  --hairline: #3C4E63;
+  --hairline-strong: #4A5F77;
+  --hairline-tertiary: #5D7390;
 
   /* Warm-tinted ink (dark mode — never pure white) */
-  --fg-primary: #f4f4f5;
-  --fg-muted: #c5c7cc;
-  --fg-subtle: #8d9097;
-  --fg-tertiary: #62666d;
+  --fg-primary: #FBFBF8;          /* Nantucket White */
+  --fg-muted: #D5D7D2;            /* Cloud */
+  --fg-subtle: #ACB4BC;
+  --fg-tertiary: #7E8993;
 
-  --primary: #14b8a6;
-  --primary-hover: #2dd4bf;
-  --primary-pressed: #0d9488;
-  --primary-soft: #0d3530;
-  --on-primary: #04201d;
+  --primary: #92ABC4;             /* lighter Hydrangea for contrast on navy */
+  --primary-hover: #A7BCD0;
+  --primary-pressed: #7E9BB8;
+  --primary-soft: #3C4E63;        /* dark mode "soft" = Soft Navy */
+  --on-primary: #1F2A38;
 
-  --status-ok: #34d399;
-  --status-warn: #fbbf24;
-  --status-danger: #f87171;
-  --status-info: #60a5fa;
+  --status-ok: #88B097;
+  --status-warn: #BBA193;
+  --status-danger: #D08383;
+  --status-info: #92ABC4;
 }
 
 @theme inline {
@@ -91,8 +100,10 @@
   --color-status-danger: var(--status-danger);
   --color-status-info: var(--status-info);
 
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  /* Type stack — Nantucket: Outfit (UI) · Fraunces (display) · Plex Mono (labels + numbers) */
+  --font-sans: var(--font-outfit);
+  --font-mono: var(--font-plex-mono);
+  --font-display: var(--font-fraunces);
 
   --radius-button: 8px;
   --radius-card: 12px;
@@ -106,10 +117,17 @@ body {
 }
 
 body {
-  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
-  font-feature-settings: "cv11", "ss01";
+  font-family: var(--font-outfit), ui-sans-serif, system-ui, sans-serif;
+  font-feature-settings: "ss01", "ss02";
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+  /* Outfit has well-designed tabular figures — surface them by default
+     so any number rendered in body text (counts, balances, IDs) stays
+     vertically aligned in columns without callers needing the .tabular
+     utility everywhere. Prose paragraphs of natural language don't
+     usually contain stacked digits, so the cost is negligible. */
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum", "ss01";
 }
 
 /* Hairline utility — uses theme-aware border color */
@@ -141,31 +159,53 @@ body {
  * Design direction v2 — Stripe + Apple HIG primitives
  * ──────────────────────────────────────────────────────────── */
 
-/* Tabular numerals — every $ and count column. Stripe convention. */
+/* Tabular numerals — labels + every $ and count column.
+ * Routes through IBM Plex Mono so columns of data stay vertically
+ * aligned and the metric feel reads as "data" not "prose". */
 .tabular {
-  font-feature-settings: "tnum", "cv11";
+  font-family: var(--font-plex-mono), ui-monospace, SFMono-Regular, monospace;
+  font-feature-settings: "tnum";
   font-variant-numeric: tabular-nums;
 }
 
-/* Big-money typography — Stripe's "weight 300 with tight tracking" treatment.
- * Used for hero totals, large dollar values. Don't apply to inline body. */
+/* Small uppercase labels (sidecar headings, section eyebrows, KV row
+ * keys). Plex Mono in 500-weight gives them a slightly mechanical
+ * feel that pairs well with Fraunces displays and Outfit body. */
+.label-mono {
+  font-family: var(--font-plex-mono), ui-monospace, SFMono-Regular, monospace;
+  font-feature-settings: "ss01";
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/* Money typography — Plex Mono with tabular figures, slightly tightened
+ * tracking. Used for hero totals + large dollar values. Don't apply to
+ * inline body prose. */
 .money-display {
-  font-feature-settings: "tnum", "cv11";
+  font-family: var(--font-plex-mono), ui-monospace, SFMono-Regular, monospace;
+  font-feature-settings: "tnum";
   font-variant-numeric: tabular-nums;
-  font-weight: 300;
-  letter-spacing: -0.02em;
+  font-weight: 400;
+  letter-spacing: -0.01em;
 }
 .money-display-lg {
-  font-feature-settings: "tnum", "cv11";
+  font-family: var(--font-plex-mono), ui-monospace, SFMono-Regular, monospace;
+  font-feature-settings: "tnum";
   font-variant-numeric: tabular-nums;
-  font-weight: 300;
-  letter-spacing: -0.025em;
+  font-weight: 400;
+  letter-spacing: -0.015em;
   line-height: 1.05;
 }
 
-/* Tightened tracking for display sizes (Apple HIG convention). */
+/* Display typography — Fraunces (light). Brings warmth + a coastal-
+ * editorial feel to h1/h2 and big totals without making the UI feel
+ * decorative. Tracking is slightly less aggressive than the prior
+ * sans-serif setting because serif glyphs need more air. */
 .display-tight {
-  letter-spacing: -0.02em;
+  font-family: var(--font-fraunces), Georgia, "Times New Roman", serif;
+  font-weight: 300;
+  letter-spacing: -0.01em;
 }
 
 /* Tap feedback — Apple HIG signature. Use on touch-priority buttons. */

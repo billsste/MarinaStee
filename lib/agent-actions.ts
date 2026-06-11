@@ -210,6 +210,7 @@ import {
 // executeAgentAction is safe — both sides only reference each other
 // inside function bodies, never at module init.)
 import { nextRecurringDate } from "@/lib/recurring-cleaning";
+import { createHelpTicket } from "@/lib/help-desk";
 
 /*
  * Client-only action executor. Lives in its own file so the server-rendered
@@ -446,6 +447,10 @@ const ACTION_PERMISSION: Record<AgentAction["kind"], { entity: Entity; action: A
   // for future updates. Keep both — the literal is the type witness,
   // the spread is the value.
   schedule_reminder: { entity: "broadcast", action: "create" },
+  // Help-desk tickets are a build-side support channel — anyone with
+  // a comms permission can open one. Reuses the "broadcast" entity
+  // since it's a free-form outbound message.
+  create_help_ticket: { entity: "broadcast", action: "create" },
   ...registeredToolPermissions(),
 };
 
@@ -4259,6 +4264,26 @@ function runAction(action: AgentAction): string | undefined {
     };
     addCommunication(reminder);
     return id;
+  }
+
+  if (action.kind === "create_help_ticket") {
+    // Build-side support ticket — distinct from /support (multi-tenant
+    // boater→marina queue). Routes through the self-contained store in
+    // lib/help-desk.ts so the /help page picks it up immediately.
+    // Submitter is the active operator; for v1 that's a fixed identity
+    // since Clerk isn't wired yet.
+    const ticket = createHelpTicket({
+      subject: action.subject,
+      description: action.description,
+      type: action.type,
+      priority: action.priority,
+      area: action.area,
+      steps_to_reproduce: action.steps_to_reproduce,
+      page_url: action.page_url,
+      submitter_name: "Operator",
+      submitter_email: "operator@marinastee.com",
+    });
+    return ticket.id;
   }
 }
 

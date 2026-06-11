@@ -16,9 +16,13 @@ export default function Icon() {
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
+          // Nantucket — Soft Navy → Hydrangea → Cloud sweep gives the
+          // launcher icon a coastal sky feel that matches the in-app
+          // palette. Edges fall to Cloud so the maskable crop never
+          // shows a hard band on Android's adaptive-icon framing.
           background:
-            "linear-gradient(135deg, #0d9488 0%, #14b8a6 50%, #2dd4bf 100%)",
-          color: "white",
+            "linear-gradient(135deg, #3C4E63 0%, #7E9BB8 60%, #D5D7D2 100%)",
+          color: "#FBFBF8",
           fontSize: 320,
           fontWeight: 700,
           fontFamily: "system-ui, -apple-system, sans-serif",

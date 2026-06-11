@@ -11,11 +11,13 @@
  */
 
 import { registerTool } from "@/lib/agent-tool-kit";
+import { CreateHelpTicketTool } from "@/lib/agent-tools/create-help-ticket";
 import { NavigateToTool } from "@/lib/agent-tools/navigate-to";
 import { ScheduleReminderTool } from "@/lib/agent-tools/schedule-reminder";
 
 registerTool(NavigateToTool);
 registerTool(ScheduleReminderTool);
+registerTool(CreateHelpTicketTool);
 
 // Re-export the registry readers so consumers only import from this index
 // (single import target → harder to forget the side-effect registration).

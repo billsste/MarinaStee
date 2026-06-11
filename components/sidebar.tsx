@@ -22,6 +22,7 @@ import {
   Boxes,
   HardHat,
   LifeBuoy,
+  MessageCircleQuestion,
   Sparkles,
   ChevronLeft,
   ChevronRight,
@@ -92,6 +93,7 @@ const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
     items: [
       { label: "Dock view (mobile)", href: "/dock", icon: Smartphone },
       { label: "Onboarding", href: "/onboarding", icon: Sparkles },
+      { label: "Help & feedback", href: "/help", icon: MessageCircleQuestion },
       { label: "Settings", href: "/settings", icon: Settings },
     ],
   },

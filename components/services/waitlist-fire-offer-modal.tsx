@@ -4,6 +4,7 @@ import * as React from "react";
 import { Megaphone, Sparkles, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Combobox } from "@/components/ui/combobox";
 import { BOATERS, SLIPS, formatInches } from "@/lib/mock-data";
 import { fireWaitlistOffer, useWaitlist } from "@/lib/client-store";
 import type { WaitlistEntry } from "@/lib/types";
@@ -210,23 +211,23 @@ function Step1({
   return (
     <div className="space-y-4">
       <div>
-        <label className="block">
-          <div className="mb-1.5 text-[12px] font-medium text-fg">
-            Freed slip
-          </div>
-          <select
-            value={slipId}
-            onChange={(e) => setSlipId(e.target.value)}
-            className="h-9 w-full rounded-[8px] border border-hairline bg-surface-2 px-3 text-[13px] text-fg focus:border-hairline-strong focus:outline-none"
-          >
-            <option value="">Pick the slip that just opened…</option>
-            {SLIPS.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.id} — {s.dock} · {formatInches(s.max_loa_inches)} max
-              </option>
-            ))}
-          </select>
-        </label>
+        <div className="mb-1.5 text-[12px] font-medium text-fg">
+          Freed slip
+        </div>
+        {/* SLIPS list grows with marina size — per CLAUDE.md §6.3 lists
+            with > 5 options must be a search-as-you-type combobox so the
+            operator can type "A12" instead of scrolling. */}
+        <Combobox
+          value={slipId}
+          onChange={setSlipId}
+          options={SLIPS.map((s) => ({
+            value: s.id,
+            label: `${s.id} — ${s.dock}`,
+            hint: `· ${formatInches(s.max_loa_inches)} max`,
+          }))}
+          placeholder="Pick the slip that just opened…"
+          searchPlaceholder="Search by slip, dock…"
+        />
         <p className="mt-1 text-[11px] text-fg-tertiary">
           Contract terminated, reservation cancelled, no-show — any of these
           free the slip up for the cascade.

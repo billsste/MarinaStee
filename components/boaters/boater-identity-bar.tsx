@@ -6,7 +6,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { formatMoney, initialsOf } from "@/lib/mock-data";
-import { useLedgerForBoater } from "@/lib/client-store";
+import { useLedgerForBoater, useWaitlist } from "@/lib/client-store";
 import { NewMessageSheet } from "@/components/comms/new-message-sheet";
 import { NewWorkOrderWizard } from "@/components/work-orders/new-work-order-wizard";
 import { NewReservationSheet } from "@/components/reservations/new-reservation-sheet";
@@ -27,6 +27,28 @@ export function BoaterIdentityBar({
   const balanceTone = openBalance > 0 ? "warn" : "ok";
   const cadenceLabel =
     boater.billing_cadence.charAt(0).toUpperCase() + boater.billing_cadence.slice(1);
+
+  // Lifecycle context — surfaced as compact badges next to the cadence
+  // pill so an operator sees "Slip holder · also waiting for D-12" at
+  // a glance. The Waitlist card on the Overview tab carries the full
+  // detail; this is the at-a-glance signal.
+  const waitlist = useWaitlist();
+  const activeWaitlistEntries = React.useMemo(
+    () =>
+      waitlist.filter(
+        (e) =>
+          e.boater_id === boater.id &&
+          e.status !== "converted" &&
+          e.status !== "declined" &&
+          e.status !== "withdrawn" &&
+          e.status !== "expired" &&
+          !e.archived_at,
+      ),
+    [waitlist, boater.id],
+  );
+  const isWaitlistOnly =
+    activeWaitlistEntries.length > 0 &&
+    (boater.tags?.includes("waitlist-only") ?? false);
 
   // Top-of-page action sheets (per user audit: previously all 3 were dead).
   const [msgOpen, setMsgOpen] = React.useState(false);
@@ -55,11 +77,30 @@ export function BoaterIdentityBar({
               )}
             </div>
             <div className="mt-1 flex flex-wrap items-center gap-1.5">
-              <Badge tone={boater.billing_cadence === "transient" ? "info" : "primary"}>
-                {cadenceLabel}
-              </Badge>
+              {/* Lifecycle pill is the LOUDEST identifier — operators
+                  scan this first. "Prospect" wins over the cadence
+                  badge when this person is waitlist-only. */}
+              {isWaitlistOnly ? (
+                <Badge tone="info">
+                  Waitlist prospect
+                </Badge>
+              ) : (
+                <Badge tone={boater.billing_cadence === "transient" ? "info" : "primary"}>
+                  {cadenceLabel}
+                </Badge>
+              )}
               {currentReservation && (
                 <Badge tone="neutral">Slip {currentReservation.slip_id}</Badge>
+              )}
+              {activeWaitlistEntries.length > 0 && !isWaitlistOnly && (
+                // Person has a slip AND is on the waitlist (e.g. wants
+                // a second slip). Surface this so the operator notices
+                // the dual relationship.
+                <Badge tone="info">
+                  + Waitlist
+                  {activeWaitlistEntries.length > 1 &&
+                    ` ×${activeWaitlistEntries.length}`}
+                </Badge>
               )}
               <Badge tone={balanceTone}>
                 Balance <span className="tabular ml-0.5">{formatMoney(openBalance)}</span>
@@ -69,11 +110,15 @@ export function BoaterIdentityBar({
                   Trust {boater.trust_score}
                 </Badge>
               )}
-              {boater.tags.map((t) => (
-                <Badge key={t} tone="outline" size="sm">
-                  {t}
-                </Badge>
-              ))}
+              {boater.tags
+                // The "waitlist-only" tag is consumed above as the
+                // lifecycle pill — don't render it twice.
+                .filter((t) => t !== "waitlist-only")
+                .map((t) => (
+                  <Badge key={t} tone="outline" size="sm">
+                    {t}
+                  </Badge>
+                ))}
             </div>
           </div>
         </div>

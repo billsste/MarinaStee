@@ -107,9 +107,13 @@ export function TextInput(props: React.InputHTMLAttributes<HTMLInputElement>) {
 }
 
 export function NumberInput(props: React.InputHTMLAttributes<HTMLInputElement>) {
+  // type="text" + inputMode="decimal" — per global CLAUDE.md §6.2 we
+  // never use the native number spinner. inputMode surfaces the right
+  // keypad on mobile without the desktop up/down arrows that fight
+  // mousewheel scroll and force a fixed step.
   return (
     <input
-      type="number"
+      type="text"
       inputMode="decimal"
       {...props}
       className={cn(

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { ArrowRight, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Combobox, type ComboboxOption } from "@/components/ui/combobox";
+import { ListFilterSelect } from "@/components/ui/list-filter-select";
 import {
   addReservation,
   nextReservationId,
@@ -69,19 +70,20 @@ export function DockMap() {
           <Pill label="Occupied" active={filter === "occupied"} onClick={() => setFilter("occupied")} dot="bg-status-danger" />
           <Pill label="Reserved" active={filter === "reserved"} onClick={() => setFilter("reserved")} dot="bg-status-warn" />
         </div>
-        <select
+        {/* Standardized filter chip — matches every other list page
+            in the app (Slips, Contracts, etc.). Per CLAUDE.md §6.3
+            ListFilterSelect is the established exception to the
+            "comboboxes for >5 options" rule because filter chips
+            read better at toolbar-density than a Combobox trigger. */}
+        <ListFilterSelect
           value={groupFilter}
-          onChange={(e) => setGroupFilter(e.target.value)}
-          className="rounded-[8px] border border-hairline bg-surface-1 px-2 py-1 text-[12px] text-fg"
-          aria-label="Filter by group"
-        >
-          <option value="all">All groups</option>
-          {allGroups.map((g) => (
-            <option key={g.id} value={g.id}>
-              {g.name}
-            </option>
-          ))}
-        </select>
+          onChange={setGroupFilter}
+          label="Group"
+          options={[
+            { value: "all", label: "All groups" },
+            ...allGroups.map((g) => ({ value: g.id, label: g.name })),
+          ]}
+        />
       </div>
 
       <div className="space-y-4">
@@ -196,6 +198,7 @@ function SlipActionSheet({
           <button
             type="button"
             onClick={onClose}
+            aria-label="Close slip details"
             className="rounded-[6px] p-1 text-fg-tertiary hover:bg-surface-2 hover:text-fg"
           >
             <X className="size-4" />

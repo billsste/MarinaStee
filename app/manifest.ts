@@ -27,8 +27,9 @@ export default function manifest(): MetadataRoute.Manifest {
     display: "standalone",
     display_override: ["window-controls-overlay", "standalone", "browser"],
     orientation: "portrait",
-    background_color: "#0a0c10",
-    theme_color: "#0d9488",
+    // Nantucket palette — deepened Soft Navy splash + Hydrangea theme.
+    background_color: "#1F2A38",
+    theme_color: "#7E9BB8",
     categories: ["business", "productivity"],
     icons: [
       { src: "/icon", sizes: "192x192", type: "image/png", purpose: "any" },
