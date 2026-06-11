@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { ChevronRight, Plus, Search, Sparkles, UserPlus } from "lucide-react";
+import { Plus, Search, Sparkles, UserPlus } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ListFilterSelect } from "@/components/ui/list-filter-select";
@@ -350,14 +350,13 @@ export function RosterView() {
         </Button>
       </div>
 
-      {/* Roster table — grouped by dock so an 800-slip marina
-          doesn't render as one infinite list. Each dock section is
-          collapsible; the header shows occupancy at a glance. */}
+      {/* Roster table — flat row list. The Dock column + the Dock
+          filter at the top do the per-dock partitioning when the
+          operator needs it; the collapsible per-dock sections we
+          used to render were noise for the default "show everything"
+          view and forced an extra click for any cross-dock query
+          ("who's expiring across the whole marina?"). */}
       <div className="overflow-hidden rounded-[12px] border border-hairline bg-surface-1">
-        {/* Header row is intentionally NOT sticky — sticky-positioned
-            headers clipped wider row content (multi-line cells) when
-            scrolling past the dock toggle. The dock group header
-            itself gives the operator orientation while scrolling. */}
         <div
           className="grid gap-x-3 border-b border-hairline bg-surface-2 px-3 py-2 pr-10 text-[10px] font-medium uppercase tracking-wide text-fg-tertiary"
           style={{ gridTemplateColumns: ROSTER_COLS }}
@@ -375,13 +374,19 @@ export function RosterView() {
             No slips match these filters.
           </div>
         ) : (
-          <DockGroupedRoster
-            rows={filtered}
-            dockNameById={dockNameById}
-            onAssign={openAssign}
-            onViewHolder={(boaterId) => router.push(`/members/${boaterId}`)}
-            filtersDirty={dock !== "all" || cadence !== "all" || status !== "all" || query.trim().length > 0}
-          />
+          <ul className="divide-y divide-hairline">
+            {filtered.map((r) => (
+              <RosterRow
+                key={r.slip.id}
+                row={r}
+                dockLabel={dockNameById.get(r.slip.dock_id) ?? r.slip.dock}
+                onAssign={() => openAssign(r.slip)}
+                onViewHolder={(boaterId) =>
+                  router.push(`/members/${boaterId}`)
+                }
+              />
+            ))}
+          </ul>
         )}
       </div>
 
@@ -651,197 +656,6 @@ function shortenDock(name: string): string {
 // Re-export Sparkles to silence unused warning if any
 void Sparkles;
 void Button;
-
-/**
- * Group filtered rows by their dock and render each as a
- * collapsible section. With an 800-slip marina, a flat ul scrolls
- * forever; a marina owner thinks in DOCKS ("how's A Dock looking?")
- * not in a continuous slip list.
- *
- * Header per dock shows: name + occupancy (X / Y) + vacant chip when
- * there are openings. The first dock auto-opens; the rest collapse
- * by default so the page lands at a reasonable height. When a
- * filter is active, ALL groups auto-expand because the operator is
- * clearly searching and shouldn't have to click-expand each dock.
- */
-function DockGroupedRoster({
-  rows,
-  dockNameById,
-  onAssign,
-  onViewHolder,
-  filtersDirty,
-}: {
-  rows: Row[];
-  dockNameById: Map<string, string>;
-  onAssign: (slip: Slip) => void;
-  onViewHolder: (boaterId: string) => void;
-  filtersDirty: boolean;
-}) {
-  // Build groups by dock_id, preserving the order rows appeared in
-  // (which itself was preserved by slip-list order at the data source).
-  const groups = React.useMemo(() => {
-    const map = new Map<string, { label: string; items: Row[] }>();
-    for (const r of rows) {
-      const key = r.slip.dock_id || "_unknown";
-      const label = dockNameById.get(key) ?? r.slip.dock ?? "Unsorted";
-      const existing = map.get(key);
-      if (existing) {
-        existing.items.push(r);
-      } else {
-        map.set(key, { label, items: [r] });
-      }
-    }
-    return Array.from(map.entries()).map(([id, g]) => ({
-      id,
-      label: g.label,
-      items: g.items,
-    }));
-  }, [rows, dockNameById]);
-
-  // Per-dock open state. Defaults: first dock open, rest closed.
-  // Filtered views (any dirty filter) force all-open so the operator
-  // searching for something doesn't have to click each dock.
-  const [openIds, setOpenIds] = React.useState<Set<string>>(() => {
-    const s = new Set<string>();
-    if (groups[0]) s.add(groups[0].id);
-    return s;
-  });
-
-  // When the filter state flips, expand everything so search results
-  // don't hide behind collapsed sections.
-  React.useEffect(() => {
-    if (filtersDirty) {
-      setOpenIds(new Set(groups.map((g) => g.id)));
-    }
-  }, [filtersDirty, groups]);
-
-  function toggle(id: string) {
-    setOpenIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }
-
-  return (
-    <div>
-      {groups.map((g, i) => (
-        <DockGroup
-          key={g.id}
-          label={g.label}
-          items={g.items}
-          isOpen={openIds.has(g.id)}
-          onToggle={() => toggle(g.id)}
-          dockNameById={dockNameById}
-          onAssign={onAssign}
-          onViewHolder={onViewHolder}
-          isLast={i === groups.length - 1}
-        />
-      ))}
-    </div>
-  );
-}
-
-function DockGroup({
-  label,
-  items,
-  isOpen,
-  onToggle,
-  dockNameById,
-  onAssign,
-  onViewHolder,
-  isLast,
-}: {
-  label: string;
-  items: Row[];
-  isOpen: boolean;
-  onToggle: () => void;
-  dockNameById: Map<string, string>;
-  onAssign: (slip: Slip) => void;
-  onViewHolder: (boaterId: string) => void;
-  isLast: boolean;
-}) {
-  // Occupancy summary per dock — drives operator instincts (which
-  // docks have vacancy, which are at risk of lapsing, etc.).
-  const counts = React.useMemo(() => {
-    let occupied = 0;
-    let vacant = 0;
-    let expiring = 0;
-    let lapsed = 0;
-    for (const r of items) {
-      if (r.rowStatus === "vacant") vacant++;
-      else occupied++;
-      if (r.rowStatus === "expiring") expiring++;
-      if (r.rowStatus === "lapsed") lapsed++;
-    }
-    return { occupied, vacant, expiring, lapsed };
-  }, [items]);
-
-  return (
-    <div className={cn(!isLast && "border-b border-hairline")}>
-      <button
-        type="button"
-        onClick={onToggle}
-        className={cn(
-          "flex w-full items-center justify-between gap-3 px-3 py-2 text-left transition-colors hover:bg-surface-2",
-          isOpen && "bg-surface-2",
-        )}
-        aria-expanded={isOpen}
-      >
-        <div className="flex items-center gap-2">
-          <ChevronRight
-            className={cn(
-              "size-3.5 shrink-0 text-fg-tertiary transition-transform",
-              isOpen && "rotate-90",
-            )}
-            strokeWidth={2}
-          />
-          <span className="text-[13px] font-medium text-fg">{label}</span>
-          <span className="text-[11px] text-fg-tertiary tabular">
-            {counts.occupied} / {items.length}
-            {items.length > 0 && (
-              <span className="text-fg-tertiary">
-                {" · "}
-                {Math.round((counts.occupied / items.length) * 100)}% occupied
-              </span>
-            )}
-          </span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          {counts.vacant > 0 && (
-            <Badge tone="ok" size="sm">
-              {counts.vacant} vacant
-            </Badge>
-          )}
-          {counts.expiring > 0 && (
-            <Badge tone="warn" size="sm">
-              {counts.expiring} expiring
-            </Badge>
-          )}
-          {counts.lapsed > 0 && (
-            <Badge tone="danger" size="sm">
-              {counts.lapsed} lapsed
-            </Badge>
-          )}
-        </div>
-      </button>
-      {isOpen && (
-        <ul className="divide-y divide-hairline border-t border-hairline">
-          {items.map((r) => (
-            <RosterRow
-              key={r.slip.id}
-              row={r}
-              dockLabel={dockNameById.get(r.slip.dock_id) ?? r.slip.dock}
-              onAssign={() => onAssign(r.slip)}
-              onViewHolder={onViewHolder}
-            />
-          ))}
-        </ul>
-      )}
-    </div>
-  );
-}
 
 /**
  * Tiny dot showing slip class (covered/uncovered/t-head/buoy/dry).

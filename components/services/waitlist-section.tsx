@@ -6,7 +6,6 @@ import { useRouter } from "next/navigation";
 import {
   Archive,
   Check,
-  ChevronRight,
   Clock,
   Filter,
   Mail,
@@ -560,21 +559,30 @@ export function WaitlistSection() {
             <span className="text-right">Action</span>
           </div>
 
-          {tab === "queue" ? (
-            <DockGroupedWaitlist
-              rows={visible}
-              selectedIds={selectedIds}
-              onToggle={toggleOne}
-              onFire={() => {
-                setPrefilledSlipId(undefined);
-                setFireOpen(true);
-              }}
-              onOpen={openProfileForEntry}
-              filtersDirty={filtersDirty}
-            />
-          ) : (
-            <ul className="divide-y divide-hairline">
-              {visible.map((entry) => (
+          {/* Flat row list — same shape across all four tabs. The Dock
+              filter at the top + the "Wants" column ("preferred dock")
+              do the per-dock partitioning when the operator needs it.
+              Rank counter is global so #1 = oldest applicant overall,
+              not "oldest applicant per dock" (which would mislead). */}
+          <ul className="divide-y divide-hairline">
+            {tab === "queue"
+              ? visible.map((entry, idx) => (
+                  <WaitlistRow
+                    key={entry.id}
+                    entry={entry}
+                    rank={idx + 1}
+                    selected={selectedIds.has(entry.id)}
+                    onToggle={() => toggleOne(entry.id)}
+                    variant="queue"
+                    onOpen={() => openProfileForEntry(entry.id)}
+                    onFire={() => {
+                      setPrefilledSlipId(undefined);
+                      setFireOpen(true);
+                    }}
+                    onResend={() => undefined}
+                  />
+                ))
+              : visible.map((entry) => (
                 <WaitlistRow
                   key={entry.id}
                   entry={entry}
@@ -593,8 +601,7 @@ export function WaitlistSection() {
                   }}
                 />
               ))}
-            </ul>
-          )}
+          </ul>
         </div>
       )}
 
@@ -690,127 +697,6 @@ function TabButton({
         </Badge>
       )}
     </button>
-  );
-}
-
-/**
- * Group the Queue tab rows by preferred dock — same UX pattern the
- * slip roster uses. When A29 frees up, the operator opens A Dock's
- * group and the matching waitlisters surface at the top of one
- * focused list, not buried in a 500-row flat scroll.
- *
- * Stale / Offers / Archive tabs stay flat — they're not dock-bound
- * mental models.
- */
-function DockGroupedWaitlist({
-  rows,
-  selectedIds,
-  onToggle,
-  onFire,
-  onOpen,
-  filtersDirty,
-}: {
-  rows: WaitlistEntry[];
-  selectedIds: Set<string>;
-  onToggle: (id: string) => void;
-  onFire: () => void;
-  onOpen: (entryId: string) => void;
-  filtersDirty: boolean;
-}) {
-  const groups = React.useMemo(() => {
-    const map = new Map<string, WaitlistEntry[]>();
-    for (const r of rows) {
-      const key = r.preferred_dock || "No preference";
-      const arr = map.get(key);
-      if (arr) arr.push(r);
-      else map.set(key, [r]);
-    }
-    // Predictable order: alphabetical, with "No preference" last.
-    return Array.from(map.entries())
-      .sort(([a], [b]) => {
-        if (a === "No preference") return 1;
-        if (b === "No preference") return -1;
-        return a.localeCompare(b);
-      })
-      .map(([label, items]) => ({ id: label, label, items }));
-  }, [rows]);
-
-  const [openIds, setOpenIds] = React.useState<Set<string>>(() => {
-    const s = new Set<string>();
-    if (groups[0]) s.add(groups[0].id);
-    return s;
-  });
-
-  React.useEffect(() => {
-    if (filtersDirty) setOpenIds(new Set(groups.map((g) => g.id)));
-  }, [filtersDirty, groups]);
-
-  function toggleGroup(id: string) {
-    setOpenIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }
-
-  // Rank counter spans groups so #1 is the oldest applicant overall,
-  // not "the oldest applicant in B Dock" (which would mislead).
-  let rankCounter = 0;
-
-  return (
-    <div>
-      {groups.map((g, gi) => {
-        const isOpen = openIds.has(g.id);
-        return (
-          <div key={g.id} className={cn(gi < groups.length - 1 && "border-b border-hairline")}>
-            <button
-              type="button"
-              onClick={() => toggleGroup(g.id)}
-              className={cn(
-                "flex w-full items-center justify-between gap-3 px-3 py-2 text-left transition-colors hover:bg-surface-2",
-                isOpen && "bg-surface-2",
-              )}
-              aria-expanded={isOpen}
-            >
-              <div className="flex items-center gap-2">
-                <ChevronRight
-                  className={cn(
-                    "size-3.5 shrink-0 text-fg-tertiary transition-transform",
-                    isOpen && "rotate-90",
-                  )}
-                  strokeWidth={2}
-                />
-                <span className="text-[13px] font-medium text-fg">{g.label}</span>
-                <span className="text-[11px] text-fg-tertiary tabular">
-                  {g.items.length} {g.items.length === 1 ? "applicant" : "applicants"}
-                </span>
-              </div>
-            </button>
-            {isOpen && (
-              <ul className="divide-y divide-hairline border-t border-hairline">
-                {g.items.map((entry) => {
-                  rankCounter += 1;
-                  return (
-                    <WaitlistRow
-                      key={entry.id}
-                      entry={entry}
-                      rank={rankCounter}
-                      selected={selectedIds.has(entry.id)}
-                      onToggle={() => onToggle(entry.id)}
-                      variant="queue"
-                      onOpen={() => onOpen(entry.id)}
-                      onFire={onFire}
-                      onResend={() => undefined}
-                    />
-                  );
-                })}
-              </ul>
-            )}
-          </div>
-        );
-      })}
-    </div>
   );
 }
 
