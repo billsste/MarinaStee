@@ -411,56 +411,16 @@ export function WaitlistSection() {
         />
       </div>
 
-      {/* ── Slip-class segment chips — the primary axis Steven uses
-                to work "the covered waitlist" vs "the uncovered
-                waitlist". Counts reflect the active tab so the chip
-                badges show "applicants on this lifecycle stage that
-                want this class." All is the default. */}
-      <div className="flex flex-wrap items-center gap-1.5 rounded-[10px] border border-hairline bg-surface-1 p-1.5">
-        {(
-          [
-            { key: "all" as const, label: "All classes" },
-            { key: "covered" as const, label: "Covered" },
-            { key: "uncovered" as const, label: "Uncovered" },
-            { key: "t_head" as const, label: "T-head" },
-            { key: "buoy" as const, label: "Buoy / Mooring" },
-            { key: "dry_storage" as const, label: "Dry storage" },
-          ]
-        ).map((c) => {
-          const active = classFilter === c.key;
-          const count = classCounts[c.key];
-          return (
-            <button
-              key={c.key}
-              type="button"
-              onClick={() => setClassFilter(c.key)}
-              className={cn(
-                "flex items-center gap-1.5 rounded-[8px] px-2.5 py-1 text-[12px] font-medium transition-colors",
-                active
-                  ? "bg-primary-soft text-primary"
-                  : "text-fg-subtle hover:bg-surface-2 hover:text-fg",
-              )}
-            >
-              {c.label}
-              <span
-                className={cn(
-                  "tabular text-[11px]",
-                  active ? "text-primary/80" : "text-fg-tertiary",
-                )}
-              >
-                {count}
-              </span>
-            </button>
-          );
-        })}
-      </div>
-
-      {/* ── Filter bar — matches the slip roster + rental boats
-                pattern: search input on the left, ListFilterSelect
-                dropdown pills for facets, running count on the
-                right. Operators learn one filter vocabulary across
-                every list page. */}
-      <div className="flex flex-wrap items-center gap-2">
+      {/* ── Filter bar — canonical single-row toolbar (same shape as
+                /services/roster, /services/rates, /services/meters).
+                ALL filter axes live as ListFilterSelect dropdowns —
+                no chip rows, no second filter row, no segment toggles
+                stacked above. Operators learn one filter vocabulary
+                that works on every list page in the app. See
+                marina-stee/CLAUDE.md → "List-page UX consistency"
+                rule #10 (no chip rows above the toolbar) and rule #11
+                (single-row toolbar across every list surface). */}
+      <div className="flex flex-wrap items-center gap-2 rounded-[12px] border border-hairline bg-surface-1 p-2">
         <div className="relative min-w-[220px] flex-1">
           <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-fg-tertiary" />
           <input
@@ -468,9 +428,22 @@ export function WaitlistSection() {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search by name, boat, phone, dock, or tag…"
-            className="w-full rounded-[8px] border border-hairline bg-surface-2 py-1.5 pl-8 pr-3 text-[12.5px] text-fg placeholder:text-fg-tertiary focus:outline-none focus:ring-1 focus:ring-primary"
+            className="w-full rounded-[8px] border border-hairline bg-surface-2 py-1.5 pl-8 pr-3 text-[12px] text-fg placeholder:text-fg-tertiary focus:border-hairline-strong focus:outline-none"
           />
         </div>
+        <ListFilterSelect
+          label="Class"
+          value={classFilter}
+          onChange={(v) => setClassFilter(v as SlipClass | "all")}
+          options={[
+            { value: "all", label: `All classes · ${classCounts.all}` },
+            { value: "covered", label: `Covered · ${classCounts.covered}` },
+            { value: "uncovered", label: `Uncovered · ${classCounts.uncovered}` },
+            { value: "t_head", label: `T-head · ${classCounts.t_head}` },
+            { value: "buoy", label: `Buoy / Mooring · ${classCounts.buoy}` },
+            { value: "dry_storage", label: `Dry storage · ${classCounts.dry_storage}` },
+          ]}
+        />
         <ListFilterSelect
           label="Length"
           value={lengthBand}

@@ -11,17 +11,15 @@ export const metadata = { title: "Renewals — Marina Stee" };
  * the long-lived sweep entity that ties N contracts together as a
  * coordinated batch with priority + rate adjustment + per-item
  * acceptance tracking.
+ *
+ * No <h2> + description block above the content — the layout breadcrumb
+ * already identifies the page (per CLAUDE.md §"List-page UX consistency"
+ * rule #10). Any prose the operator needs lives inside the coordinator
+ * itself, in context.
  */
 export default function RenewalsPage() {
   return (
     <div className="space-y-4">
-      <header>
-        <h2 className="text-[20px] font-medium text-fg">Annual renewal sweep</h2>
-        <p className="mt-1 text-[12px] text-fg-subtle">
-          Coordinate the fall renewal cycle as one workflow — pick a
-          window, set rates, fan out renewal links, track acceptance %.
-        </p>
-      </header>
       <RenewalSweepCoordinator />
     </div>
   );
