@@ -9,11 +9,10 @@ import {
   Clock,
   Filter,
   Mail,
-  Megaphone,
+  Phone,
   Search,
   Sparkles,
   Tag,
-  Timer,
   Users,
   X,
 } from "lucide-react";
@@ -26,13 +25,13 @@ import {
   ensureWaitlistBoater,
   bulkStampLastContact,
   declineWaitlistOffer,
-  expireWaitlistOffers,
   useWaitlist,
 } from "@/lib/client-store";
 import type { WaitlistEntry, WaitlistOfferStatus } from "@/lib/types";
 import { useTabUrlState } from "@/lib/use-tab-url-state";
 import { ListFilterSelect } from "@/components/ui/list-filter-select";
 import { WaitlistFireOfferModal } from "./waitlist-fire-offer-modal";
+import { WaitlistLogCallModal } from "./waitlist-log-call-modal";
 import { WaitlistApplicantSheet } from "./waitlist-applicant-sheet";
 import { AssignHolderWizard } from "@/app/services/[id]/assign/assign-slip-client";
 import { cn } from "@/lib/utils";
@@ -140,6 +139,18 @@ export function WaitlistSection() {
   );
   const [fireOpen, setFireOpen] = React.useState(false);
   const [prefilledSlipId, setPrefilledSlipId] = React.useState<string | undefined>();
+  // ── Log Call modal — primary action per Steven's "phone-first"
+  //    flow. Opens with a single entry's context; closes after the
+  //    operator records accept / decline_archive / decline_stay.
+  const [logCallEntryId, setLogCallEntryId] = React.useState<string | null>(
+    null,
+  );
+  const logCallEntry = React.useMemo(
+    () => (logCallEntryId
+      ? entries.find((e) => e.id === logCallEntryId) ?? null
+      : null),
+    [entries, logCallEntryId],
+  );
 
   // ── Applicant detail sheet (row click) + convert flow ──
   // selectedApplicantId opens the WaitlistApplicantSheet. When the
@@ -319,43 +330,16 @@ export function WaitlistSection() {
 
   return (
     <section className="space-y-4">
-      <header className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h2 className="text-[16px] font-semibold text-fg">Waitlist</h2>
-          <p className="text-[12px] text-fg-subtle">
-            When a slip frees up, fire an auto-offer cascade to the top-N
-            matching applicants. 48-hour expiry, auto-advance on decline.
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={() => {
-              const r = expireWaitlistOffers();
-              if (r.expired > 0 || r.advanced > 0) {
-                console.info(
-                  `[waitlist] swept ${r.expired} expired · advanced ${r.advanced}`,
-                );
-              }
-            }}
-            title="Run the cascade walker — flip stale offers to expired and auto-advance to next-in-line"
-          >
-            <Timer className="size-3.5" />
-            Sweep expired
-          </Button>
-          <Button
-            variant="primary"
-            size="sm"
-            onClick={() => {
-              setPrefilledSlipId(undefined);
-              setFireOpen(true);
-            }}
-          >
-            <Megaphone className="size-3.5" />
-            Fire offer
-          </Button>
-        </div>
+      <header>
+        <h2 className="display-tight text-[18px] font-semibold text-fg">
+          Waitlist
+        </h2>
+        <p className="mt-0.5 text-[12.5px] text-fg-subtle">
+          Marina staff call applicants in priority order (oldest first). When
+          you get off the phone, click <span className="font-medium text-fg">Log call</span>{" "}
+          on their row to record the outcome — accepted, declined &amp; archive,
+          or declined but staying on the list.
+        </p>
       </header>
 
       {/* ── Tabs ──────────────────────────────────────── */}
@@ -580,6 +564,7 @@ export function WaitlistSection() {
                       setFireOpen(true);
                     }}
                     onResend={() => undefined}
+                    onLogCall={() => setLogCallEntryId(entry.id)}
                   />
                 ))
               : visible.map((entry) => (
@@ -599,6 +584,7 @@ export function WaitlistSection() {
                     setPrefilledSlipId(entry.offered_slip_id);
                     setFireOpen(true);
                   }}
+                  onLogCall={() => setLogCallEntryId(entry.id)}
                 />
               ))}
           </ul>
@@ -609,6 +595,25 @@ export function WaitlistSection() {
         open={fireOpen}
         onOpenChange={setFireOpen}
         prefilledSlipId={prefilledSlipId}
+      />
+
+      {/* Log Call modal — primary surface for marina staff. Records
+          phone-call outcome and (on accept) routes to slip onboarding
+          via the existing waitlist applicant sheet. */}
+      <WaitlistLogCallModal
+        entry={logCallEntry}
+        open={!!logCallEntry}
+        onOpenChange={(next) => {
+          if (!next) setLogCallEntryId(null);
+        }}
+        onAccepted={({ entryId }) => {
+          // After "accept" is logged, route the operator to the
+          // existing applicant sheet so they can pick the slip via
+          // the convert-to-slip flow. The call log already has the
+          // tentatively-accepted slip id stored; the sheet just gives
+          // them the rich slip picker + wizard.
+          setSelectedApplicantId(entryId);
+        }}
       />
 
       {/* Applicant detail sheet — opens on row click. Owns the comms +
@@ -723,6 +728,7 @@ function WaitlistRow({
   onOpen,
   onFire,
   onResend,
+  onLogCall,
 }: {
   entry: WaitlistEntry;
   rank?: number;
@@ -730,14 +736,17 @@ function WaitlistRow({
   onToggle: () => void;
   variant: WaitlistTab;
   /**
-   * Opens the WaitlistApplicantSheet — the click target for the whole
-   * row. Interactive children (checkbox, action buttons, applicant
-   * name link) stopPropagation so the sheet doesn't double-fire when
-   * the operator wants the sub-action. Matches CLAUDE.md §6.1 pattern.
+   * Row click → boater profile. Interactive children (checkbox, action
+   * buttons) stopPropagation so the row click doesn't double-fire.
+   * Matches CLAUDE.md §6.1 pattern.
    */
   onOpen: () => void;
   onFire: () => void;
   onResend: () => void;
+  /** Opens the Log Call modal for this entry. Primary action per
+   *  Steven's phone-first flow — operators call applicants, log the
+   *  outcome. */
+  onLogCall: () => void;
 }) {
   const boater = entry.boater_id
     ? BOATERS.find((b) => b.id === entry.boater_id)
@@ -938,10 +947,16 @@ function WaitlistRow({
           doesn't fire after the per-row action. */}
       <div className="flex justify-end gap-1" onClick={(e) => e.stopPropagation()}>
         {variant === "queue" && (
-          <Button variant="primary" size="sm" onClick={onFire}>
-            <Sparkles className="size-3.5" />
-            Fire offer
-          </Button>
+          <>
+            {/* Primary action — Log a phone call. Records accept /
+                decline_archive / decline_stay so the marina has a real
+                paper trail of outreach without leaning on the parallel
+                offer cascade. */}
+            <Button variant="primary" size="sm" onClick={onLogCall}>
+              <Phone className="size-3.5" />
+              Log call
+            </Button>
+          </>
         )}
         {variant === "offers" && entry.offer_status === "pending" && entry.offer_token && (
           <>

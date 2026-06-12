@@ -10,6 +10,7 @@ import {
   Fuel,
   Gauge,
   FileText,
+  Layers,
   Sailboat,
   RefreshCw,
   Users,
@@ -33,6 +34,10 @@ import { cn } from "@/lib/utils";
 const NAV = [
   { href: "/services", label: "Overview", icon: LayoutGrid, exact: true },
   { href: "/services/roster", label: "Slips", icon: List },
+  // Slip Types sit right after Slips so the mental flow reads
+  // "here's the inventory → here's how it's categorized + priced."
+  // First-class entity per tenant; see lib/types.ts:SlipType.
+  { href: "/services/slip-types", label: "Slip Types", icon: Layers },
   // Waitlist promoted to its own route so the slip roster doesn't
   // share scroll real estate with a 4-tab waitlist operator surface.
   // Operators reach the waitlist directly from the agent / dashboard

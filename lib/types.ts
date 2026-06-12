@@ -698,6 +698,44 @@ export interface WaitlistEntry {
    * Optional.
    */
   interest_confirmation_note?: string;
+
+  // ── Matching axes (new — drives the segmented waitlist queue) ──────
+  /**
+   * High-level "what kind of slip" preference. An applicant can want
+   * any of multiple classes ("covered OR t-head"). Drives the slip-
+   * class segment chips on /services/waitlist + the queue per-class.
+   * Empty/undefined = no class preference (match anything).
+   */
+  preferred_classes?: SlipClass[];
+  /**
+   * Specific SlipType[] preference — narrower than class because it
+   * pins to a size band ("Covered 30-40ft" specifically, not just
+   * any covered slip). When set, takes precedence over preferred_classes.
+   */
+  preferred_type_ids?: string[];
+
+  // ── Call log (new — replaces the offer cascade) ────────────────────
+  /**
+   * Phone calls the operator made to this applicant. Each entry stamps
+   * outcome + optional notes. Marina staff work the list one-at-a-
+   * time in priority order (oldest created_at first), call the
+   * applicant when a matching slip frees up, and log what happened.
+   *
+   * - "accept"          → launches the slip-onboarding flow with this
+   *                       boater + a slip the operator picks
+   * - "decline_archive" → status flips to declined, archived_at stamped
+   * - "decline_stay"    → applicant stays on the queue; last_contact_at
+   *                       refreshes so they fall off the Stale list
+   */
+  calls?: Array<{
+    id: string;
+    at: string;                        // ISO timestamp
+    by_user_id: string;                // operator who logged the call
+    outcome: "accept" | "decline_archive" | "decline_stay";
+    notes?: string;                    // free-form context
+    /** When outcome=accept, the slip the operator routed them to. */
+    accepted_slip_id?: string;
+  }>;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -854,6 +892,85 @@ export interface Slip {
   default_annual_rate: number;      // dollars / year
   default_monthly_rate?: number;    // optional — for split billing
   default_seasonal_rate?: number;   // 6mo
+
+  /**
+   * Optional explicit FK to a SlipType. When null/undefined, the system
+   * derives the slip's type from (slip_class, max_loa_inches) — the
+   * type whose class matches and whose size band contains the slip's
+   * length. Override here when an operator wants to pin a slip to a
+   * specific tier (e.g. a 50-ft slip priced as the smaller tier for a
+   * special arrangement).
+   *
+   * See `lib/slip-type-helpers.ts` for the resolver + pricing
+   * inheritance chain.
+   */
+  type_id?: string;
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Slip Types — class × size band × pricing × included fees
+//
+// First-class entity per tenant. Replaces ad-hoc per-slip pricing for
+// the common case: when a marina has 30 covered slips, the operator
+// edits ONE SlipType row instead of 30 Slip rows.
+//
+// The chain:
+//   SlipType ──includes──> AdditionalFee[]   (auto-attached at booking)
+//   SlipType ──pricing────> default_*_rate    (slip override falls back here)
+//   Slip ─────type_id────> SlipType           (explicit or derived from class + size)
+//
+// Slips with no `type_id` set fall back to whichever type matches
+// their class + max_loa_inches band. So existing seed data and slips
+// created via the agent before classes were configured still resolve
+// to a tier without operator effort.
+// ─────────────────────────────────────────────────────────────────────
+
+export interface SlipType {
+  id: string;
+  tenant_id: string;
+
+  // What it is — discriminator
+  class: SlipClass;
+
+  // Size band (inches, like the rest of the slip dimensions). Slips
+  // with `max_loa_inches >= min_loa_inches AND max_loa_inches <= max_loa_inches`
+  // and matching `class` derive into this type by default.
+  /** Inclusive lower bound. Undefined = no minimum (matches all sizes
+   *  in this class below max_loa_inches). */
+  min_loa_inches?: number;
+  /** Inclusive upper bound. */
+  max_loa_inches: number;
+
+  // Display
+  display_label: string;        // "Covered 30-40 ft"
+  short_label: string;          // "C30-40" — shown in compact chips + reports
+  description?: string;
+
+  // Pricing across cadences. The slip can still override on a per-slip
+  // basis (special arrangement); the helper falls back to these.
+  default_annual_rate: number;
+  default_monthly_rate?: number;
+  default_seasonal_rate?: number;
+  default_transient_rate_per_night?: number;
+
+  // What this type's slips come with out of the box. Amenities here
+  // are informational (the slip's own has_power / has_water still
+  // gate physical truth); included_fee_ids drive booking auto-attach.
+  included_amenities: {
+    power?: boolean;
+    water?: boolean;
+    pump_out?: boolean;
+  };
+  /**
+   * Fees that automatically attach to any reservation booked on a slip
+   * of this type. Operator can still remove specific fees per booking.
+   * References AdditionalFee.id.
+   */
+  included_fee_ids: string[];
+
+  // Admin
+  sort_order: number;           // display order in chips + Settings page
+  active: boolean;              // soft-disable without delete
 }
 
 export type ReservationStatus = "scheduled" | "occupied" | "completed" | "cancelled";

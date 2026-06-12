@@ -57,6 +57,7 @@ import {
   DOCKS,
   RENTAL_SPACES,
   SLIPS,
+  SLIP_TYPES,
   RESERVATIONS,
   SEED_TENANT_ID,
   STAFF_NOTES,
@@ -93,6 +94,7 @@ import type {
   RentalGroup,
   RentalSpace,
   Slip,
+  SlipType,
   Dock,
   Reservation,
   StaffNote,
@@ -221,6 +223,10 @@ type State = {
   // Mirrored from the SLIPS seed at boot so the Roster + wizard can
   // edit a slip's defaults without crossing the server/seed boundary.
   slips: Slip[];
+  // Slip Types — class × size band × pricing × included fees. Slips
+  // resolve to a type via Slip.type_id (explicit) or by deriving from
+  // class + max_loa_inches (see lib/slip-type-helpers.ts).
+  slipTypes: SlipType[];
   docks: Dock[];
   fuelInventory: FuelInventory[];
   // Boat Rentals (own fleet — pontoons, kayaks, jet skis, ...)
@@ -316,6 +322,7 @@ let state: State = {
   rentalGroups: [...RENTAL_GROUPS],
   rentalSpaces: [...RENTAL_SPACES],
   slips: [...SLIPS],
+  slipTypes: [...SLIP_TYPES],
   docks: [...DOCKS],
   fuelInventory: [...FUEL_INVENTORY],
   rentalBoats: [...RENTAL_BOATS],
@@ -2745,6 +2752,88 @@ export function archiveWaitlistEntries(
   return { archived };
 }
 
+/**
+ * Log a phone call the operator made to a waitlist applicant. Drives
+ * the new "Log call" per-row action on /services/waitlist — replaces
+ * the parallel offer-cascade machinery for marinas that work the list
+ * one applicant at a time, in priority order.
+ *
+ * Outcomes:
+ *   - "accept"          → record the call; caller (UI) launches the
+ *                         slip-onboarding wizard separately so the
+ *                         operator picks the actual slip + drafts the
+ *                         contract there.
+ *   - "decline_archive" → record + archive entry with the right reason
+ *                         (operator-supplied or "non_responder" default).
+ *   - "decline_stay"    → record + refresh last_contact_at so the
+ *                         applicant falls off the Stale list. Status
+ *                         stays "pending".
+ */
+export function logWaitlistCall(
+  entryId: string,
+  outcome: "accept" | "decline_archive" | "decline_stay",
+  opts: {
+    notes?: string;
+    accepted_slip_id?: string;
+    archive_reason?:
+      | "got_slip"
+      | "withdrew"
+      | "aged_out"
+      | "non_responder"
+      | "too_many_declines"
+      | "duplicate";
+  } = {},
+): boolean {
+  const idx = state.waitlist.findIndex((w) => w.id === entryId);
+  if (idx < 0) return false;
+  const ts = new Date().toISOString();
+  const callId = `call_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+  const callEntry: NonNullable<WaitlistEntry["calls"]>[number] = {
+    id: callId,
+    at: ts,
+    by_user_id: "u_current",
+    outcome,
+    notes: opts.notes?.trim() || undefined,
+    accepted_slip_id: outcome === "accept" ? opts.accepted_slip_id : undefined,
+  };
+  const next = { ...state.waitlist[idx] };
+  next.calls = [...(next.calls ?? []), callEntry];
+  next.last_contact_at = ts; // every call refreshes the staleness clock
+
+  if (outcome === "decline_archive") {
+    next.archived_at = ts;
+    next.archive_reason = opts.archive_reason ?? "non_responder";
+    if (next.status === "pending") next.status = "withdrawn";
+  } else if (outcome === "accept" && opts.accepted_slip_id) {
+    // Mark converted so the row falls out of the active queue while
+    // the operator works the slip-onboarding wizard. If they back out,
+    // a follow-up call can flip it back via update.
+    next.status = "converted";
+    next.offered_slip_id = opts.accepted_slip_id;
+  } else if (outcome === "decline_stay") {
+    // Increment decline counter to feed the Stale signal.
+    next.decline_count = (next.decline_count ?? 0) + 1;
+  }
+  const list = state.waitlist.slice();
+  list[idx] = next;
+  state = { ...state, waitlist: list };
+  notify();
+  logAuditLocal({
+    actor_user_id: "u_current",
+    actor_label: "Operator",
+    action_type: `waitlist.call.${outcome}`,
+    target_entity: "waitlist_entry",
+    target_id: entryId,
+    payload_delta: JSON.stringify({
+      outcome,
+      notes: opts.notes,
+      accepted_slip_id: opts.accepted_slip_id,
+      archive_reason: opts.archive_reason,
+    }),
+  });
+  return true;
+}
+
 export function expireWaitlistOffers(opts: {
   now?: Date;
   agent_prompt?: string;
@@ -3809,6 +3898,82 @@ export function useSlip(id: string): Slip | undefined {
   // id-keyed lookup — ids are unique across tenants so no scope
   // filter needed. Drawer / detail surfaces use this for resolution.
   return useStore().slips.find((s) => s.id === id);
+}
+
+// ── Slip Types ────────────────────────────────────────────────────────
+//
+// Tenant-scoped, returned sort_order ASC so consumers (Settings page,
+// segmented chips, picklists) always render in the configured display
+// order without each call site re-sorting.
+
+export function useSlipTypes(): SlipType[] {
+  const s = useStore();
+  return s.slipTypes
+    .filter(
+      (t) => (t.tenant_id ?? s.tenants[0]?.id) === s.currentTenantId,
+    )
+    .slice()
+    .sort((a, b) => a.sort_order - b.sort_order);
+}
+
+export function addSlipType(t: SlipType) {
+  const stamped: SlipType = {
+    ...t,
+    tenant_id: t.tenant_id ?? state.currentTenantId,
+  };
+  state = { ...state, slipTypes: [stamped, ...state.slipTypes] };
+  notify();
+  logAuditLocal({
+    actor_user_id: "u_current",
+    actor_label: "Operator",
+    action_type: "slip_type.create",
+    target_entity: "slip_type",
+    target_id: stamped.id,
+    payload_delta: JSON.stringify({
+      class: stamped.class,
+      display_label: stamped.display_label,
+    }),
+  });
+}
+
+export function updateSlipType(id: string, patch: Partial<SlipType>): void {
+  state = {
+    ...state,
+    slipTypes: state.slipTypes.map((t) =>
+      t.id === id ? { ...t, ...patch } : t,
+    ),
+  };
+  notify();
+  logAuditLocal({
+    actor_user_id: "u_current",
+    actor_label: "Operator",
+    action_type: "slip_type.update",
+    target_entity: "slip_type",
+    target_id: id,
+    payload_delta: JSON.stringify(patch),
+  });
+}
+
+export function deleteSlipType(id: string): void {
+  // Soft-delete: flip active=false rather than remove. Existing slips
+  // referencing this type via Slip.type_id keep their pointer; the
+  // resolver gracefully falls through to derived matching when the
+  // type is inactive.
+  state = {
+    ...state,
+    slipTypes: state.slipTypes.map((t) =>
+      t.id === id ? { ...t, active: false } : t,
+    ),
+  };
+  notify();
+  logAuditLocal({
+    actor_user_id: "u_current",
+    actor_label: "Operator",
+    action_type: "slip_type.deactivate",
+    target_entity: "slip_type",
+    target_id: id,
+    payload_delta: JSON.stringify({ active: false }),
+  });
 }
 
 export function useInsuranceForVessel(vesselId: string): InsuranceCertificate[] {
