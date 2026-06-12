@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { FilePlus2, Send, Sparkles } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { TabButton, TabStrip } from "@/components/ui/tab-button";
 import { BOATERS, SLIPS, formatMoney } from "@/lib/mock-data";
 import { updateContract, useContracts } from "@/lib/client-store";
 import { BulkRenewalSheet } from "./bulk-renewal-sheet";
@@ -31,6 +31,7 @@ export function RenewalPipelineView() {
   const targetYear = currentYear + 1;
 
   const [bulkOpen, setBulkOpen] = React.useState(false);
+  const [stage, setStage] = React.useState<Stage>("up_for_renewal");
 
   // Active contracts ending this year
   const activeEndingThisYear = contracts.filter((c) => {
@@ -121,73 +122,83 @@ export function RenewalPipelineView() {
         </Button>
       </div>
 
-      {/* Tabbed tables */}
-      <Tabs defaultValue="up" className="w-full">
-        <TabsList>
-          <TabsTrigger value="up">
-            Up for renewal
-            <CountChip n={upForRenewal.length} tone="warn" />
-          </TabsTrigger>
-          <TabsTrigger value="drafted">
-            Drafted
-            <CountChip n={draftedSuccessors.length} tone="info" />
-          </TabsTrigger>
-          <TabsTrigger value="sent">
-            Sent
-            <CountChip n={sentSuccessors.length} tone="info" />
-          </TabsTrigger>
-          <TabsTrigger value="signed">
-            Signed
-            <CountChip n={signedSuccessors.length} tone="ok" />
-          </TabsTrigger>
-        </TabsList>
+      {/* Pipeline-stage tabs — canonical TabStrip + TabButton. Each
+          tab's count gets a tone matching the urgency of that bucket
+          (warn for Up for renewal, info for in-flight, ok for done). */}
+      <TabStrip ariaLabel="Renewal pipeline stage">
+        <TabButton
+          active={stage === "up_for_renewal"}
+          onClick={() => setStage("up_for_renewal")}
+          label="Up for renewal"
+          count={upForRenewal.length}
+          countTone="warn"
+        />
+        <TabButton
+          active={stage === "drafted"}
+          onClick={() => setStage("drafted")}
+          label="Drafted"
+          count={draftedSuccessors.length}
+          countTone="info"
+        />
+        <TabButton
+          active={stage === "sent"}
+          onClick={() => setStage("sent")}
+          label="Sent"
+          count={sentSuccessors.length}
+          countTone="info"
+        />
+        <TabButton
+          active={stage === "signed"}
+          onClick={() => setStage("signed")}
+          label="Signed"
+          count={signedSuccessors.length}
+          countTone="ok"
+        />
+      </TabStrip>
 
-        <TabsContent value="up">
-          <PipelineTable
-            stage="up_for_renewal"
-            contracts={upForRenewal}
-            emptyTitle="Every expiring contract has a successor in flight."
-            emptyBody="Anything that lands in this stage gets a row here once it's active and ending this year."
-            onOpen={openContract}
-          />
-        </TabsContent>
-        <TabsContent value="drafted">
-          <PipelineTable
-            stage="drafted"
-            contracts={draftedSuccessors}
-            emptyTitle="No draft renewals yet."
-            emptyBody="Use the 'Draft renewals' bulk action above, or draft individually from each holder's page."
-            onOpen={openContract}
-            onSend={(c) =>
-              updateContract(c.id, { status: "sent" })
-            }
-          />
-        </TabsContent>
-        <TabsContent value="sent">
-          <PipelineTable
-            stage="sent"
-            contracts={sentSuccessors}
-            emptyTitle="Nothing waiting on signatures."
-            emptyBody="When a draft is sent for signature it'll appear here until the holder signs."
-            onOpen={openContract}
-            onMarkSigned={(c) =>
-              updateContract(c.id, {
-                status: "active",
-                signed_at: new Date().toISOString().slice(0, 10),
-              })
-            }
-          />
-        </TabsContent>
-        <TabsContent value="signed">
-          <PipelineTable
-            stage="signed"
-            contracts={signedSuccessors}
-            emptyTitle="No locked-in renewals yet."
-            emptyBody={`Successors signed and active for the ${targetYear} season will land here.`}
-            onOpen={openContract}
-          />
-        </TabsContent>
-      </Tabs>
+      {stage === "up_for_renewal" && (
+        <PipelineTable
+          stage="up_for_renewal"
+          contracts={upForRenewal}
+          emptyTitle="Every expiring contract has a successor in flight."
+          emptyBody="Anything that lands in this stage gets a row here once it's active and ending this year."
+          onOpen={openContract}
+        />
+      )}
+      {stage === "drafted" && (
+        <PipelineTable
+          stage="drafted"
+          contracts={draftedSuccessors}
+          emptyTitle="No draft renewals yet."
+          emptyBody="Use the 'Draft renewals' bulk action above, or draft individually from each holder's page."
+          onOpen={openContract}
+          onSend={(c) => updateContract(c.id, { status: "sent" })}
+        />
+      )}
+      {stage === "sent" && (
+        <PipelineTable
+          stage="sent"
+          contracts={sentSuccessors}
+          emptyTitle="Nothing waiting on signatures."
+          emptyBody="When a draft is sent for signature it'll appear here until the holder signs."
+          onOpen={openContract}
+          onMarkSigned={(c) =>
+            updateContract(c.id, {
+              status: "active",
+              signed_at: new Date().toISOString().slice(0, 10),
+            })
+          }
+        />
+      )}
+      {stage === "signed" && (
+        <PipelineTable
+          stage="signed"
+          contracts={signedSuccessors}
+          emptyTitle="No locked-in renewals yet."
+          emptyBody={`Successors signed and active for the ${targetYear} season will land here.`}
+          onOpen={openContract}
+        />
+      )}
 
       <BulkRenewalSheet
         open={bulkOpen}
@@ -222,21 +233,8 @@ function KpiCard({
   );
 }
 
-function CountChip({ n, tone }: { n: number; tone: "ok" | "warn" | "info" | "neutral" }) {
-  const tint =
-    tone === "ok"
-      ? "bg-status-ok/15 text-status-ok"
-      : tone === "warn"
-      ? "bg-status-warn/15 text-status-warn"
-      : tone === "info"
-      ? "bg-status-info/15 text-status-info"
-      : "bg-surface-3 text-fg-subtle";
-  return (
-    <span className={cn("ml-1 rounded-full px-1.5 py-0.5 text-[10px] font-semibold tabular", tint)}>
-      {n}
-    </span>
-  );
-}
+// CountChip removed — replaced by TabButton's `count` + `countTone` props
+// from the canonical components/ui/tab-button.tsx.
 
 function PipelineTable({
   stage,

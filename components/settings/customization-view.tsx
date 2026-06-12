@@ -20,12 +20,7 @@ import {
 import { anyApi } from "convex/server";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from "@/components/ui/tabs";
+import { TabButton, TabStrip } from "@/components/ui/tab-button";
 import {
   addPicklistValue,
   archivePicklistValue,
@@ -58,7 +53,7 @@ import { useTenantQuery } from "@/lib/use-tenant-query";
  * tabs are scaffolded so the IA holds when those phases land, but
  * marked as future work for now.
  */
-const VALID_TABS = ["picklists", "docks"] as const;
+const VALID_TABS = ["picklists", "docks", "club"] as const;
 type CustomizationTab = (typeof VALID_TABS)[number];
 
 // Convex picklist shape (`convex/picklists.ts:list`). Values store
@@ -123,62 +118,66 @@ export function CustomizationView() {
     requestedTab && (VALID_TABS as readonly string[]).includes(requestedTab)
       ? (requestedTab as CustomizationTab)
       : "picklists";
+  const [tab, setTab] = React.useState<CustomizationTab>(initialTab);
 
   return (
     <div className="space-y-4">
       {/* Tenant context bar */}
       <TenantContextBar />
 
+      {/* Canonical TabStrip + TabButton — matches /services/rates,
+          /services/waitlist, /services/contracts. */}
+      <TabStrip ariaLabel="Customization area">
+        <TabButton
+          active={tab === "picklists"}
+          onClick={() => setTab("picklists")}
+          label="Picklists"
+          icon={<Tag className="size-3.5" />}
+        />
+        <TabButton
+          active={tab === "docks"}
+          onClick={() => setTab("docks")}
+          label="Docks"
+          icon={<Anchor className="size-3.5" />}
+        />
+        <TabButton
+          active={tab === "club"}
+          onClick={() => setTab("club")}
+          label="Rental Club"
+          icon={<Sailboat className="size-3.5" />}
+        />
+      </TabStrip>
 
-      <Tabs defaultValue={initialTab} className="w-full">
-        <TabsList>
-          <TabsTrigger value="picklists">
-            <Tag className="size-3.5" />
-            Picklists
-          </TabsTrigger>
-          <TabsTrigger value="docks">
-            <Anchor className="size-3.5" />
-            Docks
-          </TabsTrigger>
-          <TabsTrigger value="club">
-            <Sailboat className="size-3.5" />
-            Rental Club
-          </TabsTrigger>
-        </TabsList>
+      {tab === "picklists" && (
+        <div className="space-y-3">
+          <p className="text-[12px] text-fg-subtle">
+            Each picklist controls the dropdown values used somewhere in the
+            app. Renaming a label updates every existing record's display;
+            archiving a value hides it from new selections but keeps
+            historical records readable. Reordering changes the dropdown
+            order app-wide.
+          </p>
+          {picklists
+            .sort((a, b) => a.label.localeCompare(b.label))
+            .map((p) => (
+              <PicklistPanel key={p.id} picklist={p} />
+            ))}
+        </div>
+      )}
 
-        <TabsContent value="picklists">
-          <div className="mt-4 space-y-3">
-            <p className="text-[12px] text-fg-subtle">
-              Each picklist controls the dropdown values used somewhere in the
-              app. Renaming a label updates every existing record's display;
-              archiving a value hides it from new selections but keeps
-              historical records readable. Reordering changes the dropdown
-              order app-wide.
-            </p>
-            {picklists
-              .sort((a, b) => a.label.localeCompare(b.label))
-              .map((p) => (
-                <PicklistPanel key={p.id} picklist={p} />
-              ))}
-          </div>
-        </TabsContent>
+      {tab === "docks" && (
+        <div className="space-y-3">
+          <p className="text-[12px] text-fg-subtle">
+            Docks group your slips and drive auto-generated slip ids. They
+            behave like a picklist with extra fields — short name, prefix,
+            sort order, and an active flag. Renaming a dock updates every
+            slip on it.
+          </p>
+          <DocksView />
+        </div>
+      )}
 
-        <TabsContent value="docks">
-          <div className="mt-4 space-y-3">
-            <p className="text-[12px] text-fg-subtle">
-              Docks group your slips and drive auto-generated slip ids. They
-              behave like a picklist with extra fields — short name, prefix,
-              sort order, and an active flag. Renaming a dock updates every
-              slip on it.
-            </p>
-            <DocksView />
-          </div>
-        </TabsContent>
-
-        <TabsContent value="club">
-          <RetentionVariantsPanel />
-        </TabsContent>
-      </Tabs>
+      {tab === "club" && <RetentionVariantsPanel />}
     </div>
   );
 }

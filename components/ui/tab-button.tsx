@@ -46,12 +46,15 @@ export function TabStrip({
   );
 }
 
+type CountTone = "neutral" | "ok" | "warn" | "info";
+
 export function TabButton({
   active,
   onClick,
   label,
   icon,
   count,
+  countTone = "neutral",
   badge,
   severity,
 }: {
@@ -61,9 +64,11 @@ export function TabButton({
   /** Optional leading icon. Use sparingly — most tab strips read fine
    *  with just a label. */
   icon?: React.ReactNode;
-  /** Optional trailing count badge ("Queue · 34"-style). Renders as
-   *  a neutral Badge. */
+  /** Optional trailing count badge ("Queue · 34"-style). Default is
+   *  a neutral Badge; pass `countTone` to emphasize attention-worthy
+   *  buckets (renewal pipeline uses warn/info/ok per pipeline stage). */
   count?: number;
+  countTone?: CountTone;
   /** Optional trailing secondary badge ("1 pending"-style). Renders
    *  as a warn-tone Badge. */
   badge?: string;
@@ -100,7 +105,7 @@ export function TabButton({
       )}
       <span>{label}</span>
       {count !== undefined && (
-        <Badge tone="neutral" size="sm">
+        <Badge tone={countTone} size="sm">
           {count}
         </Badge>
       )}
