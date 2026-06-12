@@ -23,6 +23,7 @@ import {
   usePicklistLabel,
   useReservations,
   useSlips,
+  useSlipTypes,
   useVessels,
 } from "@/lib/client-store";
 import {
@@ -167,6 +168,32 @@ export function RosterView() {
   // state below; the "edit" path no longer mounts the dialog.
   const [editingSlip, setEditingSlip] = React.useState<Slip | undefined>();
   const [slipEditOpen, setSlipEditOpen] = React.useState(false);
+
+  // Live SlipTypes — drives the "Type override" select on the edit
+  // dialog. Built per render because the type catalog can change
+  // (operator adds/edits a tier in Settings → Slip Types); the
+  // SLIP_FIELDS const at module scope stays static and we splice in
+  // the dynamic field here.
+  const slipTypes = useSlipTypes();
+  const slipFieldsWithTypeOption = React.useMemo<FieldSpec<Slip>[]>(() => {
+    const typeOptions = [
+      { value: "", label: "(auto — derive from class + LOA)" },
+      ...slipTypes
+        .filter((t) => t.active)
+        .map((t) => ({ value: t.id, label: t.display_label })),
+    ];
+    return [
+      ...SLIP_FIELDS,
+      {
+        key: "type_id",
+        label: "Type override",
+        kind: "select",
+        col: 2,
+        options: typeOptions,
+        hint: "Leave blank to auto-derive the tier from class + max LOA. Set explicitly to pin this slip to a specific tier.",
+      },
+    ];
+  }, [slipTypes]);
 
   const [dock, setDock] = React.useState<string>("all");
   const [cadence, setCadence] = React.useState<CadenceFilter>("all");
@@ -410,10 +437,10 @@ export function RosterView() {
         }
         description={
           editingSlip
-            ? "Slip defaults flow into the assignment wizard for any new contract on this slip. Existing contracts keep what they were signed at."
-            : "New slip — pick a dock, number, class, and dimensions. New dock names auto-create a dock; existing ones get the new slip appended."
+            ? "Slip defaults flow into the assignment wizard for any new contract on this slip. Existing contracts keep what they were signed at. Type override is optional — when blank, the slip auto-resolves to a tier from its class + max LOA."
+            : "New slip — pick a dock, number, class, and dimensions. New dock names auto-create a dock; existing ones get the new slip appended. Type override is optional — leave blank to auto-derive."
         }
-        fields={SLIP_FIELDS}
+        fields={slipFieldsWithTypeOption}
         record={editingSlip}
         onSave={(values) => {
           // Resolve dock_id from the dock name. If the dock string

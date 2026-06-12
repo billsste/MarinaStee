@@ -163,6 +163,7 @@ import {
   type CloseoutBoaterRef,
 } from "@/lib/wo-closeout";
 import { deriveSlipStatus, type SlipStatusResult } from "@/lib/slip-status";
+import { includedFeesForSlip } from "@/lib/slip-type-helpers";
 
 // GL account derivation — POS location → GL bucket, falls back to A/R for ledger.
 function glForOrder(locationId: string): string {
@@ -1125,7 +1126,22 @@ function fireWorkOrderCloseoutChain(id: string): void {
 }
 
 export function addReservation(r: Reservation) {
-  state = { ...state, reservations: [r, ...state.reservations] };
+  // Auto-attach the slip's type-included fees so every reservation
+  // booked on, say, a covered slip carries the shore-power fee
+  // (whatever the operator configured on SlipType.included_fee_ids).
+  // Caller's explicit attached_fee_ids are preserved + deduped.
+  const slip = state.slips.find((s) => s.id === r.slip_id);
+  const autoFeeIds = slip
+    ? includedFeesForSlip(slip, state.slipTypes)
+    : [];
+  const merged = Array.from(
+    new Set([...(r.attached_fee_ids ?? []), ...autoFeeIds]),
+  );
+  const next: Reservation = {
+    ...r,
+    attached_fee_ids: merged.length > 0 ? merged : r.attached_fee_ids,
+  };
+  state = { ...state, reservations: [next, ...state.reservations] };
   notify();
 }
 

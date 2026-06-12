@@ -18,7 +18,7 @@ import {
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { BOATERS, SLIPS, formatInches } from "@/lib/mock-data";
+import { BOATERS, SLIPS, formatInches, getCurrentReservation } from "@/lib/mock-data";
 import {
   acceptWaitlistOffer,
   archiveWaitlistEntries,
@@ -27,7 +27,7 @@ import {
   declineWaitlistOffer,
   useWaitlist,
 } from "@/lib/client-store";
-import type { WaitlistEntry, WaitlistOfferStatus } from "@/lib/types";
+import type { SlipClass, WaitlistEntry, WaitlistOfferStatus } from "@/lib/types";
 import { useTabUrlState } from "@/lib/use-tab-url-state";
 import { ListFilterSelect } from "@/components/ui/list-filter-select";
 import { WaitlistFireOfferModal } from "./waitlist-fire-offer-modal";
@@ -61,9 +61,10 @@ import { cn } from "@/lib/utils";
 // Mirrors ROSTER_COLS in components/rentals/roster-view.tsx so the
 // waitlist table reads at the same density as the slip roster.
 // Columns: [checkbox] / RANK or SLIP / WANTS (preferred dock) /
-// APPLICANT / VESSEL / CADENCE / SIGNAL / STATUS / ACTION.
+// APPLICANT / VESSEL / CURRENT (slip-holder upgrading?) / CADENCE /
+// SIGNAL / STATUS / ACTION.
 const WAITLIST_COLS =
-  "28px 56px 88px minmax(0, 1.8fr) minmax(0, 1.7fr) 88px 140px 90px 130px";
+  "28px 56px 88px minmax(0, 1.7fr) minmax(0, 1.4fr) 96px 88px 140px 90px 130px";
 
 const OFFER_TONE: Record<
   WaitlistOfferStatus,
@@ -186,6 +187,14 @@ export function WaitlistSection() {
   const [query, setQuery] = React.useState("");
   const [lengthBand, setLengthBand] = React.useState<LengthBand>("all");
   const [cadence, setCadence] = React.useState<CadenceFilter>("all");
+  // Slip-class filter — primary axis Steven uses to work "the covered
+  // waitlist" separately from "the uncovered waitlist". An entry
+  // matches when its preferred_classes array contains the active
+  // class, or when preferred_classes is empty/undefined (no class
+  // preference recorded = match everything).
+  const [classFilter, setClassFilter] = React.useState<SlipClass | "all">(
+    "all",
+  );
 
   // ── Bulk selection — keyed by entry.id. Cleared on tab switch
   //    so the operator never accidentally bulk-acts on a row they
@@ -277,6 +286,15 @@ export function WaitlistSection() {
     (e: WaitlistEntry) => {
       if (!inLengthBand(e.loa_inches, lengthBand)) return false;
       if (cadence !== "all" && e.reservation_type !== cadence) return false;
+      // Class filter — match when the applicant either prefers this
+      // class or has no class preference recorded at all (legacy seed
+      // rows that pre-date the field shouldn't disappear from view).
+      if (classFilter !== "all") {
+        const prefs = e.preferred_classes;
+        if (prefs && prefs.length > 0 && !prefs.includes(classFilter)) {
+          return false;
+        }
+      }
       if (query.trim()) {
         const q = query.toLowerCase();
         const boater = e.boater_id ? boaterById.get(e.boater_id) : undefined;
@@ -296,7 +314,7 @@ export function WaitlistSection() {
       }
       return true;
     },
-    [query, lengthBand, cadence, boaterById],
+    [query, lengthBand, cadence, classFilter, boaterById],
   );
 
   const visible = React.useMemo(() => {
@@ -304,8 +322,32 @@ export function WaitlistSection() {
     return list.filter(filterRow);
   }, [partitions, tab, filterRow]);
 
+  // Per-class counts shown on the chips. Counted against the active
+  // lifecycle tab so the chip labels reflect "active waitlist by
+  // class," not "all waitlist by class" — operators care about the
+  // pipeline they're working right now.
+  const classCounts = React.useMemo(() => {
+    const counts: Record<SlipClass | "all", number> = {
+      all: partitions[tab].length,
+      covered: 0,
+      uncovered: 0,
+      t_head: 0,
+      buoy: 0,
+      dry_storage: 0,
+    };
+    for (const e of partitions[tab]) {
+      const prefs = e.preferred_classes;
+      if (!prefs || prefs.length === 0) continue;
+      for (const c of prefs) counts[c]++;
+    }
+    return counts;
+  }, [partitions, tab]);
+
   const filtersDirty =
-    query.trim().length > 0 || lengthBand !== "all" || cadence !== "all";
+    query.trim().length > 0 ||
+    lengthBand !== "all" ||
+    cadence !== "all" ||
+    classFilter !== "all";
 
   // pendingOfferCount is destructured from the partition memo above —
   // counted in the same pass so we don't allocate a throwaway
@@ -376,6 +418,50 @@ export function WaitlistSection() {
         />
       </div>
 
+      {/* ── Slip-class segment chips — the primary axis Steven uses
+                to work "the covered waitlist" vs "the uncovered
+                waitlist". Counts reflect the active tab so the chip
+                badges show "applicants on this lifecycle stage that
+                want this class." All is the default. */}
+      <div className="flex flex-wrap items-center gap-1.5 rounded-[10px] border border-hairline bg-surface-1 p-1.5">
+        {(
+          [
+            { key: "all" as const, label: "All classes" },
+            { key: "covered" as const, label: "Covered" },
+            { key: "uncovered" as const, label: "Uncovered" },
+            { key: "t_head" as const, label: "T-head" },
+            { key: "buoy" as const, label: "Buoy / Mooring" },
+            { key: "dry_storage" as const, label: "Dry storage" },
+          ]
+        ).map((c) => {
+          const active = classFilter === c.key;
+          const count = classCounts[c.key];
+          return (
+            <button
+              key={c.key}
+              type="button"
+              onClick={() => setClassFilter(c.key)}
+              className={cn(
+                "flex items-center gap-1.5 rounded-[8px] px-2.5 py-1 text-[12px] font-medium transition-colors",
+                active
+                  ? "bg-primary-soft text-primary"
+                  : "text-fg-subtle hover:bg-surface-2 hover:text-fg",
+              )}
+            >
+              {c.label}
+              <span
+                className={cn(
+                  "tabular text-[11px]",
+                  active ? "text-primary/80" : "text-fg-tertiary",
+                )}
+              >
+                {count}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
       {/* ── Filter bar — matches the slip roster + rental boats
                 pattern: search input on the left, ListFilterSelect
                 dropdown pills for facets, running count on the
@@ -424,6 +510,7 @@ export function WaitlistSection() {
               setQuery("");
               setLengthBand("all");
               setCadence("all");
+              setClassFilter("all");
             }}
           >
             Clear
@@ -529,6 +616,9 @@ export function WaitlistSection() {
             <span>Wants</span>
             <span>Applicant</span>
             <span>Vessel</span>
+            <span title="Current slip — set when this applicant is also a slip-holder upgrading to a better tier">
+              Current
+            </span>
             <span>Cadence</span>
             <span>
               {tab === "queue"
@@ -881,6 +971,12 @@ function WaitlistRow({
         {entry.beam_inches ? ` · ${formatInches(entry.beam_inches)} beam` : ""}
       </span>
 
+      {/* Current slip — set when this applicant is also a slip-holder
+          upgrading to a better tier. Cheap per-row lookup: the active
+          reservation set is short and getCurrentReservation does the
+          today-window check. */}
+      <CurrentSlipCell entry={entry} />
+
       {/* Cadence — mirrors CADENCE column on the roster */}
       <span className="text-[12px] capitalize text-fg-subtle">
         {entry.reservation_type}
@@ -994,6 +1090,39 @@ function WaitlistRow({
         )}
       </div>
     </li>
+  );
+}
+
+/**
+ * Current slip cell — shows the slip the applicant currently holds, if
+ * any. Empty for waitlist-only prospects (the common case). When set,
+ * surfaces the "upgrading" pattern at a glance: "A29 → wants Covered".
+ *
+ * Renders as compact text (slip id + dock) so the column stays narrow.
+ * Lives as its own component so the per-row reservation lookup +
+ * boater context stays local — no need to thread current-slip state
+ * down through WaitlistRow props.
+ */
+function CurrentSlipCell({ entry }: { entry: WaitlistEntry }) {
+  // Guest entries (no boater) can't have a current slip.
+  if (!entry.boater_id) {
+    return <span className="text-[12px] text-fg-tertiary">—</span>;
+  }
+  const reservation = getCurrentReservation(entry.boater_id);
+  const slipId = reservation?.slip_id;
+  if (!slipId) {
+    return <span className="text-[12px] text-fg-tertiary">—</span>;
+  }
+  const slip = SLIPS.find((s) => s.id === slipId);
+  return (
+    <span className="flex min-w-0 flex-col text-[12px] text-fg-subtle">
+      <span className="font-medium text-fg tabular">{slipId}</span>
+      {slip && (
+        <span className="truncate text-[11px] text-fg-tertiary">
+          {slip.dock}
+        </span>
+      )}
+    </span>
   );
 }
 
