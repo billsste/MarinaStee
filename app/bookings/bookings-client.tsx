@@ -20,6 +20,8 @@ import { LocalTime } from "@/components/ui/local-time";
 import { localIsoDate } from "@/lib/contracts";
 import { RentalsAsk } from "@/components/rentals/rentals-ask";
 import { Button } from "@/components/ui/button";
+import { TabButton, TabStrip } from "@/components/ui/tab-button";
+import { ListFilterSelect } from "@/components/ui/list-filter-select";
 import { ReservationsTable } from "@/components/reservations/reservations-table";
 import { WaitlistView } from "@/components/reservations/waitlist-view";
 import { NewBookingWizard } from "@/components/bookings/new-booking-wizard";
@@ -170,64 +172,36 @@ export function BookingsClient() {
   }, [section]);
 
   return (
-    <div className="mx-auto w-full max-w-[1400px] px-5 pt-6 pb-32">
-      <header className="mb-6">
-        <h1 className="display-tight text-[26px] font-semibold text-fg">
-          Bookings
-        </h1>
-        <p className="mt-1 text-[13px] text-fg-subtle">{active.description}</p>
-      </header>
+    // No section h1 — the AppShell breadcrumb ("Marina Stee / Bookings")
+    // identifies the page. See CLAUDE.md §"List-page UX consistency"
+    // rule #10 + #12 (rail with 3 items → TabStrip in content column).
+    <div className="mx-auto w-full max-w-[1400px] px-5 pt-4 pb-32 space-y-5">
+      <RentalsAsk
+        placeholder={AGENT_PROMPTS[section].placeholder}
+        suggestions={AGENT_PROMPTS[section].suggestions}
+      />
 
-      <div
-        className="grid gap-6"
-        style={{ gridTemplateColumns: "200px minmax(0, 1fr)" }}
-      >
-        {/* Left rail — same shape as /members + /services + /settings */}
-        <nav
-          aria-label="Booking sections"
-          className="space-y-0.5 md:sticky md:top-20 md:self-start"
-        >
-          {NAV_ITEMS.map((item) => {
-            const Icon = item.icon;
-            const isActive = section === item.key;
-            const badge = item.key === "pending" && pendingCount > 0
-              ? pendingCount
-              : null;
-            return (
-              <button
-                key={item.key}
-                type="button"
-                onClick={() => setSection(item.key)}
-                className={cn(
-                  "flex w-full items-center gap-2 rounded-[8px] px-2 py-1.5 text-left text-[13px] transition-colors",
-                  isActive
-                    ? "bg-surface-3 font-medium text-fg"
-                    : "text-fg-subtle hover:bg-surface-2 hover:text-fg"
-                )}
-              >
-                <Icon className="size-3.5 shrink-0" />
-                <span className="min-w-0 flex-1 truncate">{item.label}</span>
-                {badge !== null && (
-                  <span className="inline-flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full bg-status-warn/15 px-1 text-[10px] font-medium text-status-warn">
-                    {badge}
-                  </span>
-                )}
-              </button>
-            );
-          })}
-        </nav>
+      <TabStrip ariaLabel="Booking sections">
+        {NAV_ITEMS.map((item) => {
+          const Icon = item.icon;
+          const showBadge = item.key === "pending" && pendingCount > 0;
+          return (
+            <TabButton
+              key={item.key}
+              active={section === item.key}
+              onClick={() => setSection(item.key)}
+              label={item.label}
+              icon={<Icon className="size-3.5" />}
+              count={showBadge ? pendingCount : undefined}
+              countTone={showBadge ? "warn" : "neutral"}
+            />
+          );
+        })}
+      </TabStrip>
 
-        {/* Content — agent + section, mirrors members-client.tsx exactly */}
-        <div className="min-w-0 space-y-5">
-          <RentalsAsk
-            placeholder={AGENT_PROMPTS[section].placeholder}
-            suggestions={AGENT_PROMPTS[section].suggestions}
-          />
-          {section === "bookings" && <UnifiedBookingsTab />}
-          {section === "pending" && <PendingRequestsTab />}
-          {section === "calendar" && <ClubCalendarTab />}
-        </div>
-      </div>
+      {section === "bookings" && <UnifiedBookingsTab />}
+      {section === "pending" && <PendingRequestsTab />}
+      {section === "calendar" && <ClubCalendarTab />}
     </div>
   );
 }
@@ -256,29 +230,26 @@ function UnifiedBookingsTab() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-1">
-          <SubTabButton
+        <TabStrip ariaLabel="Bookings view">
+          <TabButton
             active={sub === "kanban"}
             onClick={() => setSub("kanban")}
-            icon={<Clock className="size-3" />}
-          >
-            Kanban
-          </SubTabButton>
-          <SubTabButton
+            label="Kanban"
+            icon={<Clock className="size-3.5" />}
+          />
+          <TabButton
             active={sub === "list"}
             onClick={() => setSub("list")}
-            icon={<ListTodo className="size-3" />}
-          >
-            List
-          </SubTabButton>
-          <SubTabButton
+            label="List"
+            icon={<ListTodo className="size-3.5" />}
+          />
+          <TabButton
             active={sub === "waitlist"}
             onClick={() => setSub("waitlist")}
-            icon={<CalendarRange className="size-3" />}
-          >
-            Waitlist
-          </SubTabButton>
-        </div>
+            label="Waitlist"
+            icon={<CalendarRange className="size-3.5" />}
+          />
+        </TabStrip>
 
         <Button variant="primary" size="sm" onClick={() => setNewOpen(true)}>
           <Plus className="size-3.5" /> New booking
@@ -291,34 +262,6 @@ function UnifiedBookingsTab() {
 
       <NewBookingWizard open={newOpen} onOpenChange={setNewOpen} />
     </div>
-  );
-}
-
-function SubTabButton({
-  active,
-  onClick,
-  icon,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  icon?: React.ReactNode;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(
-        "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors",
-        active
-          ? "border-primary/40 bg-primary-soft text-primary"
-          : "border-hairline bg-surface-1 text-fg-muted hover:bg-surface-2"
-      )}
-    >
-      {icon}
-      {children}
-    </button>
   );
 }
 
@@ -633,31 +576,17 @@ function UnifiedKanban() {
             <span className="text-fg-tertiary">active club members</span>
           </span>
         </div>
-        <div className="flex flex-wrap items-center gap-1.5">
-          {(["all", "slip", "rental", "club"] as UnifiedTypeFilter[]).map(
-            (f) => (
-              <button
-                key={f}
-                type="button"
-                onClick={() => setFilter(f)}
-                className={cn(
-                  "rounded-full border px-2.5 py-0.5 text-[11px] font-medium transition-colors",
-                  filter === f
-                    ? "border-primary/40 bg-primary-soft text-primary"
-                    : "border-hairline bg-surface-1 text-fg-subtle hover:bg-surface-2"
-                )}
-              >
-                {f === "all"
-                  ? "All types"
-                  : f === "slip"
-                  ? "Slip"
-                  : f === "rental"
-                  ? "Boat rental"
-                  : "Club"}
-              </button>
-            )
-          )}
-        </div>
+        <ListFilterSelect
+          label="Type"
+          value={filter}
+          onChange={(v) => setFilter(v as UnifiedTypeFilter)}
+          options={[
+            { value: "all", label: "All types" },
+            { value: "slip", label: "Slip" },
+            { value: "rental", label: "Boat rental" },
+            { value: "club", label: "Club" },
+          ]}
+        />
       </div>
 
       {/* Pending-request triage now lives on its own sidebar tab
@@ -944,29 +873,19 @@ function PendingRequestsTab() {
 
   return (
     <div className="space-y-3">
-      {/* Type filter pills with live counts */}
-      <div className="flex flex-wrap items-center gap-1.5">
-        {(["all", "slip", "rental", "club"] as PendingFilter[]).map((f) => (
-          <button
-            key={f}
-            type="button"
-            onClick={() => setFilter(f)}
-            className={cn(
-              "rounded-full border px-2.5 py-0.5 text-[11px] font-medium transition-colors",
-              filter === f
-                ? "border-primary/40 bg-primary-soft text-primary"
-                : "border-hairline bg-surface-1 text-fg-subtle hover:bg-surface-2"
-            )}
-          >
-            {f === "all"
-              ? `All · ${counts.all}`
-              : f === "slip"
-              ? `Slip · ${counts.slip}`
-              : f === "rental"
-              ? `Boat rental · ${counts.rental}`
-              : `Club · ${counts.club}`}
-          </button>
-        ))}
+      {/* Type filter — canonical ListFilterSelect with live counts */}
+      <div className="flex flex-wrap items-center gap-2">
+        <ListFilterSelect
+          label="Type"
+          value={filter}
+          onChange={(v) => setFilter(v as PendingFilter)}
+          options={[
+            { value: "all", label: `All · ${counts.all}` },
+            { value: "slip", label: `Slip · ${counts.slip}` },
+            { value: "rental", label: `Boat rental · ${counts.rental}` },
+            { value: "club", label: `Club · ${counts.club}` },
+          ]}
+        />
       </div>
 
       <div

@@ -1,7 +1,8 @@
 "use client";
 
 import * as React from "react";
-import { Search, Flag, Plus } from "lucide-react";
+import { Search, Plus } from "lucide-react";
+import { ListFilterSelect } from "@/components/ui/list-filter-select";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { WoCard } from "./wo-card";
@@ -134,50 +135,38 @@ export function WoKanban({ initial }: { initial?: WorkOrder[] }) {
     // agent-at-the-layout-level pattern used by every other top-level
     // page (/members, /services, /bookings, /settings).
     <div className="space-y-5">
-      {/* Type filter tabs */}
-      <div className="flex flex-wrap gap-1 rounded-[10px] border border-hairline bg-surface-2 p-1">
-        {ACTIVITY_TABS.map((t) => (
-          <button
-            key={t.key}
-            type="button"
-            onClick={() => setFilterType(t.key)}
-            className={cn(
-              "flex-1 min-w-fit rounded-[6px] px-2.5 py-1 text-[11px] font-medium transition-colors",
-              filterType === t.key
-                ? "bg-surface-1 text-fg shadow-sm"
-                : "text-fg-subtle hover:text-fg"
-            )}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
-
-      {/* Search + flagged + new */}
-      <div className="flex items-center gap-2">
-        <div className="relative flex-1">
+      {/* Canonical single-row toolbar — matches /services/roster,
+          /services/rates, /services/waitlist. Activity-type and Flagged
+          collapse from the old two-row strip into ListFilterSelect
+          dropdowns alongside the search input.
+          See CLAUDE.md §"List-page UX consistency" rule #11. */}
+      <div className="flex flex-wrap items-center gap-2 rounded-[12px] border border-hairline bg-surface-1 p-2">
+        <div className="relative min-w-[220px] flex-1">
           <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-fg-tertiary" />
           <input
+            type="search"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search by title, number, description…"
-            className="w-full rounded-[8px] border border-hairline bg-surface-1 py-2 pl-8 pr-3 text-[13px] text-fg placeholder:text-fg-tertiary focus:border-hairline-strong focus:outline-none"
+            className="w-full rounded-[8px] border border-hairline bg-surface-2 py-1.5 pl-8 pr-3 text-[12px] text-fg placeholder:text-fg-tertiary focus:border-hairline-strong focus:outline-none"
           />
         </div>
-        <button
-          type="button"
-          onClick={() => setFlaggedOnly((v) => !v)}
-          className={cn(
-            "inline-flex items-center gap-1.5 rounded-[8px] border px-3 py-1.5 text-[12px] font-medium transition-colors",
-            flaggedOnly
-              ? "border-status-warn/40 bg-status-warn/15 text-status-warn"
-              : "border-hairline bg-surface-1 text-fg-subtle hover:bg-surface-2"
-          )}
-        >
-          <Flag className="size-3.5" />
-          Flagged
-        </button>
-        <Button variant="primary" size="md" onClick={() => setNewOpen(true)}>
+        <ListFilterSelect
+          label="Activity"
+          value={filterType}
+          onChange={(v) => setFilterType(v as ActivityFilter)}
+          options={ACTIVITY_TABS.map((t) => ({ value: t.key, label: t.label }))}
+        />
+        <ListFilterSelect
+          label="Flagged"
+          value={flaggedOnly ? "flagged" : "all"}
+          onChange={(v) => setFlaggedOnly(v === "flagged")}
+          options={[
+            { value: "all", label: "All work orders" },
+            { value: "flagged", label: "Flagged only" },
+          ]}
+        />
+        <Button variant="primary" size="sm" onClick={() => setNewOpen(true)}>
           <Plus className="size-3.5" />
           New Work Order
         </Button>
