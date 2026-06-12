@@ -228,23 +228,10 @@ export function SlipTypesView() {
 
   return (
     <section className="space-y-4">
-      <header>
-        <h2 className="display-tight text-[18px] font-semibold text-fg">
-          Slip Types
-        </h2>
-        <p className="mt-0.5 text-[12.5px] text-fg-subtle">
-          Combine class + size band in one place. Pricing comes from{" "}
-          <a
-            href="/services/rates"
-            className="text-primary underline-offset-2 hover:underline"
-          >
-            Service rates
-          </a>{" "}
-          — link a Rate per cadence and every slip in this tier inherits.
-          Slips derive their tier from class + length unless explicitly pinned
-          in the slip editor.
-        </p>
-      </header>
+      {/* No sub-heading — the Services layout's breadcrumb already
+          identifies the page. List surfaces dive straight into the
+          toolbar to match /services/roster. See marina-stee/CLAUDE.md
+          → "List-page UX consistency". */}
 
       {/* Toolbar — search + class filter + status filter + Add tier.
           Same layout as /services/roster (Slips page). */}
@@ -419,14 +406,21 @@ function SlipTypeRow({
         className="group grid w-full items-center gap-x-3 px-3 py-2.5 text-left text-[13px] transition-colors hover:bg-surface-2"
         style={{ gridTemplateColumns: SLIP_TYPE_COLS }}
       >
-        <div className="min-w-0">
-          <div className="truncate font-medium text-fg">
-            {tier.display_label}
-          </div>
-          {tier.short_label && (
-            <div className="text-[11px] text-fg-tertiary">{tier.short_label}</div>
-          )}
-        </div>
+        {/* Single-line tier label — short_label moved to a title hint
+            so row height matches the Slips page (px-3 py-2.5 = ~38px
+            total). Two-line cells made this row visibly taller than
+            adjacent surfaces; the canonical pattern is one line per
+            row across every Marina Stee list page. */}
+        <span
+          className="min-w-0 truncate font-medium text-fg"
+          title={
+            tier.short_label
+              ? `${tier.display_label} (${tier.short_label})`
+              : tier.display_label
+          }
+        >
+          {tier.display_label}
+        </span>
         <span className="text-fg-muted">{CLASS_LABEL[tier.class]}</span>
         <span className="tabular text-fg-muted">{sizeBandLabel(tier)}</span>
         <RateCell amount={annual} fromRate={!!annualRate} />

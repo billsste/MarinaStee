@@ -50,10 +50,10 @@ Every list/table page in Marina Stee must follow ONE structural template. Operat
 
 ```
 <section className="space-y-4">
-  <header>
-    <h2 className="display-tight text-[18px] font-semibold text-fg">{Page name}</h2>
-    <p className="mt-0.5 text-[12.5px] text-fg-subtle">{One-line description}</p>
-  </header>
+  {/* NO sub-heading. The Services / Members / Staff layout already
+      provides the breadcrumb header for this page. Diving straight
+      into the toolbar keeps every list surface visually identical and
+      reclaims vertical space. */}
 
   {/* 1. Single-row toolbar — flex flex-wrap rounded-[12px] border border-hairline bg-surface-1 p-2 */}
   <div className="flex flex-wrap items-center gap-2 rounded-[12px] border border-hairline bg-surface-1 p-2">
@@ -91,6 +91,8 @@ Every list/table page in Marina Stee must follow ONE structural template. Operat
 6. **Fees must reference `/services/fees`**. Same principle — `included_fee_ids: string[]` on the entity, not inline fee definitions.
 7. **Every list page is mounted INSIDE `app/services/layout.tsx`'s right column**. Don't wrap the page in `<PageShell>` or import `<RentalsSubNav>` directly — the layout provides them. Same for `/members`, `/staff`, `/vendors`, `/settings/*` — the parent layout handles the breadcrumb + nav.
 8. **No leftover sectioning helpers**. If you see a `*GroupedRoster` / `DockGrouped*` / `groupBy*` rendering component on a list surface, it's a smell — flatten it. Inventory views (Settings → Docks) are the exception because each group IS a manageable entity, not a filter axis.
+9. **Every row is one line tall**. Padding `px-3 py-2.5` on the row button; cells use a single `<span>` per column with `truncate`. Sub-text (short labels, secondary IDs, helper context) goes into the row's `title` attribute as a tooltip — never a second line. Inconsistent row heights across list pages make the app feel patched together; the Slips page is the height anchor every other list matches.
+10. **No `<h2>` + description paragraph above the toolbar**. The parent layout's breadcrumb is the only page identifier. Sub-pages that need extra context put it in an info panel or a `?` icon next to the relevant control, not a header block that pushes the toolbar down 60px every time.
 
 ### Field spec for the edit dialog
 

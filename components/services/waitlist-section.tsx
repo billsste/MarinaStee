@@ -372,17 +372,10 @@ export function WaitlistSection() {
 
   return (
     <section className="space-y-4">
-      <header>
-        <h2 className="display-tight text-[18px] font-semibold text-fg">
-          Waitlist
-        </h2>
-        <p className="mt-0.5 text-[12.5px] text-fg-subtle">
-          Marina staff call applicants in priority order (oldest first). When
-          you get off the phone, click <span className="font-medium text-fg">Log call</span>{" "}
-          on their row to record the outcome — accepted, declined &amp; archive,
-          or declined but staying on the list.
-        </p>
-      </header>
+      {/* No sub-heading — the Services layout's breadcrumb already
+          identifies the page. List surfaces dive straight into the
+          tabs/toolbar to match the canonical Slips page. See
+          marina-stee/CLAUDE.md → "List-page UX consistency". */}
 
       {/* ── Tabs ──────────────────────────────────────── */}
       <div className="flex flex-wrap items-center gap-1 rounded-[10px] border border-hairline bg-surface-1 p-1">
