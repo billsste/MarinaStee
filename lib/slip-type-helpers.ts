@@ -144,11 +144,73 @@ export function effectiveTypeRate(
 ): number | undefined {
   const linked = rateForSlipTypeCadence(type, cadence, allRates);
   if (linked) return linked.amount;
+  // Auto-derive: find any rate "related" to this tier (matching
+  // occupancy_type by slip class) and the requested cadence. This is
+  // what powers the "no dropdown" UX — operators edit /services/rates
+  // and Slip Types pick up the matching amount automatically.
+  const auto = autoMatchedRateForType(type, cadence, allRates);
+  if (auto) return auto.amount;
+  // Last-ditch: inline default kept on the type (for seed data + the
+  // rare special-arrangement override). Will go away once every class
+  // has a real Rate row on /services/rates.
   if (cadence === "annual") return type.default_annual_rate;
   if (cadence === "monthly") return type.default_monthly_rate;
   if (cadence === "seasonal") return type.default_seasonal_rate;
   return type.default_transient_rate_per_night;
 }
+
+/**
+ * Auto-match a Rate to a SlipType + cadence WITHOUT requiring the
+ * operator to set rate_id by hand. The matching axis is the slip
+ * class → Rate.occupancy_type alignment (see CLASS_TO_OCCUPANCY).
+ *
+ * If multiple rates qualify, the most recently added wins (we treat
+ * Rate ordering as price-history with newest on top). Operators can
+ * override via Slip.default_*_rate on individual slips when a
+ * specific arrangement deserves it.
+ */
+export function autoMatchedRateForType(
+  type: SlipType,
+  cadence: "annual" | "monthly" | "seasonal" | "transient",
+  allRates: readonly Rate[] = RATES,
+): Rate | undefined {
+  const wantOccupancy = CLASS_TO_OCCUPANCY[type.class];
+  const wantCadence: Rate["cadence"] =
+    cadence === "transient" ? "daily" : cadence;
+  return allRates.find(
+    (r) => r.occupancy_type === wantOccupancy && r.cadence === wantCadence,
+  );
+}
+
+/**
+ * Every rate that's "related" to this tier — operators see this list
+ * in the Slip Type dialog as a passive "pulled from /services/rates"
+ * panel. Drives the table column when no per-tier rate_id is pinned.
+ */
+export function relatedRatesForType(
+  type: SlipType,
+  allRates: readonly Rate[] = RATES,
+): Rate[] {
+  const wantOccupancy = CLASS_TO_OCCUPANCY[type.class];
+  return allRates.filter((r) => r.occupancy_type === wantOccupancy);
+}
+
+/**
+ * SlipClass → Rate.occupancy_type mapping. Rates today are keyed by
+ * occupancy_type at a coarser grain than slip class (Standard covers
+ * both covered + uncovered wet slips). When marinas need separate
+ * covered vs uncovered pricing we'll either (a) add an occupancy_type
+ * variant or (b) split Rate by slip_class — for now both wet-slip
+ * classes resolve to Standard so a single Annual rate covers them
+ * both unless explicitly overridden.
+ */
+const CLASS_TO_OCCUPANCY: Record<SlipClass, Rate["occupancy_type"]> = {
+  covered: "Standard",
+  uncovered: "Standard",
+  t_head: "Standard",
+  buoy: "Buoy",
+  dry_storage: "Dry Storage",
+};
 
 /**
  * Fee ids that should auto-attach to a new reservation on this slip,

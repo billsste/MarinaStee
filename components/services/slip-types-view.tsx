@@ -100,20 +100,10 @@ export function SlipTypesView() {
     setDialogOpen(true);
   }
 
-  // Field spec for the edit dialog. Computed per render so the rate
-  // pickers reflect any changes the operator made on /services/rates
-  // since the dialog was last opened.
-  const FIELDS: FieldSpec<SlipType>[] = React.useMemo(() => {
-    const ratesByCadence = (cadence: "annual" | "monthly" | "seasonal" | "daily") => [
-      { value: "", label: "— (use inline default below)" },
-      ...rates
-        .filter((r) => r.cadence === cadence)
-        .map((r) => ({
-          value: r.id,
-          label: `${r.name} · ${formatMoney(r.amount)}`,
-        })),
-    ];
-    return [
+  // Field spec for the edit dialog. CATEGORIZATION ONLY — no pricing
+  // fields. Pricing flows from /services/rates automatically.
+  const FIELDS: FieldSpec<SlipType>[] = React.useMemo(
+    () => [
       {
         key: "display_label",
         label: "Display label",
@@ -160,71 +150,19 @@ export function SlipTypesView() {
         col: 2,
         required: true,
       },
-      {
-        key: "annual_rate_id",
-        label: "Annual rate (from Service rates)",
-        kind: "select",
-        col: 2,
-        options: ratesByCadence("annual"),
-      },
-      {
-        key: "monthly_rate_id",
-        label: "Monthly rate (from Service rates)",
-        kind: "select",
-        col: 2,
-        options: ratesByCadence("monthly"),
-      },
-      {
-        key: "seasonal_rate_id",
-        label: "Seasonal rate (from Service rates)",
-        kind: "select",
-        col: 2,
-        options: ratesByCadence("seasonal"),
-      },
-      {
-        key: "transient_rate_id",
-        label: "Transient rate (from Service rates)",
-        kind: "select",
-        col: 2,
-        options: ratesByCadence("daily"),
-      },
-      {
-        key: "default_annual_rate",
-        label: "Inline annual fallback ($)",
-        kind: "number",
-        col: 2,
-        hint: "Used only when no Annual rate is linked above.",
-      },
-      {
-        key: "default_monthly_rate",
-        label: "Inline monthly fallback ($)",
-        kind: "number",
-        col: 2,
-      },
-      {
-        key: "default_seasonal_rate",
-        label: "Inline seasonal fallback ($)",
-        kind: "number",
-        col: 2,
-      },
-      {
-        key: "default_transient_rate_per_night",
-        label: "Inline transient fallback ($)",
-        kind: "number",
-        col: 2,
-      },
-      // Auto-attach fees — multi-select. RecordEditDialog doesn't
-      // natively support multi yet, so we fall back to a comma-
-      // separated text field that the form helper converts on save.
-      // Will upgrade to a proper multi-select primitive in the next
-      // dialog pass.
+      // NO pricing fields. Pricing flows from /services/rates: the
+      // table column auto-resolves the matching Rate by (slip_class,
+      // cadence). Operators edit pricing in one place, every slip
+      // type in that class picks up the new amount on next render.
+      // See lib/slip-type-helpers → relatedRatesForType().
       {
         key: "active",
         label: "Active",
         kind: "boolean",
       },
-    ];
-  }, [rates]);
+    ],
+    [],
+  );
 
   return (
     <section className="space-y-4">
@@ -303,6 +241,7 @@ export function SlipTypesView() {
                 tier={t}
                 slipCount={slipsByType.get(t.id)?.length ?? 0}
                 onOpen={() => openEdit(t)}
+                rates={rates}
               />
             ))}
           </ul>
@@ -324,8 +263,8 @@ export function SlipTypesView() {
         title={editing ? `Edit ${editing.display_label}` : "New slip type"}
         description={
           editing
-            ? "Pricing should reference rate rows from Service rates. Inline fallbacks below apply only when no rate is linked. Fees auto-attached to bookings on slips of this tier."
-            : "Define a new tier (class + size band). Link rates from Service rates; every slip in this tier inherits."
+            ? "Edit the categorization (class + size band + amenities). Pricing pulls automatically from /services/rates by class + cadence; edit rates there."
+            : "Define a new tier (class + size band). Pricing pulls automatically from /services/rates."
         }
         fields={FIELDS}
         record={editing}
@@ -386,17 +325,22 @@ function SlipTypeRow({
   tier,
   slipCount,
   onOpen,
+  rates,
 }: {
   tier: SlipType;
   slipCount: number;
   onOpen: () => void;
+  /** Pass the live useRates() result so the row reflects operator
+   *  edits on /services/rates immediately. Default args on the
+   *  helpers fall back to the module-level RATES seed otherwise. */
+  rates: ReturnType<typeof useRates>;
 }) {
-  const annual = effectiveTypeRate(tier, "annual");
-  const monthly = effectiveTypeRate(tier, "monthly");
-  const seasonal = effectiveTypeRate(tier, "seasonal");
-  const annualRate = rateForSlipTypeCadence(tier, "annual");
-  const monthlyRate = rateForSlipTypeCadence(tier, "monthly");
-  const seasonalRate = rateForSlipTypeCadence(tier, "seasonal");
+  const annual = effectiveTypeRate(tier, "annual", rates);
+  const monthly = effectiveTypeRate(tier, "monthly", rates);
+  const seasonal = effectiveTypeRate(tier, "seasonal", rates);
+  const annualRate = rateForSlipTypeCadence(tier, "annual", rates);
+  const monthlyRate = rateForSlipTypeCadence(tier, "monthly", rates);
+  const seasonalRate = rateForSlipTypeCadence(tier, "seasonal", rates);
 
   return (
     <li>
