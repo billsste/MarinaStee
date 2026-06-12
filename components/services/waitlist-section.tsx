@@ -13,7 +13,6 @@ import {
   Search,
   Sparkles,
   Tag,
-  Users,
   X,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -30,7 +29,6 @@ import {
 import type { SlipClass, WaitlistEntry, WaitlistOfferStatus } from "@/lib/types";
 import { useTabUrlState } from "@/lib/use-tab-url-state";
 import { ListFilterSelect } from "@/components/ui/list-filter-select";
-import { TabButton, TabStrip } from "@/components/ui/tab-button";
 import { WaitlistFireOfferModal } from "./waitlist-fire-offer-modal";
 import { WaitlistLogCallModal } from "./waitlist-log-call-modal";
 import { WaitlistApplicantSheet } from "./waitlist-applicant-sheet";
@@ -378,39 +376,26 @@ export function WaitlistSection() {
           tabs/toolbar to match the canonical Slips page. See
           marina-stee/CLAUDE.md → "List-page UX consistency". */}
 
-      {/* ── Tabs (canonical TabStrip + TabButton from components/ui) ──── */}
-      <TabStrip ariaLabel="Waitlist lifecycle">
-        <TabButton
-          active={tab === "queue"}
-          onClick={() => setTab("queue")}
-          label="Queue"
-          count={partitions.queue.length}
-          icon={<Users className="size-3.5" />}
-        />
-        <TabButton
-          active={tab === "offers"}
+      {/* Pending-offer notice — surfaced inline when offers are out
+          for response and the operator isn't currently looking at the
+          Offers stage. Replaces the "1 pending" badge that used to
+          live on the Offers tab. Clicking it switches the Stage
+          filter so the operator lands on the offer list. */}
+      {pendingOfferCount > 0 && tab !== "offers" && (
+        <button
+          type="button"
           onClick={() => setTab("offers")}
-          label="Offers"
-          count={partitions.offers.length}
-          badge={pendingOfferCount > 0 ? `${pendingOfferCount} pending` : undefined}
-          icon={<Sparkles className="size-3.5" />}
-        />
-        <TabButton
-          active={tab === "stale"}
-          onClick={() => setTab("stale")}
-          label="Stale"
-          count={partitions.stale.length}
-          icon={<Clock className="size-3.5" />}
-          severity={partitions.stale.length > 0 ? "warn" : undefined}
-        />
-        <TabButton
-          active={tab === "archive"}
-          onClick={() => setTab("archive")}
-          label="Archive"
-          count={partitions.archive.length}
-          icon={<Archive className="size-3.5" />}
-        />
-      </TabStrip>
+          className="flex w-full items-center justify-between gap-3 rounded-[10px] border border-status-warn/30 bg-status-warn/10 px-3 py-2 text-left text-[12px] text-status-warn transition-colors hover:bg-status-warn/15"
+        >
+          <span className="inline-flex items-center gap-2 font-medium">
+            <Sparkles className="size-3.5" />
+            {pendingOfferCount} offer{pendingOfferCount === 1 ? "" : "s"} awaiting response
+          </span>
+          <span className="text-[11px] text-status-warn/80">
+            View offers →
+          </span>
+        </button>
+      )}
 
       {/* ── Filter bar — canonical single-row toolbar (same shape as
                 /services/roster, /services/rates, /services/meters).
@@ -432,6 +417,17 @@ export function WaitlistSection() {
             className="w-full rounded-[8px] border border-hairline bg-surface-2 py-1.5 pl-8 pr-3 text-[12px] text-fg placeholder:text-fg-tertiary focus:border-hairline-strong focus:outline-none"
           />
         </div>
+        <ListFilterSelect
+          label="Stage"
+          value={tab}
+          onChange={(v) => setTab(v as WaitlistTab)}
+          options={[
+            { value: "queue", label: `Queue · ${partitions.queue.length}` },
+            { value: "offers", label: `Offers · ${partitions.offers.length}` },
+            { value: "stale", label: `Stale · ${partitions.stale.length}` },
+            { value: "archive", label: `Archive · ${partitions.archive.length}` },
+          ]}
+        />
         <ListFilterSelect
           label="Class"
           value={classFilter}
