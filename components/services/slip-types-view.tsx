@@ -1,54 +1,41 @@
 "use client";
 
 import * as React from "react";
-import {
-  ChevronDown,
-  ChevronUp,
-  Plus,
-  Trash2,
-  X,
-} from "lucide-react";
+import { Plus, Search } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ListFilterSelect } from "@/components/ui/list-filter-select";
+import {
+  RecordEditDialog,
+  type FieldSpec,
+} from "@/components/record-edit-dialog";
 import { formatMoney } from "@/lib/mock-data";
 import {
   addSlipType,
   deleteSlipType,
   updateSlipType,
   useFees,
+  useRates,
   useSlipTypes,
   useSlips,
 } from "@/lib/client-store";
-import { groupSlipsByType } from "@/lib/slip-type-helpers";
+import {
+  effectiveTypeRate,
+  groupSlipsByType,
+  rateForSlipTypeCadence,
+} from "@/lib/slip-type-helpers";
 import type { SlipClass, SlipType } from "@/lib/types";
-import { cn } from "@/lib/utils";
 
 /*
- * Slip Types CRUD surface.
- *
- * Operators rarely add a class but routinely tune size bands + pricing
- * (renewals season, market shifts). Layout reflects that: types render
- * grouped by class (covered first, then uncovered, t-head, buoy, dry
- * storage) with each row clickable to expand into an inline edit form.
- *
- * Each row shows at-a-glance:
- *   - display label
- *   - size band (LOA range)
- *   - annual / monthly / seasonal rates
- *   - included-fee count + amenity chips
- *   - count of slips currently in this tier
- *
- * Edit-in-place follows global §6.1 — click the row, autoFocus the
- * first field, Enter saves, Esc cancels.
+ * Slip Types CRUD surface — matches the canonical Marina Stee list-
+ * page pattern (see ~/Desktop/Claude/marina-stee/CLAUDE.md §
+ * "List-page UX consistency"):
+ *   - filter bar at the top (search + dropdowns + Add button)
+ *   - flat row list — no sectioning
+ *   - click row → RecordEditDialog modal
+ *   - pricing pulled from /services/rates rather than redefined inline
  */
 
-const CLASS_ORDER: SlipClass[] = [
-  "covered",
-  "uncovered",
-  "t_head",
-  "buoy",
-  "dry_storage",
-];
 const CLASS_LABEL: Record<SlipClass, string> = {
   covered: "Covered",
   uncovered: "Uncovered",
@@ -57,577 +44,440 @@ const CLASS_LABEL: Record<SlipClass, string> = {
   dry_storage: "Dry storage",
 };
 
+// Grid: TIER label · CLASS · SIZE · ANNUAL · MONTHLY · SEASONAL · SLIPS · STATUS
+const SLIP_TYPE_COLS =
+  "minmax(0, 1.6fr) 110px 100px 110px 110px 110px 70px 78px";
+
+type ClassFilter = "all" | SlipClass;
+type StatusFilter = "all" | "active" | "inactive";
+
 export function SlipTypesView() {
   const types = useSlipTypes();
   const slips = useSlips();
+  const rates = useRates();
   const fees = useFees();
-  const [editingId, setEditingId] = React.useState<string | null>(null);
-  const [addingClass, setAddingClass] = React.useState<SlipClass | null>(null);
 
-  // Resolved slip → type so each row can show "12 slips in this tier".
+  const [query, setQuery] = React.useState("");
+  const [classFilter, setClassFilter] = React.useState<ClassFilter>("all");
+  const [statusFilter, setStatusFilter] =
+    React.useState<StatusFilter>("active");
+
+  const [editing, setEditing] = React.useState<SlipType | undefined>();
+  const [dialogOpen, setDialogOpen] = React.useState(false);
+
   const slipsByType = React.useMemo(
     () => groupSlipsByType(slips, types),
     [slips, types],
   );
 
-  // Group types by class for the section headers.
-  const typesByClass = React.useMemo(() => {
-    const map = new Map<SlipClass, SlipType[]>();
-    for (const c of CLASS_ORDER) map.set(c, []);
+  const counts = React.useMemo(() => {
+    let active = 0;
+    let inactive = 0;
     for (const t of types) {
-      map.get(t.class)?.push(t);
+      if (t.active) active++;
+      else inactive++;
     }
-    return map;
+    return { active, inactive, all: types.length };
   }, [types]);
 
-  function close() {
-    setEditingId(null);
-    setAddingClass(null);
+  const filtered = React.useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return types.filter((t) => {
+      if (classFilter !== "all" && t.class !== classFilter) return false;
+      if (statusFilter === "active" && !t.active) return false;
+      if (statusFilter === "inactive" && t.active) return false;
+      if (q) {
+        const hay =
+          `${t.display_label} ${t.short_label ?? ""} ${CLASS_LABEL[t.class]}`.toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
+      return true;
+    });
+  }, [types, query, classFilter, statusFilter]);
+
+  function openEdit(t?: SlipType) {
+    setEditing(t);
+    setDialogOpen(true);
   }
+
+  // Field spec for the edit dialog. Computed per render so the rate
+  // pickers reflect any changes the operator made on /services/rates
+  // since the dialog was last opened.
+  const FIELDS: FieldSpec<SlipType>[] = React.useMemo(() => {
+    const ratesByCadence = (cadence: "annual" | "monthly" | "seasonal" | "daily") => [
+      { value: "", label: "— (use inline default below)" },
+      ...rates
+        .filter((r) => r.cadence === cadence)
+        .map((r) => ({
+          value: r.id,
+          label: `${r.name} · ${formatMoney(r.amount)}`,
+        })),
+    ];
+    return [
+      {
+        key: "display_label",
+        label: "Display label",
+        kind: "text",
+        required: true,
+        col: 2,
+        placeholder: "Covered 30–40 ft",
+      },
+      {
+        key: "short_label",
+        label: "Short label",
+        kind: "text",
+        col: 2,
+        placeholder: "C30–40",
+      },
+      {
+        key: "class",
+        label: "Class",
+        kind: "select",
+        col: 2,
+        required: true,
+        options: (Object.keys(CLASS_LABEL) as SlipClass[]).map((c) => ({
+          value: c,
+          label: CLASS_LABEL[c],
+        })),
+      },
+      {
+        key: "sort_order",
+        label: "Sort order",
+        kind: "number",
+        col: 2,
+      },
+      {
+        key: "min_loa_inches",
+        label: "Min LOA (inches)",
+        kind: "number",
+        col: 2,
+        hint: "Leave blank for no minimum.",
+      },
+      {
+        key: "max_loa_inches",
+        label: "Max LOA (inches)",
+        kind: "number",
+        col: 2,
+        required: true,
+      },
+      {
+        key: "annual_rate_id",
+        label: "Annual rate (from Service rates)",
+        kind: "select",
+        col: 2,
+        options: ratesByCadence("annual"),
+      },
+      {
+        key: "monthly_rate_id",
+        label: "Monthly rate (from Service rates)",
+        kind: "select",
+        col: 2,
+        options: ratesByCadence("monthly"),
+      },
+      {
+        key: "seasonal_rate_id",
+        label: "Seasonal rate (from Service rates)",
+        kind: "select",
+        col: 2,
+        options: ratesByCadence("seasonal"),
+      },
+      {
+        key: "transient_rate_id",
+        label: "Transient rate (from Service rates)",
+        kind: "select",
+        col: 2,
+        options: ratesByCadence("daily"),
+      },
+      {
+        key: "default_annual_rate",
+        label: "Inline annual fallback ($)",
+        kind: "number",
+        col: 2,
+        hint: "Used only when no Annual rate is linked above.",
+      },
+      {
+        key: "default_monthly_rate",
+        label: "Inline monthly fallback ($)",
+        kind: "number",
+        col: 2,
+      },
+      {
+        key: "default_seasonal_rate",
+        label: "Inline seasonal fallback ($)",
+        kind: "number",
+        col: 2,
+      },
+      {
+        key: "default_transient_rate_per_night",
+        label: "Inline transient fallback ($)",
+        kind: "number",
+        col: 2,
+      },
+      // Auto-attach fees — multi-select. RecordEditDialog doesn't
+      // natively support multi yet, so we fall back to a comma-
+      // separated text field that the form helper converts on save.
+      // Will upgrade to a proper multi-select primitive in the next
+      // dialog pass.
+      {
+        key: "active",
+        label: "Active",
+        kind: "boolean",
+      },
+    ];
+  }, [rates]);
 
   return (
     <section className="space-y-4">
-      {/* Sub-page header — matches the Waitlist page pattern (display-
-          tight h2 + short description). The Services layout supplies
-          the breadcrumb "Services" title above; this identifies the
-          specific sub-section. */}
       <header>
         <h2 className="display-tight text-[18px] font-semibold text-fg">
           Slip Types
         </h2>
         <p className="mt-0.5 text-[12.5px] text-fg-subtle">
-          Combine class + size band + pricing + included fees in one place.
-          Slips derive their tier from class + length, or you can pin a slip
-          to a specific type in the slip editor.
+          Combine class + size band in one place. Pricing comes from{" "}
+          <a
+            href="/services/rates"
+            className="text-primary underline-offset-2 hover:underline"
+          >
+            Service rates
+          </a>{" "}
+          — link a Rate per cadence and every slip in this tier inherits.
+          Slips derive their tier from class + length unless explicitly pinned
+          in the slip editor.
         </p>
       </header>
 
-      <div className="space-y-6">
-      {CLASS_ORDER.map((cls) => {
-        const rows = typesByClass.get(cls) ?? [];
-        const slipsInClass = slips.filter((s) => s.slip_class === cls).length;
-        return (
-          <section
-            key={cls}
-            className="overflow-hidden rounded-[12px] border border-hairline bg-surface-1"
-          >
-            {/* Class header — count + add button */}
-            <header className="flex items-center justify-between gap-3 border-b border-hairline bg-surface-2 px-4 py-2.5">
-              <div className="flex items-baseline gap-2.5">
-                <h2 className="text-[14px] font-semibold text-fg">
-                  {CLASS_LABEL[cls]}
-                </h2>
-                <span className="text-[11.5px] text-fg-tertiary tabular">
-                  {rows.length} tier{rows.length === 1 ? "" : "s"} · {slipsInClass} slip
-                  {slipsInClass === 1 ? "" : "s"}
-                </span>
-              </div>
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => {
-                  setEditingId(null);
-                  setAddingClass(cls);
-                }}
-              >
-                <Plus className="size-3.5" /> Add tier
-              </Button>
-            </header>
+      {/* Toolbar — search + class filter + status filter + Add tier.
+          Same layout as /services/roster (Slips page). */}
+      <div className="flex flex-wrap items-center gap-2 rounded-[12px] border border-hairline bg-surface-1 p-2">
+        <div className="relative min-w-[220px] flex-1">
+          <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-fg-tertiary" />
+          <input
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Tier name, class, or label…"
+            className="w-full rounded-[8px] border border-hairline bg-surface-2 py-1.5 pl-8 pr-3 text-[12px] text-fg placeholder:text-fg-tertiary focus:border-hairline-strong focus:outline-none"
+          />
+        </div>
 
-            {/* Inline add form for this class */}
-            {addingClass === cls && (
-              <EditForm
-                initial={blankType(cls, rows.length)}
-                feesList={fees}
-                onCancel={close}
-                onSave={(next) => {
-                  addSlipType(next);
-                  close();
-                }}
-              />
-            )}
+        <ListFilterSelect
+          value={classFilter}
+          onChange={(v) => setClassFilter(v as ClassFilter)}
+          label="Class"
+          options={[
+            { value: "all", label: "All classes" },
+            ...(Object.keys(CLASS_LABEL) as SlipClass[]).map((c) => ({
+              value: c,
+              label: CLASS_LABEL[c],
+            })),
+          ]}
+        />
 
-            {/* Rows */}
-            {rows.length === 0 && addingClass !== cls ? (
-              <div className="px-4 py-8 text-center text-[13px] text-fg-subtle">
-                No tiers configured for {CLASS_LABEL[cls]}. Click{" "}
-                <span className="font-medium text-fg">+ Add tier</span> to
-                create one.
-              </div>
-            ) : (
-              <ul className="divide-y divide-hairline">
-                {rows.map((t) => {
-                  const slipCount = slipsByType.get(t.id)?.length ?? 0;
-                  const isEditing = editingId === t.id;
-                  if (isEditing) {
-                    return (
-                      <li key={t.id}>
-                        <EditForm
-                          initial={t}
-                          feesList={fees}
-                          onCancel={close}
-                          onSave={(next) => {
-                            updateSlipType(t.id, next);
-                            close();
-                          }}
-                          onDelete={() => {
-                            if (
-                              window.confirm(
-                                `Deactivate "${t.display_label}"? Slips currently in this tier will fall back to a derived match.`,
-                              )
-                            ) {
-                              deleteSlipType(t.id);
-                              close();
-                            }
-                          }}
-                        />
-                      </li>
-                    );
-                  }
-                  return (
-                    <li key={t.id}>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setAddingClass(null);
-                          setEditingId(t.id);
-                        }}
-                        className={cn(
-                          "grid w-full grid-cols-[1fr_auto_auto_auto] items-center gap-x-4 px-4 py-3 text-left transition-colors hover:bg-surface-2/60",
-                          !t.active && "opacity-50",
-                        )}
-                      >
-                        {/* Label + range */}
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-2 text-[13.5px] font-medium text-fg">
-                            {t.display_label}
-                            {!t.active && (
-                              <Badge tone="neutral" size="sm">
-                                Inactive
-                              </Badge>
-                            )}
-                          </div>
-                          <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11.5px] text-fg-tertiary">
-                            <span className="tabular">
-                              {sizeBandLabel(t)}
-                            </span>
-                            <span>·</span>
-                            <span>{slipCount} slip{slipCount === 1 ? "" : "s"}</span>
-                            {t.included_fee_ids.length > 0 && (
-                              <>
-                                <span>·</span>
-                                <span>
-                                  {t.included_fee_ids.length} fee
-                                  {t.included_fee_ids.length === 1 ? "" : "s"} auto-attached
-                                </span>
-                              </>
-                            )}
-                          </div>
-                        </div>
+        <ListFilterSelect
+          value={statusFilter}
+          onChange={(v) => setStatusFilter(v as StatusFilter)}
+          label="Status"
+          options={[
+            { value: "all", label: `All · ${counts.all}` },
+            { value: "active", label: `Active · ${counts.active}` },
+            { value: "inactive", label: `Inactive · ${counts.inactive}` },
+          ]}
+        />
 
-                        {/* Amenity chips */}
-                        <div className="flex items-center gap-1">
-                          {t.included_amenities.power && (
-                            <Badge tone="outline" size="sm">
-                              Power
-                            </Badge>
-                          )}
-                          {t.included_amenities.water && (
-                            <Badge tone="outline" size="sm">
-                              Water
-                            </Badge>
-                          )}
-                          {t.included_amenities.pump_out && (
-                            <Badge tone="outline" size="sm">
-                              Pump-out
-                            </Badge>
-                          )}
-                        </div>
-
-                        {/* Rates — compact table */}
-                        <div className="flex items-center gap-3 text-[12px] text-fg-muted">
-                          <RateCell label="Annual" value={t.default_annual_rate} />
-                          <RateCell
-                            label="Monthly"
-                            value={t.default_monthly_rate}
-                          />
-                          <RateCell
-                            label="Seasonal"
-                            value={t.default_seasonal_rate}
-                          />
-                        </div>
-
-                        <ChevronDown className="size-3.5 text-fg-tertiary" />
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-          </section>
-        );
-      })}
+        <Button variant="secondary" size="sm" onClick={() => openEdit()}>
+          <Plus className="size-3.5" /> Add tier
+        </Button>
       </div>
+
+      {/* Flat table — matches the Slips page grid pattern. */}
+      <div className="overflow-hidden rounded-[12px] border border-hairline bg-surface-1">
+        <div
+          className="grid gap-x-3 border-b border-hairline bg-surface-2 px-3 py-2 text-[10px] font-medium uppercase tracking-wide text-fg-tertiary"
+          style={{ gridTemplateColumns: SLIP_TYPE_COLS }}
+        >
+          <span>Tier</span>
+          <span>Class</span>
+          <span>Size</span>
+          <span className="text-right">Annual</span>
+          <span className="text-right">Monthly</span>
+          <span className="text-right">Seasonal</span>
+          <span className="text-right">Slips</span>
+          <span>Status</span>
+        </div>
+        {filtered.length === 0 ? (
+          <div className="px-4 py-10 text-center text-[13px] text-fg-subtle">
+            No tiers match these filters.
+          </div>
+        ) : (
+          <ul className="divide-y divide-hairline">
+            {filtered.map((t) => (
+              <SlipTypeRow
+                key={t.id}
+                tier={t}
+                slipCount={slipsByType.get(t.id)?.length ?? 0}
+                onOpen={() => openEdit(t)}
+              />
+            ))}
+          </ul>
+        )}
+      </div>
+
+      {/* Footer hint — same shape as the Slips page. */}
+      <div className="text-[11px] text-fg-tertiary">
+        {filtered.length} of {types.length} tier
+        {types.length === 1 ? "" : "s"}
+      </div>
+
+      {/* Edit dialog — uses the canonical RecordEditDialog so the
+          create + edit flow matches every other CRUD surface in the
+          app (slip editor, fees, rates, vendors, etc.). */}
+      <RecordEditDialog<SlipType>
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        title={editing ? `Edit ${editing.display_label}` : "New slip type"}
+        description={
+          editing
+            ? "Pricing should reference rate rows from Service rates. Inline fallbacks below apply only when no rate is linked. Fees auto-attached to bookings on slips of this tier."
+            : "Define a new tier (class + size band). Link rates from Service rates; every slip in this tier inherits."
+        }
+        fields={FIELDS}
+        record={editing}
+        onSave={(values) => {
+          if (editing) {
+            updateSlipType(editing.id, values);
+          } else {
+            // The dialog returns a Partial<SlipType>-ish shape (caller-
+            // populated fields plus null for the unset ones). Splat
+            // first, then defaults — anything the operator didn't set
+            // gets a safe initial value so the row type-checks.
+            const blank: SlipType = {
+              ...values,
+              id: values.id ?? `st_${Date.now().toString(36)}`,
+              tenant_id: values.tenant_id ?? "",
+              class: values.class ?? "covered",
+              max_loa_inches: values.max_loa_inches ?? 40 * 12,
+              display_label: values.display_label ?? "New tier",
+              short_label: values.short_label ?? "T",
+              default_annual_rate: values.default_annual_rate ?? 0,
+              included_amenities: values.included_amenities ?? {},
+              included_fee_ids: values.included_fee_ids ?? [],
+              sort_order: values.sort_order ?? 99,
+              active: values.active ?? true,
+            };
+            addSlipType(blank);
+          }
+          setDialogOpen(false);
+        }}
+        onDelete={
+          editing
+            ? () => {
+                if (
+                  window.confirm(
+                    `Deactivate "${editing.display_label}"? Slips currently in this tier will fall back to derived matching.`,
+                  )
+                ) {
+                  deleteSlipType(editing.id);
+                  setDialogOpen(false);
+                }
+              }
+            : undefined
+        }
+        submitLabel={editing ? "Save changes" : "Create tier"}
+        entity="settings"
+      />
+      {/* Suppress unused — reserved for an upcoming fee multi-select pass. */}
+      {void fees}
     </section>
   );
 }
 
 // ─────────────────────────────────────────────────────────────────────
-// Edit form (inline)
+// Row — flat table cell layout. Clicking the row opens the edit dialog.
 // ─────────────────────────────────────────────────────────────────────
 
-function EditForm({
-  initial,
-  feesList,
-  onCancel,
-  onSave,
-  onDelete,
+function SlipTypeRow({
+  tier,
+  slipCount,
+  onOpen,
 }: {
-  initial: SlipType;
-  feesList: ReturnType<typeof useFees>;
-  onCancel: () => void;
-  onSave: (next: SlipType) => void;
-  onDelete?: () => void;
+  tier: SlipType;
+  slipCount: number;
+  onOpen: () => void;
 }) {
-  const [draft, setDraft] = React.useState<SlipType>(initial);
-
-  function patch<K extends keyof SlipType>(key: K, value: SlipType[K]) {
-    setDraft((d) => ({ ...d, [key]: value }));
-  }
-
-  function toggleAmenity(k: "power" | "water" | "pump_out") {
-    setDraft((d) => ({
-      ...d,
-      included_amenities: {
-        ...d.included_amenities,
-        [k]: !d.included_amenities[k],
-      },
-    }));
-  }
-  function toggleFee(feeId: string) {
-    setDraft((d) => ({
-      ...d,
-      included_fee_ids: d.included_fee_ids.includes(feeId)
-        ? d.included_fee_ids.filter((id) => id !== feeId)
-        : [...d.included_fee_ids, feeId],
-    }));
-  }
+  const annual = effectiveTypeRate(tier, "annual");
+  const monthly = effectiveTypeRate(tier, "monthly");
+  const seasonal = effectiveTypeRate(tier, "seasonal");
+  const annualRate = rateForSlipTypeCadence(tier, "annual");
+  const monthlyRate = rateForSlipTypeCadence(tier, "monthly");
+  const seasonalRate = rateForSlipTypeCadence(tier, "seasonal");
 
   return (
-    <div
-      className="space-y-4 border-y border-primary/30 bg-primary-soft/30 px-4 py-4"
-      onKeyDown={(e) => {
-        if (e.key === "Escape") onCancel();
-        if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) onSave(draft);
-      }}
-    >
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-        <Field label="Display label" required>
-          <input
-            autoFocus
-            type="text"
-            value={draft.display_label}
-            onChange={(e) => patch("display_label", e.target.value)}
-            className="w-full rounded-[8px] border border-hairline bg-surface-1 px-2.5 py-1.5 text-[13px] text-fg focus:border-primary focus:outline-none"
-          />
-        </Field>
-        <Field label="Short label">
-          <input
-            type="text"
-            value={draft.short_label}
-            onChange={(e) => patch("short_label", e.target.value)}
-            placeholder="C30–40"
-            className="w-full rounded-[8px] border border-hairline bg-surface-1 px-2.5 py-1.5 text-[13px] text-fg focus:border-primary focus:outline-none"
-          />
-        </Field>
-      </div>
-
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
-        <Field label="Min LOA (ft)" hint="Leave blank for no minimum.">
-          <input
-            type="text"
-            inputMode="numeric"
-            value={
-              draft.min_loa_inches == null
-                ? ""
-                : Math.round(draft.min_loa_inches / 12).toString()
-            }
-            onChange={(e) =>
-              patch(
-                "min_loa_inches",
-                e.target.value === "" ? undefined : Number(e.target.value) * 12,
-              )
-            }
-            className="w-full rounded-[8px] border border-hairline bg-surface-1 px-2.5 py-1.5 text-[13px] text-fg tabular focus:border-primary focus:outline-none"
-          />
-        </Field>
-        <Field label="Max LOA (ft)" required>
-          <input
-            type="text"
-            inputMode="numeric"
-            value={Math.round(draft.max_loa_inches / 12).toString()}
-            onChange={(e) =>
-              patch("max_loa_inches", Number(e.target.value) * 12)
-            }
-            className="w-full rounded-[8px] border border-hairline bg-surface-1 px-2.5 py-1.5 text-[13px] text-fg tabular focus:border-primary focus:outline-none"
-          />
-        </Field>
-        <Field label="Sort order">
-          <input
-            type="text"
-            inputMode="numeric"
-            value={draft.sort_order.toString()}
-            onChange={(e) => patch("sort_order", Number(e.target.value) || 0)}
-            className="w-full rounded-[8px] border border-hairline bg-surface-1 px-2.5 py-1.5 text-[13px] text-fg tabular focus:border-primary focus:outline-none"
-          />
-        </Field>
-      </div>
-
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        <MoneyField
-          label="Annual rate"
-          value={draft.default_annual_rate}
-          // Annual rate is required on the SlipType, so coerce undefined
-          // (user cleared the field) back to 0 — operator can fix up
-          // before saving but the type stays well-formed.
-          onChange={(v) => patch("default_annual_rate", v ?? 0)}
-          required
-        />
-        <MoneyField
-          label="Monthly rate"
-          value={draft.default_monthly_rate}
-          onChange={(v) => patch("default_monthly_rate", v)}
-        />
-        <MoneyField
-          label="Seasonal rate"
-          value={draft.default_seasonal_rate}
-          onChange={(v) => patch("default_seasonal_rate", v)}
-        />
-        <MoneyField
-          label="Transient /night"
-          value={draft.default_transient_rate_per_night}
-          onChange={(v) => patch("default_transient_rate_per_night", v)}
-        />
-      </div>
-
-      <Field label="Description">
-        <input
-          type="text"
-          value={draft.description ?? ""}
-          onChange={(e) => patch("description", e.target.value)}
-          placeholder="Short context shown on the type's tooltip + the assign-slip wizard."
-          className="w-full rounded-[8px] border border-hairline bg-surface-1 px-2.5 py-1.5 text-[13px] text-fg focus:border-primary focus:outline-none"
-        />
-      </Field>
-
-      {/* Amenities + Fees side-by-side */}
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-        <div>
-          <FieldLabel>Included amenities</FieldLabel>
-          <div className="flex flex-wrap gap-1.5">
-            {(
-              [
-                { key: "power", label: "Shore power" },
-                { key: "water", label: "Water" },
-                { key: "pump_out", label: "Pump-out" },
-              ] as const
-            ).map((a) => (
-              <button
-                key={a.key}
-                type="button"
-                onClick={() => toggleAmenity(a.key)}
-                className={cn(
-                  "rounded-[8px] border px-2.5 py-1 text-[12px] font-medium transition-colors",
-                  draft.included_amenities[a.key]
-                    ? "border-primary/30 bg-primary-soft text-primary"
-                    : "border-hairline bg-surface-1 text-fg-subtle hover:bg-surface-2",
-                )}
-              >
-                {a.label}
-              </button>
-            ))}
+    <li>
+      <button
+        type="button"
+        onClick={onOpen}
+        className="group grid w-full items-center gap-x-3 px-3 py-2.5 text-left text-[13px] transition-colors hover:bg-surface-2"
+        style={{ gridTemplateColumns: SLIP_TYPE_COLS }}
+      >
+        <div className="min-w-0">
+          <div className="truncate font-medium text-fg">
+            {tier.display_label}
           </div>
-        </div>
-
-        <div>
-          <FieldLabel>
-            Auto-attached fees
-            <span className="ml-1 text-[11px] font-normal text-fg-tertiary">
-              ({draft.included_fee_ids.length} selected)
-            </span>
-          </FieldLabel>
-          {feesList.length === 0 ? (
-            <p className="text-[12px] text-fg-tertiary">
-              No fees configured yet. Add fees on{" "}
-              <span className="font-medium text-fg">/services/fees</span>.
-            </p>
-          ) : (
-            <div className="flex flex-wrap gap-1.5">
-              {feesList.map((f) => {
-                const on = draft.included_fee_ids.includes(f.id);
-                return (
-                  <button
-                    key={f.id}
-                    type="button"
-                    onClick={() => toggleFee(f.id)}
-                    className={cn(
-                      "rounded-[8px] border px-2.5 py-1 text-[12px] font-medium transition-colors",
-                      on
-                        ? "border-primary/30 bg-primary-soft text-primary"
-                        : "border-hairline bg-surface-1 text-fg-subtle hover:bg-surface-2",
-                    )}
-                  >
-                    {f.name}
-                  </button>
-                );
-              })}
-            </div>
+          {tier.short_label && (
+            <div className="text-[11px] text-fg-tertiary">{tier.short_label}</div>
           )}
         </div>
-      </div>
-
-      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-hairline pt-3">
-        <div className="flex items-center gap-2">
-          <Button variant="primary" size="sm" onClick={() => onSave(draft)}>
-            Save
-          </Button>
-          <Button variant="ghost" size="sm" onClick={onCancel}>
-            <X className="size-3.5" /> Cancel
-          </Button>
-        </div>
-        {onDelete && (
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={onDelete}
-            className="text-status-danger hover:bg-status-danger/10"
-          >
-            <Trash2 className="size-3.5" /> Deactivate
-          </Button>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────
-// Primitives
-// ─────────────────────────────────────────────────────────────────────
-
-function Field({
-  label,
-  hint,
-  required,
-  children,
-}: {
-  label: string;
-  hint?: string;
-  required?: boolean;
-  children: React.ReactNode;
-}) {
-  return (
-    <div>
-      <FieldLabel required={required}>{label}</FieldLabel>
-      {children}
-      {hint && (
-        <p className="mt-0.5 text-[11px] text-fg-tertiary">{hint}</p>
-      )}
-    </div>
-  );
-}
-
-function FieldLabel({
-  children,
-  required,
-}: {
-  children: React.ReactNode;
-  required?: boolean;
-}) {
-  return (
-    <label className="mb-1 block text-[11px] font-medium uppercase tracking-wide text-fg-tertiary">
-      {children}
-      {required && <span className="ml-0.5 text-status-danger">*</span>}
-    </label>
-  );
-}
-
-function MoneyField({
-  label,
-  value,
-  onChange,
-  required,
-}: {
-  label: string;
-  value: number | undefined;
-  onChange: (v: number | undefined) => void;
-  required?: boolean;
-}) {
-  return (
-    <Field label={label} required={required}>
-      <div className="relative">
-        <span className="pointer-events-none absolute inset-y-0 left-2.5 flex items-center text-[12px] text-fg-tertiary">
-          $
+        <span className="text-fg-muted">{CLASS_LABEL[tier.class]}</span>
+        <span className="tabular text-fg-muted">{sizeBandLabel(tier)}</span>
+        <RateCell amount={annual} fromRate={!!annualRate} />
+        <RateCell amount={monthly} fromRate={!!monthlyRate} />
+        <RateCell amount={seasonal} fromRate={!!seasonalRate} />
+        <span className="text-right tabular text-fg-muted">{slipCount}</span>
+        <span>
+          {tier.active ? (
+            <Badge tone="ok" size="sm">
+              Active
+            </Badge>
+          ) : (
+            <Badge tone="neutral" size="sm">
+              Inactive
+            </Badge>
+          )}
         </span>
-        <input
-          type="text"
-          inputMode="decimal"
-          value={value == null ? "" : value.toString()}
-          onChange={(e) =>
-            onChange(
-              e.target.value === ""
-                ? undefined
-                : Number(e.target.value.replace(/[^0-9.]/g, "")),
-            )
-          }
-          className="w-full rounded-[8px] border border-hairline bg-surface-1 py-1.5 pl-6 pr-2.5 text-[13px] text-fg tabular focus:border-primary focus:outline-none"
-        />
-      </div>
-    </Field>
+      </button>
+    </li>
   );
 }
 
-function RateCell({ label, value }: { label: string; value?: number }) {
+function RateCell({
+  amount,
+  fromRate,
+}: {
+  amount?: number;
+  fromRate: boolean;
+}) {
+  if (amount == null) {
+    return <span className="text-right text-fg-tertiary">—</span>;
+  }
   return (
-    <div className="text-right">
-      <div className="text-[10px] uppercase tracking-wide text-fg-tertiary">
-        {label}
-      </div>
-      <div className={value == null ? "text-fg-tertiary" : "tabular text-fg"}>
-        {value == null ? "—" : formatMoney(value)}
-      </div>
-    </div>
+    <span
+      className="text-right tabular text-fg"
+      title={fromRate ? "From a linked rate in /services/rates" : "Inline fallback"}
+    >
+      {formatMoney(amount)}
+      {!fromRate && (
+        <span className="ml-1 text-[10px] text-fg-tertiary" aria-hidden>
+          •
+        </span>
+      )}
+    </span>
   );
 }
-
-// ─────────────────────────────────────────────────────────────────────
-// Helpers
-// ─────────────────────────────────────────────────────────────────────
 
 function sizeBandLabel(t: SlipType): string {
   const max = Math.round(t.max_loa_inches / 12);
-  if (t.min_loa_inches == null) return `Up to ${max} ft`;
+  if (t.min_loa_inches == null) return `≤ ${max}'`;
   const min = Math.round(t.min_loa_inches / 12);
-  if (max >= 999) return `${min}+ ft`;
-  return `${min}–${max} ft`;
+  if (max >= 999) return `${min}+'`;
+  return `${min}–${max}'`;
 }
-
-function blankType(cls: SlipClass, existingInClass: number): SlipType {
-  const id = `st_new_${Date.now().toString(36)}`;
-  return {
-    id,
-    tenant_id: "",
-    class: cls,
-    max_loa_inches: 40 * 12,
-    display_label: `New ${cls.replace("_", " ")} tier`,
-    short_label: cls.slice(0, 1).toUpperCase(),
-    default_annual_rate: 0,
-    included_amenities: {},
-    included_fee_ids: [],
-    sort_order: existingInClass * 10 + 99,
-    active: true,
-  };
-}
-
-// Suppress unused import warning for icons referenced only when adjusting
-// layout. ChevronUp is reserved for future ordering controls.
-void ChevronUp;

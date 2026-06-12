@@ -19,8 +19,8 @@
  *   - reports that aggregate by class / type
  */
 
-import { SLIP_TYPES } from "@/lib/mock-data";
-import type { Slip, SlipClass, SlipType } from "@/lib/types";
+import { RATES, SLIP_TYPES } from "@/lib/mock-data";
+import type { Rate, Slip, SlipClass, SlipType } from "@/lib/types";
 
 /**
  * Resolve the SlipType for a given Slip. Returns the explicitly-bound
@@ -67,26 +67,87 @@ export function effectiveSlipRate(
   slip: Slip,
   cadence: "annual" | "monthly" | "seasonal" | "transient",
   allTypes: readonly SlipType[] = SLIP_TYPES,
+  allRates: readonly Rate[] = RATES,
 ): number | undefined {
+  // Per-slip override wins for the cadences that have one.
+  if (cadence === "annual" && slip.default_annual_rate != null) {
+    return slip.default_annual_rate;
+  }
+  if (cadence === "monthly" && slip.default_monthly_rate != null) {
+    return slip.default_monthly_rate;
+  }
+  if (cadence === "seasonal" && slip.default_seasonal_rate != null) {
+    return slip.default_seasonal_rate;
+  }
+  const t = resolveSlipType(slip, allTypes);
+  if (!t) return undefined;
+  // Prefer the linked Rate row (single source of truth — operators
+  // edit pricing on /services/rates and every slip of this type
+  // inherits). Fall back to the inline default_*_rate fields when no
+  // link is set (seeded tiers + legacy data).
   if (cadence === "annual") {
-    if (slip.default_annual_rate != null) return slip.default_annual_rate;
-    const t = resolveSlipType(slip, allTypes);
-    return t?.default_annual_rate;
+    const r = t.annual_rate_id
+      ? allRates.find((x) => x.id === t.annual_rate_id)
+      : undefined;
+    return r?.amount ?? t.default_annual_rate;
   }
   if (cadence === "monthly") {
-    if (slip.default_monthly_rate != null) return slip.default_monthly_rate;
-    const t = resolveSlipType(slip, allTypes);
-    return t?.default_monthly_rate;
+    const r = t.monthly_rate_id
+      ? allRates.find((x) => x.id === t.monthly_rate_id)
+      : undefined;
+    return r?.amount ?? t.default_monthly_rate;
   }
   if (cadence === "seasonal") {
-    if (slip.default_seasonal_rate != null) return slip.default_seasonal_rate;
-    const t = resolveSlipType(slip, allTypes);
-    return t?.default_seasonal_rate;
+    const r = t.seasonal_rate_id
+      ? allRates.find((x) => x.id === t.seasonal_rate_id)
+      : undefined;
+    return r?.amount ?? t.default_seasonal_rate;
   }
-  // transient — no per-slip override field today; type default is the
-  // source of truth.
-  const t = resolveSlipType(slip, allTypes);
-  return t?.default_transient_rate_per_night;
+  // Transient — no per-slip override.
+  const r = t.transient_rate_id
+    ? allRates.find((x) => x.id === t.transient_rate_id)
+    : undefined;
+  return r?.amount ?? t.default_transient_rate_per_night;
+}
+
+/**
+ * Resolve a Rate object for a slip type + cadence — used by the edit
+ * dialog and the table to show the linked rate's name + amount.
+ * Returns undefined when no link is set.
+ */
+export function rateForSlipTypeCadence(
+  type: SlipType,
+  cadence: "annual" | "monthly" | "seasonal" | "transient",
+  allRates: readonly Rate[] = RATES,
+): Rate | undefined {
+  const id =
+    cadence === "annual"
+      ? type.annual_rate_id
+      : cadence === "monthly"
+        ? type.monthly_rate_id
+        : cadence === "seasonal"
+          ? type.seasonal_rate_id
+          : type.transient_rate_id;
+  if (!id) return undefined;
+  return allRates.find((r) => r.id === id);
+}
+
+/**
+ * Resolved amount for a tier + cadence — looks at the linked Rate
+ * first, falls back to the tier's inline default. Returns undefined
+ * when neither is set.
+ */
+export function effectiveTypeRate(
+  type: SlipType,
+  cadence: "annual" | "monthly" | "seasonal" | "transient",
+  allRates: readonly Rate[] = RATES,
+): number | undefined {
+  const linked = rateForSlipTypeCadence(type, cadence, allRates);
+  if (linked) return linked.amount;
+  if (cadence === "annual") return type.default_annual_rate;
+  if (cadence === "monthly") return type.default_monthly_rate;
+  if (cadence === "seasonal") return type.default_seasonal_rate;
+  return type.default_transient_rate_per_night;
 }
 
 /**

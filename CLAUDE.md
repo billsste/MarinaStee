@@ -42,6 +42,72 @@ The support pattern itself (UX layout, ticket fields, conversation behavior, att
 - Destination: Marina Stee's own support backend (TBD — likely a new table in the eventual Marina Stee Postgres + an operator dashboard at `admin.marinastee.com` or similar)
 - Tenancy: tickets scoped to the boater's marina; one marina's support queue is invisible to another
 
+## List-page UX consistency (BLOCKING for every CRUD surface)
+
+Every list/table page in Marina Stee must follow ONE structural template. Operators learn the vocabulary once and reuse it everywhere. Deviating fragments the product. The reference implementations live at **`/services/roster`** (Slips) and **`/services/waitlist`** — copy the shell from there, don't reinvent it.
+
+### Required shape
+
+```
+<section className="space-y-4">
+  <header>
+    <h2 className="display-tight text-[18px] font-semibold text-fg">{Page name}</h2>
+    <p className="mt-0.5 text-[12.5px] text-fg-subtle">{One-line description}</p>
+  </header>
+
+  {/* 1. Single-row toolbar — flex flex-wrap rounded-[12px] border border-hairline bg-surface-1 p-2 */}
+  <div className="flex flex-wrap items-center gap-2 rounded-[12px] border border-hairline bg-surface-1 p-2">
+    <Search input />                    {/* flex-1 min-w-[220px] */}
+    <ListFilterSelect />                {/* one per facet — Dock, Cadence, Status, Class, … */}
+    <ListFilterSelect />                {/* status filter ALWAYS shows live counts: "Active · 47" */}
+    <Button>+ Add {entity}</Button>     {/* opens RecordEditDialog with editing=undefined */}
+  </div>
+
+  {/* 2. Flat row list — overflow-hidden rounded-[12px] border border-hairline bg-surface-1 */}
+  <div className="overflow-hidden rounded-[12px] border border-hairline bg-surface-1">
+    <div className="grid ... bg-surface-2 px-3 py-2 text-[10px] uppercase tracking-wide text-fg-tertiary"
+         style={{ gridTemplateColumns: COLS }}>
+      <span>Col 1</span> <span>Col 2</span> ...
+    </div>
+    <ul className="divide-y divide-hairline">
+      {filtered.map((row) => <Row key={...} onOpen={() => openEdit(row)} />)}
+    </ul>
+  </div>
+
+  <div className="text-[11px] text-fg-tertiary">{filtered.length} of {total}</div>
+
+  {/* 3. Edit dialog — RecordEditDialog with schema-driven fields */}
+  <RecordEditDialog ... />
+</section>
+```
+
+### Rules
+
+1. **NEVER section the list by category** (no per-dock accordions, no per-class accordions). The Dock/Class/etc. column + the matching filter dropdown do that work. Two flat tables with the same structure beat one segmented surface every time.
+2. **Click anywhere on a row → opens the RecordEditDialog** with that record loaded. No separate Edit / View buttons. Trash icons (if any) call `e.stopPropagation()`.
+3. **Add button on the right of the toolbar** → opens the same RecordEditDialog with `record=undefined`. One dialog handles both create + edit.
+4. **Filter facets live in `<ListFilterSelect>` dropdowns** with live counts on the Status filter (`{ value: "active", label: \`Active · ${counts.active}\` }`). Never per-row checkboxes for filtering — that's CLAUDE.md §6.3 territory.
+5. **Pricing must reference `/services/rates`**. Do NOT redefine prices inline on a different entity. If a tier needs Annual / Monthly / Seasonal pricing, link `*_rate_id` fields to Rate rows — `lib/slip-type-helpers.ts → effectiveTypeRate / rateForSlipTypeCadence` is the resolver. Inline `default_*_rate` fields are fallback-only, used while the seed catches up.
+6. **Fees must reference `/services/fees`**. Same principle — `included_fee_ids: string[]` on the entity, not inline fee definitions.
+7. **Every list page is mounted INSIDE `app/services/layout.tsx`'s right column**. Don't wrap the page in `<PageShell>` or import `<RentalsSubNav>` directly — the layout provides them. Same for `/members`, `/staff`, `/vendors`, `/settings/*` — the parent layout handles the breadcrumb + nav.
+8. **No leftover sectioning helpers**. If you see a `*GroupedRoster` / `DockGrouped*` / `groupBy*` rendering component on a list surface, it's a smell — flatten it. Inventory views (Settings → Docks) are the exception because each group IS a manageable entity, not a filter axis.
+
+### Field spec for the edit dialog
+
+The dialog uses `FieldSpec<T>[]` (schema-driven). Compute it inside the view component when fields need live data (e.g. rate select options pulled from `useRates()`):
+
+```ts
+const FIELDS: FieldSpec<T>[] = React.useMemo(() => [
+  { key: "name", label: "Name", kind: "text", required: true, col: 2 },
+  { key: "annual_rate_id", label: "Annual rate", kind: "select",
+    options: rates.filter(r => r.cadence === "annual")
+                  .map(r => ({ value: r.id, label: `${r.name} · ${formatMoney(r.amount)}` })) },
+  ...
+], [rates]);
+```
+
+The dialog itself is canonical — don't write a bespoke modal per surface.
+
 ## Open commitments (track these before "v1 done")
 
 - **Backlog discipline**: Marina Stee is currently driven by the in-session `TaskCreate` list. When this becomes a real product, build its own backlog system (or use Stee-Suite for the *build-side* roadmap while keeping *product-side* customer tickets in the carve-out support backend above).

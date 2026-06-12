@@ -946,8 +946,20 @@ export interface SlipType {
   short_label: string;          // "C30-40" — shown in compact chips + reports
   description?: string;
 
-  // Pricing across cadences. The slip can still override on a per-slip
-  // basis (special arrangement); the helper falls back to these.
+  // Pricing — linked to /services/rates entries. The slip type doesn't
+  // OWN prices; it references rate rows that operators manage in the
+  // unified Service rates catalog. When a rate_id is set, the slip
+  // type pulls amount + name from that Rate row (single source of
+  // truth). When unset, falls back to the inline default_*_rate fields
+  // below so existing seed data without rate links still resolves.
+  annual_rate_id?: string;        // FK → Rate (cadence: "annual")
+  monthly_rate_id?: string;       // FK → Rate (cadence: "monthly")
+  seasonal_rate_id?: string;      // FK → Rate (cadence: "seasonal")
+  transient_rate_id?: string;     // FK → Rate (cadence: "daily")
+
+  // Fallback inline rates — used when the rate_id above isn't linked.
+  // Kept for back-compat with the v24 seed; new tiers created via the
+  // UI should set rate_id rather than these.
   default_annual_rate: number;
   default_monthly_rate?: number;
   default_seasonal_rate?: number;

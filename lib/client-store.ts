@@ -441,7 +441,13 @@ const STORAGE_KEY = "marina-stee:store:v1";
 // snapshots predate slipTypes; without the bump, useSlipTypes() reads
 // `state.slipTypes` as undefined and `.filter()` throws the page-
 // breaking TypeError seen in prod after the v9f668e0 deploy.
-const SEED_VERSION = 24;
+//
+// Bumped from 24 → 25 when SlipType added rate FK fields
+// (annual_rate_id / monthly_rate_id / seasonal_rate_id /
+// transient_rate_id) so pricing pulls from /services/rates instead
+// of being duplicated inline. Cached v24 snapshots predate the
+// fields; flush + reseed.
+const SEED_VERSION = 25;
 
 function isBrowser(): boolean {
   return typeof window !== "undefined" && typeof localStorage !== "undefined";
