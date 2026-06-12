@@ -156,18 +156,11 @@ export default function SettingsLayout({
       .sort((a, b) => b.href.length - a.href.length)[0] ?? DEFAULT_ITEM;
 
   return (
-    <div className="mx-auto w-full max-w-[1280px] px-6 pt-8 pb-12">
-      <header className="mb-6">
-        <h1 className="display-tight text-[26px] font-semibold text-fg">
-          Settings
-        </h1>
-        <p className="mt-1 text-[13px] text-fg-subtle">
-          Configure your marina end-to-end. Use the agent below for fast edits
-          like &quot;set marina phone to 555-1234&quot; or &quot;add D Dock with
-          prefix D&quot;.
-        </p>
-      </header>
-
+    // No section-title header — the AppShell breadcrumb ("Marina Stee /
+    // Settings") identifies the page and the contextual h2 inside the
+    // content column (below) names the active sub-area. Removing the
+    // duplicate top "Settings" h1 reclaims ~80px on every settings page.
+    <div className="mx-auto w-full max-w-[1280px] px-6 pt-4 pb-12">
       {/* Agent nests inside the content column (right of rail) so the chat
           box, suggestion chips, and section heading all share the same left
           edge. Same pattern as /services and /ledger — agent + content stack

@@ -14,14 +14,15 @@ import { RentalsAsk } from "@/components/rentals/rentals-ask";
  */
 export default function ServicesLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="mx-auto w-full max-w-[1400px] px-5 pt-6 pb-32">
-      <header className="mb-6">
-        <h1 className="display-tight text-[26px] font-semibold text-fg">Services</h1>
-        <p className="mt-1 text-[13px] text-fg-subtle">
-          Slips, rental club, rates, fees, gas, meters, contracts — everything the marina sells.
-        </p>
-      </header>
-
+    // No section-title header — the AppShell breadcrumb ("Marina Stee /
+    // Services") identifies the page and the left rail tells you which
+    // sub-area you're in. A big h1 + description here just ate ~80px
+    // of vertical real estate on every page. Tighter pt-4 also pulls
+    // the rail + content up so the first table row sits closer to the
+    // top of the viewport. See CLAUDE.md §"List-page UX consistency"
+    // rule #10 (no h2 + description above the toolbar) — same principle
+    // applies to section-level h1s above the rail.
+    <div className="mx-auto w-full max-w-[1400px] px-5 pt-4 pb-32">
       <div
         className="grid gap-6"
         style={{ gridTemplateColumns: "200px minmax(0, 1fr)" }}
