@@ -78,8 +78,14 @@ const CLASS_LABEL: Record<SlipClass, string> = {
 
 // Grid for the Slip Pricing table:
 // TIER · CLASS · SIZE · ANNUAL · MONTHLY · SEASONAL · TRANSIENT · SLIPS · STATUS
+//
+// Tier column floor (180px) prevents "Covered up to 30 ft" / "Uncovered
+// 30–40 ft" from truncating at typical viewport widths. Cadence columns
+// trimmed to 92px each so the row still fits inside the 2-col Services
+// layout's right column (≈920px at 1440px viewport) without horizontal
+// scroll.
 const SLIP_TYPE_COLS =
-  "minmax(0, 1.5fr) 100px 90px 100px 100px 100px 100px 64px 76px";
+  "minmax(180px, 2fr) 96px 84px 92px 92px 92px 92px 56px 72px";
 
 // Grid for the Other Rates table — simpler: NAME · TYPE · CADENCE · AMOUNT · trash
 const RATE_COLS =
@@ -790,14 +796,13 @@ function RateCell({
   return (
     <span
       className="text-right tabular text-fg"
-      title={fromRate ? "From a linked rate on the Other rates tab" : "Inline fallback"}
+      title={
+        fromRate
+          ? "Linked to a Rate row on the Other rates tab"
+          : "Per-tier price (edit on this row)"
+      }
     >
       {formatMoney(amount)}
-      {!fromRate && (
-        <span className="ml-1 text-[10px] text-fg-tertiary" aria-hidden>
-          •
-        </span>
-      )}
     </span>
   );
 }

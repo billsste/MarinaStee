@@ -142,21 +142,45 @@ export function effectiveTypeRate(
   cadence: "annual" | "monthly" | "seasonal" | "transient",
   allRates: readonly Rate[] = RATES,
 ): number | undefined {
+  // Resolution order (most specific → least specific):
+  //
+  //   1. Linked Rate (`type.*_rate_id`)        — operator explicitly bound
+  //                                              this tier to a Rate row on
+  //                                              the Other rates tab.
+  //   2. Per-tier inline default               — the SlipType row's own
+  //      (`type.default_*_rate`)                  amount. THIS WINS over the
+  //                                              class-wide auto-match so a
+  //                                              Covered 30ft tier at $5,400
+  //                                              doesn't collapse onto a
+  //                                              generic "Covered" Rate.
+  //   3. Class-wide auto-match                 — only fires for tiers with
+  //      (via CLASS_TO_OCCUPANCY)                 no inline default set. Lets
+  //                                              a fresh tier inherit a class
+  //                                              default from /services/rates
+  //                                              until the operator sets its
+  //                                              own price.
+  //   4. undefined                             — caller renders "—".
+  //
+  // Earlier versions of this resolver ran auto-match BEFORE the inline
+  // default, which made every wet-slip tier collapse onto the single
+  // "Standard" Rate row regardless of its per-tier configured price.
+  // That's the "all 13 tiers show $3,900" bug — fixed by demoting
+  // auto-match to last-resort.
   const linked = rateForSlipTypeCadence(type, cadence, allRates);
   if (linked) return linked.amount;
-  // Auto-derive: find any rate "related" to this tier (matching
-  // occupancy_type by slip class) and the requested cadence. This is
-  // what powers the "no dropdown" UX — operators edit /services/rates
-  // and Slip Types pick up the matching amount automatically.
+
+  const inline =
+    cadence === "annual"
+      ? type.default_annual_rate
+      : cadence === "monthly"
+        ? type.default_monthly_rate
+        : cadence === "seasonal"
+          ? type.default_seasonal_rate
+          : type.default_transient_rate_per_night;
+  if (inline != null) return inline;
+
   const auto = autoMatchedRateForType(type, cadence, allRates);
-  if (auto) return auto.amount;
-  // Last-ditch: inline default kept on the type (for seed data + the
-  // rare special-arrangement override). Will go away once every class
-  // has a real Rate row on /services/rates.
-  if (cadence === "annual") return type.default_annual_rate;
-  if (cadence === "monthly") return type.default_monthly_rate;
-  if (cadence === "seasonal") return type.default_seasonal_rate;
-  return type.default_transient_rate_per_night;
+  return auto?.amount;
 }
 
 /**
