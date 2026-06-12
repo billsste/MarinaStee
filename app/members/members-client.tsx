@@ -7,18 +7,22 @@ import { BoaterList } from "@/components/boaters/boater-list";
 import { ApplicationsSection } from "@/components/members/applications-section";
 import { RentalClubView } from "@/components/members/rental-club-view";
 import { RentalsAsk } from "@/components/rentals/rentals-ask";
-import { cn } from "@/lib/utils";
+import { TabButton, TabStrip } from "@/components/ui/tab-button";
 
 /*
- * Client wrapper for /members. Top-level left rail switches between:
+ * Client wrapper for /members. Top-level tabs switch between:
  *
- *   - All members  — the full directory (BoaterList). Default.
- *   - Rental Club  — subscription roster + booking calendar.
+ *   - Slip Holders   — the full directory (BoaterList). Default.
+ *   - Rental Club    — subscription roster + booking calendar.
+ *   - Applications   — public-apply queue.
  *
- * Same shell pattern as /settings, /services, /ledger — sticky rail at md+,
- * single content column on mobile. Initial section comes from `?tab=club`
- * when set, otherwise defaults to "all" — dashboard Quick Actions and the
- * club catalog member-count link both use this for deep-linking.
+ * Used to render a left-rail nav (Settings-style), but with only 3
+ * sub-sections the rail looked orphaned floating beside the busy
+ * content column. Switched to a TabStrip in the content column to
+ * match the canonical pattern used on /services/rates,
+ * /services/contracts, /services/waitlist, /settings/customization,
+ * and /services/contracts → Renewal pipeline. ?tab= deep-linking
+ * still works.
  */
 
 type SectionKey = "all" | "club" | "applications";
@@ -108,53 +112,33 @@ export function MembersClient() {
 
   return (
     // No section h1 — the AppShell breadcrumb ("Marina Stee / Members")
-    // identifies the page and the left rail tells you which sub-area
-    // you're in. See CLAUDE.md §"List-page UX consistency" rule #10.
-    <div className="mx-auto w-full max-w-[1400px] px-5 pt-4 pb-32">
-      <div
-        className="grid gap-6"
-        style={{ gridTemplateColumns: "200px minmax(0, 1fr)" }}
-      >
-        {/* Left rail */}
-        <nav
-          aria-label="Member sections"
-          className="space-y-0.5 md:sticky md:top-20 md:self-start"
-        >
-          {NAV_ITEMS.map((item) => {
-            const Icon = item.icon;
-            const isActive = section === item.key;
-            return (
-              <button
-                key={item.key}
-                type="button"
-                onClick={() => setSection(item.key)}
-                className={cn(
-                  "flex w-full items-center gap-2 rounded-[8px] px-2 py-1.5 text-left text-[13px] transition-colors",
-                  isActive
-                    ? "bg-surface-3 font-medium text-fg"
-                    : "text-fg-subtle hover:bg-surface-2 hover:text-fg"
-                )}
-              >
-                <Icon className="size-3.5 shrink-0" />
-                <span className="min-w-0 flex-1 truncate">{item.label}</span>
-              </button>
-            );
-          })}
-        </nav>
+    // identifies the page. See CLAUDE.md §"List-page UX consistency"
+    // rule #10. Single-column wrapper at narrower max-w (matches
+    // /services/rates / /services/waitlist post-rail-removal).
+    <div className="mx-auto w-full max-w-[1400px] px-5 pt-4 pb-32 space-y-5">
+      <RentalsAsk
+        placeholder={AGENT_PROMPTS[section].placeholder}
+        suggestions={AGENT_PROMPTS[section].suggestions}
+      />
 
-        {/* Content. Wrapper mirrors /services/layout.tsx exactly —
-            `space-y-5` between agent and sub-view so the gap above
-            the sub-view's toolbar matches Services to the pixel. */}
-        <div className="min-w-0 space-y-5">
-          <RentalsAsk
-            placeholder={AGENT_PROMPTS[section].placeholder}
-            suggestions={AGENT_PROMPTS[section].suggestions}
-          />
-          {section === "all" && <BoaterList />}
-          {section === "club" && <RentalClubView />}
-          {section === "applications" && <ApplicationsSection />}
-        </div>
-      </div>
+      <TabStrip ariaLabel="Member sections">
+        {NAV_ITEMS.map((item) => {
+          const Icon = item.icon;
+          return (
+            <TabButton
+              key={item.key}
+              active={section === item.key}
+              onClick={() => setSection(item.key)}
+              label={item.label}
+              icon={<Icon className="size-3.5" />}
+            />
+          );
+        })}
+      </TabStrip>
+
+      {section === "all" && <BoaterList />}
+      {section === "club" && <RentalClubView />}
+      {section === "applications" && <ApplicationsSection />}
     </div>
   );
 }
