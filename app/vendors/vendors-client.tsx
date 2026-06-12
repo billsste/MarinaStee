@@ -112,7 +112,7 @@ export function VendorsClient() {
   const active = NAV.find((n) => n.key === section) ?? NAV[0];
 
   return (
-    <PageShell title="Vendors" description={active.description} width="wide">
+    <PageShell title="Vendors" description={active.description} width="wide" hideHeader>
       <div className="mb-5">
         <RentalsAsk
           placeholder="Ask the agent — e.g. 'pay the Pinon Petroleum bill' or 'who has bills past 30 days?'"

@@ -1,40 +1,48 @@
-import { FilePlus2, FileText, Workflow } from "lucide-react";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+"use client";
+
+import * as React from "react";
+import { FileText, Workflow } from "lucide-react";
+import { TabButton, TabStrip } from "@/components/ui/tab-button";
 import { RenewalPipelineView } from "@/components/contracts/renewal-pipeline-view";
 import { ContractsView } from "@/components/contracts/contracts-view";
 
-export const metadata = { title: "Contracts — Marina Stee Docks" };
-
 /*
  * Contracts page — pipeline-first for the annual cadence (90% case).
+ *
  *  - Renewal pipeline (default): the fall-cycle workflow
  *  - All contracts + templates: the previous secondary view
+ *
+ * Switched from shadcn Tabs to the canonical TabStrip + TabButton so
+ * the tab chrome reads identical to /services/rates and
+ * /services/waitlist. See components/ui/tab-button.tsx for the shared
+ * component + CLAUDE.md §"List-page UX consistency" for the broader
+ * rule (tab strips express distinct VIEWS, never filter axes).
  */
-export default function ContractsPage() {
-  return (
-    <div className="space-y-5">
-      <Tabs defaultValue="pipeline" className="w-full">
-        <TabsList>
-          <TabsTrigger value="pipeline">
-            <Workflow className="size-3.5" />
-            Renewal pipeline
-          </TabsTrigger>
-          <TabsTrigger value="contracts">
-            <FileText className="size-3.5" />
-            All contracts
-          </TabsTrigger>
-        </TabsList>
 
-        <TabsContent value="pipeline">
-          <RenewalPipelineView />
-        </TabsContent>
-        <TabsContent value="contracts">
-          <ContractsView />
-        </TabsContent>
-      </Tabs>
-    </div>
+type Tab = "pipeline" | "contracts";
+
+export default function ContractsPage() {
+  const [tab, setTab] = React.useState<Tab>("pipeline");
+
+  return (
+    <section className="space-y-4">
+      <TabStrip ariaLabel="Contracts view">
+        <TabButton
+          active={tab === "pipeline"}
+          onClick={() => setTab("pipeline")}
+          label="Renewal pipeline"
+          icon={<Workflow className="size-3.5" />}
+        />
+        <TabButton
+          active={tab === "contracts"}
+          onClick={() => setTab("contracts")}
+          label="All contracts"
+          icon={<FileText className="size-3.5" />}
+        />
+      </TabStrip>
+
+      {tab === "pipeline" && <RenewalPipelineView />}
+      {tab === "contracts" && <ContractsView />}
+    </section>
   );
 }
-
-// Used implicitly by ContractsView "New contract" button — keep import live
-void FilePlus2;

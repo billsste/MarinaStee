@@ -5,6 +5,7 @@ import { Plus, Search, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ListFilterSelect } from "@/components/ui/list-filter-select";
+import { TabButton, TabStrip } from "@/components/ui/tab-button";
 import {
   RecordEditDialog,
   type FieldSpec,
@@ -221,34 +222,27 @@ export function ServiceRatesView() {
 
   return (
     <section className="space-y-4">
-      {/* Tab strip — segmented, lives ABOVE the toolbar so the toolbar
-          + table feel like one unit per tab. Same visual weight as the
-          ListFilterSelect chips so it reads as a primary filter, not
-          a heavyweight nav. */}
-      <div
-        role="tablist"
-        aria-label="Rates view"
-        className="inline-flex items-center gap-1 rounded-[10px] border border-hairline bg-surface-1 p-1"
-      >
+      {/* Tab strip — canonical TabStrip + TabButton from components/ui.
+          See CLAUDE.md §"List-page UX consistency" for the pattern.
+          Tabs express distinct VIEWS (Slip pricing vs Other rates vs
+          Fees), not filter axes — those live in ListFilterSelect. */}
+      <TabStrip ariaLabel="Rates view">
         <TabButton
           active={tab === "slip_pricing"}
           onClick={() => setTab("slip_pricing")}
-        >
-          Slip pricing
-        </TabButton>
+          label="Slip pricing"
+        />
         <TabButton
           active={tab === "other_rates"}
           onClick={() => setTab("other_rates")}
-        >
-          Other rates
-        </TabButton>
+          label="Other rates"
+        />
         <TabButton
           active={tab === "fees"}
           onClick={() => setTab("fees")}
-        >
-          Fees
-        </TabButton>
-      </div>
+          label="Fees"
+        />
+      </TabStrip>
 
       {tab === "slip_pricing" && (
         <SlipPricingTab query={query} onQueryChange={setQuery} />
@@ -260,32 +254,6 @@ export function ServiceRatesView() {
         <FeesTab query={query} onQueryChange={setQuery} />
       )}
     </section>
-  );
-}
-
-function TabButton({
-  active,
-  children,
-  onClick,
-}: {
-  active: boolean;
-  children: React.ReactNode;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      role="tab"
-      aria-selected={active}
-      onClick={onClick}
-      className={`rounded-[7px] px-3 py-1.5 text-[12px] font-medium transition-colors ${
-        active
-          ? "bg-surface-3 text-fg"
-          : "text-fg-subtle hover:bg-surface-2 hover:text-fg"
-      }`}
-    >
-      {children}
-    </button>
   );
 }
 

@@ -107,14 +107,10 @@ export function MembersClient() {
   const active = NAV_ITEMS.find((n) => n.key === section) ?? NAV_ITEMS[0];
 
   return (
-    <div className="mx-auto w-full max-w-[1400px] px-5 pt-6 pb-32">
-      <header className="mb-6">
-        <h1 className="display-tight text-[26px] font-semibold text-fg">
-          Members
-        </h1>
-        <p className="mt-1 text-[13px] text-fg-subtle">{active.description}</p>
-      </header>
-
+    // No section h1 — the AppShell breadcrumb ("Marina Stee / Members")
+    // identifies the page and the left rail tells you which sub-area
+    // you're in. See CLAUDE.md §"List-page UX consistency" rule #10.
+    <div className="mx-auto w-full max-w-[1400px] px-5 pt-4 pb-32">
       <div
         className="grid gap-6"
         style={{ gridTemplateColumns: "200px minmax(0, 1fr)" }}

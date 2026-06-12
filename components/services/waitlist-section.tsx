@@ -30,6 +30,7 @@ import {
 import type { SlipClass, WaitlistEntry, WaitlistOfferStatus } from "@/lib/types";
 import { useTabUrlState } from "@/lib/use-tab-url-state";
 import { ListFilterSelect } from "@/components/ui/list-filter-select";
+import { TabButton, TabStrip } from "@/components/ui/tab-button";
 import { WaitlistFireOfferModal } from "./waitlist-fire-offer-modal";
 import { WaitlistLogCallModal } from "./waitlist-log-call-modal";
 import { WaitlistApplicantSheet } from "./waitlist-applicant-sheet";
@@ -377,8 +378,8 @@ export function WaitlistSection() {
           tabs/toolbar to match the canonical Slips page. See
           marina-stee/CLAUDE.md → "List-page UX consistency". */}
 
-      {/* ── Tabs ──────────────────────────────────────── */}
-      <div className="flex flex-wrap items-center gap-1 rounded-[10px] border border-hairline bg-surface-1 p-1">
+      {/* ── Tabs (canonical TabStrip + TabButton from components/ui) ──── */}
+      <TabStrip ariaLabel="Waitlist lifecycle">
         <TabButton
           active={tab === "queue"}
           onClick={() => setTab("queue")}
@@ -409,7 +410,7 @@ export function WaitlistSection() {
           count={partitions.archive.length}
           icon={<Archive className="size-3.5" />}
         />
-      </div>
+      </TabStrip>
 
       {/* ── Filter bar — canonical single-row toolbar (same shape as
                 /services/roster, /services/rates, /services/meters).
@@ -716,50 +717,6 @@ export function WaitlistSection() {
 }
 
 // ─────────────────────────────────────────────────────────────
-
-function TabButton({
-  active,
-  onClick,
-  label,
-  count,
-  badge,
-  icon,
-  severity,
-}: {
-  active: boolean;
-  onClick: () => void;
-  label: string;
-  count: number;
-  badge?: string;
-  icon: React.ReactNode;
-  severity?: "warn";
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(
-        "inline-flex items-center gap-1.5 rounded-[8px] px-3 py-1.5 text-[12.5px] font-medium transition-colors",
-        active
-          ? "bg-surface-3 text-fg shadow-sm"
-          : "text-fg-subtle hover:bg-surface-2 hover:text-fg",
-      )}
-    >
-      <span className={cn(severity === "warn" && count > 0 && !active && "text-status-warn")}>
-        {icon}
-      </span>
-      <span>{label}</span>
-      <Badge tone="neutral" size="sm">
-        {count}
-      </Badge>
-      {badge && (
-        <Badge tone="warn" size="sm">
-          {badge}
-        </Badge>
-      )}
-    </button>
-  );
-}
 
 /**
  * Unified waitlist row — one component renders all four tabs in the

@@ -11,6 +11,7 @@ export default function InsurancePage() {
       title="Insurance / COIs"
       description="Certificates of Insurance for every holder. Lapsed coverage is a liability — chase renewals before policies expire."
       width="wide"
+      hideHeader
     >
       <RentalsAsk
         placeholder="Ask the agent — e.g. 'send renewal reminders for COIs expiring in 30 days' or 'log Emmons's new State Farm COI'"

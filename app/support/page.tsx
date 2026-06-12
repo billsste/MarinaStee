@@ -21,6 +21,7 @@ export default function SupportPage() {
       title="Support tickets"
       description="Boater tickets from this marina. Click a row to reply, change status, or mark resolved. One marina's queue stays invisible to every other tenant."
       width="wide"
+      hideHeader
     >
       <SupportQueueTable />
     </PageShell>

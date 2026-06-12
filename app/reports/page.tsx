@@ -10,6 +10,7 @@ export default function ReportsPage() {
       title="Reports"
       description="Revenue, occupancy, and customer mix. Live from the same ledger that drives Notifications and QuickBooks sync."
       width="wide"
+      hideHeader
     >
       <RentalsAsk
         placeholder="Ask the agent — e.g. 'what's our MRR from the rental club?' or 'compare May revenue to last year'"

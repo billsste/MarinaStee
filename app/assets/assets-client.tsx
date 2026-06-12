@@ -92,7 +92,7 @@ export function AssetsClient() {
   const active = NAV.find((n) => n.key === section) ?? NAV[0];
 
   return (
-    <PageShell title="Assets & Maintenance" description={active.description} width="wide">
+    <PageShell title="Assets & Maintenance" description={active.description} width="wide" hideHeader>
       <div className="mb-5">
         <RentalsAsk
           placeholder="Ask the agent — e.g. 'what PMs are due this month?' or 'add the new forklift'"

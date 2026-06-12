@@ -569,7 +569,7 @@ const ACTION_TOOLS: Anthropic.Messages.Tool[] = [
         attached_fee_ids: {
           type: "array",
           items: { type: "string" },
-          description: "Optional fee ids from /services/fees to attach to this contract.",
+          description: "Optional fee ids from the Fees tab on /services/rates to attach to this contract.",
         },
       },
       required: ["boater_query", "template_id", "effective_start", "effective_end"],
@@ -829,7 +829,7 @@ const ACTION_TOOLS: Anthropic.Messages.Tool[] = [
   {
     name: "create_fee",
     description:
-      "Propose adding a new Additional Fee to the catalog (e.g. 'add a $30 pump-out fee' or 'create a winterization fee at $450 that auto-attaches to winterization work orders'). Requires human approval. Fees are the canonical SKU for service charges — see /services/fees.",
+      "Propose adding a new Additional Fee to the catalog (e.g. 'add a $30 pump-out fee' or 'create a winterization fee at $450 that auto-attaches to winterization work orders'). Requires human approval. Fees are the canonical SKU for service charges — see the Fees tab on /services/rates.",
     input_schema: {
       type: "object",
       properties: {

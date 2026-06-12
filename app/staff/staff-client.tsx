@@ -176,7 +176,7 @@ export function StaffClient() {
   const active = NAV.find((n) => n.key === section) ?? NAV[0];
 
   return (
-    <PageShell title="Staff" description={active.description} width="wide">
+    <PageShell title="Staff" description={active.description} width="wide" hideHeader>
       <div className="mb-5">
         <RentalsAsk
           placeholder="Ask the agent — e.g. 'who's clocked in?' or 'add Jamie Reyes as a dockhand at $22/hr'"

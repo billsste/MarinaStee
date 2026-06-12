@@ -66,18 +66,10 @@ function LedgerPageInner() {
   );
 
   return (
-    <div className="mx-auto w-full max-w-[1400px] px-5 pt-6 pb-32">
-      <header className="mb-4">
-        <h1 className="display-tight text-[26px] font-semibold text-fg">
-          Ledger / POS
-        </h1>
-        <p className="mt-1 text-[13px] text-fg-subtle">
-          Unified financial surface — every retail sale, slip fee, and refund
-          flows through one ledger. Charge-to-account links walk-up sales back
-          to the boater.
-        </p>
-      </header>
-
+    // No section h1 — the AppShell breadcrumb ("Marina Stee / Ledger / POS")
+    // identifies the page and the left rail tells you which sub-area
+    // you're in. See CLAUDE.md §"List-page UX consistency" rule #10.
+    <div className="mx-auto w-full max-w-[1400px] px-5 pt-4 pb-32">
       {/* Agent nests inside the content column (right of rail) so the chat
           box, suggestion chips, and section content all share the same left
           edge. Same pattern as /services and /settings — keeps the agent +

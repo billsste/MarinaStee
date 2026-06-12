@@ -21,6 +21,7 @@ export default function HelpDeskPage() {
       title="Help & feedback"
       description="File a ticket with the Marina Stee team. Bugs, enhancement requests, and questions go straight into our engineering queue and update here as they move."
       width="default"
+      hideHeader
     >
       <HelpDeskView />
     </PageShell>

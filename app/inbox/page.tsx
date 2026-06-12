@@ -10,6 +10,7 @@ export default function InboxPage() {
       title="Inbox"
       description="Every message in and out, across every boater. Triage with the agent — answer, escalate, or close."
       width="wide"
+      hideHeader
     >
       <RentalsAsk
         placeholder="Ask the agent — e.g. 'reply to Peterson about the slip' or 'broadcast: pump-out closed Saturday'"

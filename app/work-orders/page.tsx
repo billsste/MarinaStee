@@ -12,6 +12,7 @@ export default function WorkOrdersPage() {
       title="Work Orders"
       description="Service jobs across every boater, vessel, and slip. Drag to update status — or ask the agent to handle it."
       width="wide"
+      hideHeader
     >
       <div className="mb-5">
         <RentalsAsk

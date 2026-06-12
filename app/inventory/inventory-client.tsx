@@ -115,7 +115,7 @@ export function InventoryClient() {
   const active = NAV.find((n) => n.key === section) ?? NAV[0];
 
   return (
-    <PageShell title="Inventory" description={active.description} width="wide">
+    <PageShell title="Inventory" description={active.description} width="wide" hideHeader>
       <div className="mb-5">
         <RentalsAsk
           placeholder="Ask the agent — e.g. 'what's low?' or 'received 24 dock lines from Sandia Marine'"
