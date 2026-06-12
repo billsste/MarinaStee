@@ -447,7 +447,13 @@ const STORAGE_KEY = "marina-stee:store:v1";
 // transient_rate_id) so pricing pulls from /services/rates instead
 // of being duplicated inline. Cached v24 snapshots predate the
 // fields; flush + reseed.
-const SEED_VERSION = 25;
+//
+// Bumped from 25 → 26 when /services/slip-types was consolidated
+// INTO /services/rates as a two-tab surface (Slip pricing |
+// Other rates). No schema fields changed, but cached v25 snapshots
+// may carry stale picklist labels / persisted UI state that
+// reference the retired route. Flush + reseed flushes both.
+const SEED_VERSION = 26;
 
 function isBrowser(): boolean {
   return typeof window !== "undefined" && typeof localStorage !== "undefined";

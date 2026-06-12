@@ -1,20 +1,24 @@
-import { RatesManager } from "@/components/rentals/rates-manager";
+import { ServiceRatesView } from "@/components/services/service-rates-view";
 
-export const metadata = { title: "Service rates — Marina Stee Docks" };
+export const metadata = { title: "Service rates — Marina Stee" };
 
 /*
- * Service rates catalog. Annual slip pricing lives ON THE SLIP (each
- * slip carries default_annual_rate / default_monthly_rate /
- * default_seasonal_rate based on its class). This page covers everything
- * that ISN'T a slip lease: transient nightly, day-pass, jet ski hourly,
- * kayak day rentals, hoist services, winterization tiers, etc.
+ * /services/rates — unified pricing surface.
  *
- * Agent prompt lives in app/services/layout.tsx.
+ * One page, two tabs:
+ *   "Slip pricing" (default) — SlipType rows. The categorization
+ *     (class + size band + amenities) + inline Annual / Monthly /
+ *     Seasonal / Transient columns that auto-resolve from the
+ *     underlying Rate rows.
+ *   "Other rates" — non-slip rate rows: jet ski day/week, Rental Club
+ *     plan tiers, per-tier setup fees, ad-hoc service rates.
+ *
+ * Replaces the prior split between /services/slip-types and
+ * /services/rates. The Slip Types route has been retired; bookmarks
+ * land on the Slip pricing tab here.
+ *
+ * Agent prompt + breadcrumb come from app/services/layout.tsx.
  */
 export default function RatesPage() {
-  return (
-    <div className="space-y-5">
-      <RatesManager />
-    </div>
-  );
+  return <ServiceRatesView />;
 }
