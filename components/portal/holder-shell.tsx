@@ -23,7 +23,6 @@ import {
 } from "@/components/ui/inline-edit-cell";
 import { LocalTime } from "@/components/ui/local-time";
 import { HolderAgentChat } from "@/components/portal/holder-agent-chat";
-import { ThemeToggle } from "@/components/theme-toggle";
 import { localIsoDate } from "@/lib/contracts";
 import { formatMoney, getSlip, getVesselsForBoater } from "@/lib/mock-data";
 import {
@@ -207,7 +206,6 @@ export function HolderShell({
           </div>
         </div>
         <div className="flex items-center gap-1">
-          <ThemeToggle />
           <button
             type="button"
             onClick={() => {

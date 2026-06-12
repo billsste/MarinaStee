@@ -3,14 +3,18 @@
 import * as React from "react";
 
 /*
- * Lightweight theme provider — replaces next-themes.
+ * Theme provider — Marina Stee v1 is light-only.
  *
- * next-themes injects an inline <script> for FOUC suppression which React 19
- * now warns against ("Encountered a script tag while rendering React
- * component"). We don't need its full feature set; we toggle a single class
- * on <html> and persist the choice in localStorage. The same FOUC suppression
- * is handled by a small inline script in app/layout.tsx that runs before
- * React hydration.
+ * The Nantucket palette + Fraunces / Outfit / Plex Mono treatment IS the
+ * brand and renders in light mode only. Dark mode is deferred to v2 as a
+ * deliberate second skin (see ~/.claude/projects/-Users-stevengbills/memory/
+ * feedback_marina_stee_theme_is_locked.md).
+ *
+ * The provider is preserved so `useTheme()` consumers keep type-checking and
+ * any conditional `resolvedTheme === "dark"` branches in the codebase
+ * gracefully no-op. setTheme is a no-op — if dark mode comes back as v2,
+ * restore the localStorage write + class flip and re-mount the ThemeToggle
+ * component.
  */
 
 type Theme = "light" | "dark";
@@ -24,66 +28,37 @@ type ThemeContextValue = {
 
 const ThemeContext = React.createContext<ThemeContextValue | null>(null);
 
-const STORAGE_KEY = "marina-stee-theme";
-
-function readInitialTheme(defaultTheme: Theme): Theme {
-  if (typeof document === "undefined") return defaultTheme;
-  const root = document.documentElement;
-  // The pre-hydration script already set the class — trust it.
-  if (root.classList.contains("dark")) return "dark";
-  if (root.classList.contains("light")) return "light";
-  return defaultTheme;
-}
-
 export function ThemeProvider({
   children,
-  defaultTheme = "dark",
 }: {
   children: React.ReactNode;
-  // Kept for back-compat with the next-themes call site — these props are
-  // accepted but currently unused; we always toggle `class` on <html>.
+  // Kept for back-compat with prior call sites — accepted but ignored.
   attribute?: string;
   enableSystem?: boolean;
   disableTransitionOnChange?: boolean;
   defaultTheme?: Theme;
 }) {
-  const [theme, setThemeState] = React.useState<Theme>(defaultTheme);
-
-  // Sync from DOM/localStorage after mount so SSR + client agree.
-  React.useEffect(() => {
-    setThemeState(readInitialTheme(defaultTheme));
-  }, [defaultTheme]);
-
-  const setTheme = React.useCallback((next: Theme) => {
-    setThemeState(next);
-    if (typeof document !== "undefined") {
-      const root = document.documentElement;
-      root.classList.remove("light", "dark");
-      root.classList.add(next);
-      try {
-        window.localStorage.setItem(STORAGE_KEY, next);
-      } catch {
-        /* ignore quota / privacy errors */
-      }
-    }
-  }, []);
-
   const value = React.useMemo<ThemeContextValue>(
-    () => ({ theme, resolvedTheme: theme, setTheme }),
-    [theme, setTheme]
+    () => ({
+      theme: "light",
+      resolvedTheme: "light",
+      // No-op. Locked to light for v1 — see file header.
+      setTheme: () => {},
+    }),
+    [],
   );
 
-  return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
+  return (
+    <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>
+  );
 }
 
 export function useTheme() {
   const ctx = React.useContext(ThemeContext);
   if (!ctx) {
-    // Permissive fallback so consumers don't crash if mounted outside the
-    // provider — matches next-themes' lenient behavior.
     return {
-      theme: "dark" as Theme,
-      resolvedTheme: "dark" as ResolvedTheme,
+      theme: "light" as Theme,
+      resolvedTheme: "light" as ResolvedTheme,
       setTheme: () => {},
     };
   }

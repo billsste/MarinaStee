@@ -12,7 +12,6 @@ import {
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ThemeToggle } from "@/components/theme-toggle";
 import {
   submitRenewedCoi,
   useStore,
@@ -202,7 +201,6 @@ function PortalTopBar({ boater, token }: { boater: Boater; token: string }) {
           </div>
         </div>
       </Link>
-      <ThemeToggle />
     </header>
   );
 }

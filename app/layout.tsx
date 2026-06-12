@@ -57,17 +57,17 @@ export const metadata: Metadata = {
   },
 };
 
-// Theme color flips automatically between light + dark via media query.
+// Marina Stee v1 is light-only — the Nantucket palette + Fraunces / Outfit /
+// Plex Mono treatment IS the brand. Dark mode is deferred to v2 as a deliberate
+// second skin (note: feedback_marina_stee_theme_is_locked.md). Single
+// themeColor pinned to White (#FBFBF8) so the iOS status bar + Android
+// theme-color reads consistent across surfaces.
 // viewport-fit=cover lets the dock view paint edge-to-edge on notched iPhones.
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
-  // Nantucket palette — White on light, Soft Navy on dark.
-  themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#FBFBF8" },
-    { media: "(prefers-color-scheme: dark)", color: "#1F2A38" },
-  ],
+  themeColor: "#FBFBF8",
 };
 
 export default function RootLayout({
@@ -81,24 +81,30 @@ export default function RootLayout({
     >
       <head>
         {/*
-         * Pre-hydration theme bootstrap. suppressHydrationWarning silences
-         * React 19's "script tag inside component" console error while still
-         * letting the script run before React paints (no FOUC).
-         * next/script with beforeInteractive also triggers the warning in
-         * Next 16 when placed in <head>, so we use the raw tag + suppress.
+         * Pre-hydration theme bootstrap. v1 is light-only, so we hard-code
+         * `light` on <html> and ignore any persisted `marina-stee-theme`
+         * value left over from when the toggle existed. This also defeats
+         * the browser-level `prefers-color-scheme: dark` so a user with a
+         * dark OS still gets the brand light treatment.
+         *
+         * If dark mode comes back later as a v2 skin, re-introduce the
+         * localStorage read here AND restore the ThemeToggle component.
+         * suppressHydrationWarning silences React 19's "script tag inside
+         * component" console error while still letting the script run
+         * before React paints (no FOUC).
          */}
         {/* eslint-disable-next-line @next/next/no-sync-scripts */}
         <script
           suppressHydrationWarning
           dangerouslySetInnerHTML={{
             __html:
-              "(function(){try{var t=localStorage.getItem('marina-stee-theme');if(!t){t='dark';}var r=document.documentElement;r.classList.remove('light','dark');r.classList.add(t);}catch(e){document.documentElement.classList.add('dark');}})();",
+              "document.documentElement.classList.remove('dark');document.documentElement.classList.add('light');",
           }}
         />
       </head>
       <body className="min-h-full">
         <ConvexClerkProvider>
-          <ThemeProvider defaultTheme="dark">
+          <ThemeProvider defaultTheme="light">
             <AppShell>{children}</AppShell>
             <ServiceWorkerRegister />
           </ThemeProvider>
