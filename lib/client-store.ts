@@ -434,7 +434,14 @@ const STORAGE_KEY = "marina-stee:store:v1";
 // adds the `inboundEmails` slice + 3 seed fixtures (created_draft /
 // ingested / failed) so the /vendors → Inbound tab demos out of the
 // box. Cached snapshots predate the slice; flush + reseed.
-const SEED_VERSION = 23;
+//
+// Bumped from 23 → 24 when the SlipType module landed — adds the
+// `slipTypes` slice + WaitlistEntry.preferred_classes /
+// preferred_type_ids / calls[] extensions + Slip.type_id. Cached
+// snapshots predate slipTypes; without the bump, useSlipTypes() reads
+// `state.slipTypes` as undefined and `.filter()` throws the page-
+// breaking TypeError seen in prod after the v9f668e0 deploy.
+const SEED_VERSION = 24;
 
 function isBrowser(): boolean {
   return typeof window !== "undefined" && typeof localStorage !== "undefined";
@@ -1131,8 +1138,11 @@ export function addReservation(r: Reservation) {
   // (whatever the operator configured on SlipType.included_fee_ids).
   // Caller's explicit attached_fee_ids are preserved + deduped.
   const slip = state.slips.find((s) => s.id === r.slip_id);
+  // Same defensive guard as useSlipTypes — if a legacy snapshot is
+  // still in localStorage and somehow rehydrated, fall back to the
+  // module-level SLIP_TYPES default so the booking still succeeds.
   const autoFeeIds = slip
-    ? includedFeesForSlip(slip, state.slipTypes)
+    ? includedFeesForSlip(slip, state.slipTypes ?? undefined)
     : [];
   const merged = Array.from(
     new Set([...(r.attached_fee_ids ?? []), ...autoFeeIds]),
@@ -3924,7 +3934,14 @@ export function useSlip(id: string): Slip | undefined {
 
 export function useSlipTypes(): SlipType[] {
   const s = useStore();
-  return s.slipTypes
+  // Defensive: a cached snapshot from a SEED_VERSION that pre-dates
+  // the slipTypes slice will have `state.slipTypes === undefined`.
+  // The SEED_VERSION bump above handles the common case (snapshot
+  // gets invalidated + reseeded); this guard covers the rare race
+  // where rehydration runs before that path (e.g. server-side render
+  // or a manually mutated localStorage value).
+  const slipTypes = s.slipTypes ?? [];
+  return slipTypes
     .filter(
       (t) => (t.tenant_id ?? s.tenants[0]?.id) === s.currentTenantId,
     )
