@@ -19,7 +19,7 @@ import type { PicklistFieldKey } from "@/lib/types";
  * onSave(values) when the user clicks Save. Also handles Add (no initial)
  * and Delete (when onDelete is provided and a record was passed in).
  *
- * Used by /services/rates, /services/fees, and (eventually) every other
+ * Used by /services/rates (Slip pricing / Other rates / Fees tabs) and
  * list view that has editable rows — fulfills the user's mandate:
  *   "On any of these pages, I should be able to Edit/Remove/Add any row
  *    of data for any data type ... select the row & edit the row data

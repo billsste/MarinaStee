@@ -129,10 +129,14 @@ export const ROUTE_CATALOG: ReadonlyArray<RouteEntry> = [
     group: "Services",
   },
   {
+    // Fees route consolidated into /services/rates as the 3rd tab.
+    // Kept as a separate route entry so agent intent matching on "fees"
+    // still routes here; the page itself shows tabs so the operator
+    // lands on the rates surface and switches to Fees.
     key: "services.fees",
-    path: "/services/fees",
+    path: "/services/rates",
     label: "Fees",
-    description: "One-time and recurring service fees — pump-out, winterization, hoist, transfer.",
+    description: "One-time and recurring service fees — pump-out, winterization, hoist, transfer. Lives on the Fees tab of /services/rates.",
     keywords: ["fee", "pump-out", "winterization", "hoist"],
     group: "Services",
   },

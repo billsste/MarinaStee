@@ -6,7 +6,6 @@ import {
   LayoutGrid,
   List,
   Tag,
-  Plus,
   Fuel,
   Gauge,
   FileText,
@@ -43,8 +42,10 @@ const NAV = [
   // ("Who's up for an offer this week?") + this rail entry.
   { href: "/services/waitlist", label: "Slip Waitlist", icon: Users },
   { href: "/services/rental-club", label: "Rental Boats", icon: Sailboat },
+  // Service rates absorbs Slip pricing + Other rates + Fees as 3 tabs on
+  // one page. There is no separate /services/fees entry — operators land
+  // here for any priceable thing and pick the right tab.
   { href: "/services/rates", label: "Service rates", icon: Tag },
-  { href: "/services/fees", label: "Fees", icon: Plus },
   { href: "/services/gas", label: "Gas", icon: Fuel },
   { href: "/services/meters", label: "Meters", icon: Gauge },
   { href: "/services/contracts", label: "Contracts", icon: FileText },

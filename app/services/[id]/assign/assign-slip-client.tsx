@@ -870,7 +870,7 @@ function AssignHolderWizardInner({
             </p>
             {fees.length === 0 ? (
               <div className="rounded-[10px] border border-dashed border-hairline-strong bg-surface-2 p-6 text-center text-[13px] text-fg-subtle">
-                No additional fees configured. Add to <strong>/services/fees</strong>.
+                No additional fees configured. Add on the Fees tab of <strong>/services/rates</strong>.
               </div>
             ) : (
               <ul className="space-y-1.5">
