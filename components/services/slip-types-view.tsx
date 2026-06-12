@@ -86,7 +86,23 @@ export function SlipTypesView() {
   }
 
   return (
-    <div className="space-y-6">
+    <section className="space-y-4">
+      {/* Sub-page header — matches the Waitlist page pattern (display-
+          tight h2 + short description). The Services layout supplies
+          the breadcrumb "Services" title above; this identifies the
+          specific sub-section. */}
+      <header>
+        <h2 className="display-tight text-[18px] font-semibold text-fg">
+          Slip Types
+        </h2>
+        <p className="mt-0.5 text-[12.5px] text-fg-subtle">
+          Combine class + size band + pricing + included fees in one place.
+          Slips derive their tier from class + length, or you can pin a slip
+          to a specific type in the slip editor.
+        </p>
+      </header>
+
+      <div className="space-y-6">
       {CLASS_ORDER.map((cls) => {
         const rows = typesByClass.get(cls) ?? [];
         const slipsInClass = slips.filter((s) => s.slip_class === cls).length;
@@ -251,7 +267,8 @@ export function SlipTypesView() {
           </section>
         );
       })}
-    </div>
+      </div>
+    </section>
   );
 }
 
