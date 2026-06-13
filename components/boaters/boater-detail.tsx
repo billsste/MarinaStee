@@ -93,7 +93,7 @@ export function BoaterDetail({
       {/* Left rail */}
       <nav
         aria-label="Boater sections"
-        className="space-y-0.5 md:sticky md:top-20 md:self-start"
+        className="space-y-0.5 md:sticky md:top-4 md:self-start"
       >
         {NAV_ITEMS.map((item) => {
           const Icon = item.icon;

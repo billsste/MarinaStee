@@ -246,7 +246,7 @@ export function HolderShell({
           {/* Left rail */}
           <nav
             aria-label="Portal sections"
-            className="space-y-4 md:sticky md:top-20 md:self-start"
+            className="space-y-4 md:sticky md:top-4 md:self-start"
           >
             {navGroups.map((group) => (
               <div key={group.label}>

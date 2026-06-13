@@ -133,7 +133,7 @@ export function InventoryClient() {
       >
         <nav
           aria-label="Inventory sections"
-          className="space-y-0.5 md:sticky md:top-20 md:self-start"
+          className="space-y-0.5 md:sticky md:top-4 md:self-start"
         >
           {NAV.map((item) => {
             const Icon = item.icon;

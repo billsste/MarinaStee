@@ -57,7 +57,7 @@ export function RentalsSubNav() {
   return (
     <nav
       aria-label="Services sections"
-      className="space-y-0.5 md:sticky md:top-20 md:self-start"
+      className="space-y-0.5 md:sticky md:top-4 md:self-start"
     >
       {NAV.map((n) => {
         const Icon = n.icon;
