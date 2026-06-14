@@ -171,9 +171,9 @@ export function RosterView() {
 
   // Live SlipTypes — drives the "Type override" select on the edit
   // dialog. Built per render because the type catalog can change
-  // (operator adds/edits a tier in Settings → Slip Types); the
-  // SLIP_FIELDS const at module scope stays static and we splice in
-  // the dynamic field here.
+  // (operator adds/edits a tier on /services/rates → Slip pricing
+  // tab); the SLIP_FIELDS const at module scope stays static and we
+  // splice in the dynamic field here.
   const slipTypes = useSlipTypes();
   const slipFieldsWithTypeOption = React.useMemo<FieldSpec<Slip>[]>(() => {
     const typeOptions = [

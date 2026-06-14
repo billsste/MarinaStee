@@ -1056,9 +1056,9 @@ export const SLIPS: Slip[] = withTenantId(BASE_SLIPS);
 // ============================================================
 //
 // Seeded with the 5 classes × typical size bands a marina sells.
-// Operators tune labels + pricing + included-fee bindings in
-// Settings → Slip Types (or /services/slip-types). The slip.type_id
-// is intentionally NOT pre-bound on every BASE_SLIPS row — the
+// Operators tune labels + pricing + included-fee bindings on
+// /services/rates → Slip pricing tab. The slip.type_id is
+// intentionally NOT pre-bound on every BASE_SLIPS row — the
 // resolver in lib/slip-type-helpers.ts derives the tier from each
 // slip's class + max_loa_inches band so existing data Just Works,
 // and operators only need to override the rare special-case slip.

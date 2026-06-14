@@ -13,9 +13,9 @@
  *       → undefined           (unset — caller handles gracefully)
  *
  * Used by:
- *   - components/services/slip-types-view.tsx   (CRUD page)
+ *   - components/services/service-rates-view.tsx → Slip pricing tab (CRUD page)
  *   - assign-slip-client + new-reservation-sheet (auto-fee attach + pricing pre-fill)
- *   - components/services/waitlist-section.tsx   (class segment chips, match filter)
+ *   - components/services/waitlist-section.tsx   (Class filter, match filter)
  *   - reports that aggregate by class / type
  */
 
