@@ -1,12 +1,31 @@
 "use client";
 
 import * as React from "react";
+import { ChevronDown, ChevronUp } from "lucide-react";
 import { CreateSheet, Field, NumberInput, Select, TextInput } from "@/components/create-sheet";
 import { Button } from "@/components/ui/button";
 import { BOATERS } from "@/lib/mock-data";
 import { useBoaters } from "@/lib/client-store";
 import { executeAgentAction } from "@/lib/agent-actions";
 
+/*
+ * Add-vessel dialog — operator-side.
+ *
+ * Two-tier disclosure:
+ *   Visible:  Boater, Vessel name, Type, LOA, Beam
+ *   Expander: Year, Make, Model, Fuel, Draft, Hull VIN, Registration
+ *
+ * Why the split: a marina operator adding a vessel under time pressure
+ * (boater walked up at the dock, phone-in, last-minute reservation) has
+ * the first 5 from a quick conversation. The other 7 typically come off
+ * the COI / registration card / insurance binder, which is paperwork
+ * that arrives separately. Hiding them behind an expander preserves the
+ * data when the operator has it without blocking the quick path.
+ *
+ * The COI upload flow auto-populates Year/Make/Model/Hull VIN/Registration
+ * via OCR when an insurance doc lands later — those fields aren't lost
+ * if skipped at create time.
+ */
 export function AddVesselSheet({
   open,
   onOpenChange,
@@ -38,6 +57,7 @@ export function AddVesselSheet({
   const [draftFt, setDraftFt] = React.useState<string>("");
   const [hullVin, setHullVin] = React.useState("");
   const [registration, setRegistration] = React.useState("");
+  const [showMore, setShowMore] = React.useState(false);
 
   React.useEffect(() => {
     if (open) {
@@ -53,10 +73,15 @@ export function AddVesselSheet({
       setDraftFt("");
       setHullVin("");
       setRegistration("");
+      setShowMore(false);
     }
   }, [open, defaultBoaterId]);
 
-  const canSubmit = boaterId.length > 0 && name.trim().length > 0;
+  // LOA is now required — it drives slip-fit matching + billing tier and
+  // is the single most common field a downstream feature needs. Boater
+  // + name are tenancy/identity gates; LOA is the operational gate.
+  const canSubmit =
+    boaterId.length > 0 && name.trim().length > 0 && loaFt.trim().length > 0;
 
   function submit() {
     if (!canSubmit) return;
@@ -102,7 +127,8 @@ export function AddVesselSheet({
         </>
       }
     >
-      <div className="space-y-3">
+      <div className="space-y-4">
+        {/* Boater — full width. The tenancy anchor for the vessel. */}
         <Field label="Boater" required>
           <Select value={boaterId} onChange={setBoaterId}>
             <option value="">Pick a boater…</option>
@@ -114,21 +140,16 @@ export function AddVesselSheet({
           </Select>
         </Field>
 
-        <div className="grid grid-cols-3 gap-3">
+        {/* Essentials — 2-col grid. Vessel name + Type on row 1,
+            LOA + Beam on row 2. Aligned grid feels less cramped than
+            the previous 3-col layout that mixed wide and narrow fields. */}
+        <div className="grid grid-cols-2 gap-3">
           <Field label="Vessel name" required>
-            <TextInput value={name} onChange={(e) => setName(e.target.value)} placeholder="Reel Time" />
-          </Field>
-          <Field label="Year">
-            <NumberInput value={year} onChange={(e) => setYear(e.target.value)} placeholder="2018" />
-          </Field>
-          <Field label="Make">
-            <TextInput value={make} onChange={(e) => setMake(e.target.value)} placeholder="Sea Ray" />
-          </Field>
-        </div>
-
-        <div className="grid grid-cols-3 gap-3">
-          <Field label="Model">
-            <TextInput value={model} onChange={(e) => setModel(e.target.value)} placeholder="SLX 280" />
+            <TextInput
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Reel Time"
+            />
           </Field>
           <Field label="Type">
             <Select value={vesselType} onChange={(v) => setVesselType(v as typeof vesselType)}>
@@ -140,35 +161,103 @@ export function AddVesselSheet({
               <option value="other">Other</option>
             </Select>
           </Field>
-          <Field label="Fuel">
-            <Select value={fuelType} onChange={(v) => setFuelType(v as typeof fuelType)}>
-              <option value="gasoline">Gasoline</option>
-              <option value="diesel">Diesel</option>
-              <option value="electric">Electric</option>
-              <option value="none">None</option>
-            </Select>
-          </Field>
-        </div>
-
-        <div className="grid grid-cols-3 gap-3">
-          <Field label="LOA (ft)" hint="Length overall.">
-            <NumberInput step="0.1" value={loaFt} onChange={(e) => setLoaFt(e.target.value)} placeholder="28" />
+          <Field label="LOA (ft)" required hint="Length overall — drives slip fit.">
+            <NumberInput
+              step="0.1"
+              value={loaFt}
+              onChange={(e) => setLoaFt(e.target.value)}
+              placeholder="28"
+            />
           </Field>
           <Field label="Beam (ft)">
-            <NumberInput step="0.1" value={beamFt} onChange={(e) => setBeamFt(e.target.value)} placeholder="9" />
-          </Field>
-          <Field label="Draft (ft)">
-            <NumberInput step="0.1" value={draftFt} onChange={(e) => setDraftFt(e.target.value)} placeholder="3" />
+            <NumberInput
+              step="0.1"
+              value={beamFt}
+              onChange={(e) => setBeamFt(e.target.value)}
+              placeholder="9"
+            />
           </Field>
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="Hull VIN">
-            <TextInput value={hullVin} onChange={(e) => setHullVin(e.target.value)} placeholder="USA-SER-1234567" />
-          </Field>
-          <Field label="Registration">
-            <TextInput value={registration} onChange={(e) => setRegistration(e.target.value)} placeholder="MI 1234 AB" />
-          </Field>
+        {/* Expander — Year/Make/Model + Fuel/Draft + Hull VIN/Registration.
+            Year/Make/Model come off the registration card; Hull VIN +
+            Registration come off the COI. Operators with paperwork in
+            hand expand; quick-add ops skip. */}
+        <div className="border-t border-hairline pt-3">
+          <button
+            type="button"
+            onClick={() => setShowMore((s) => !s)}
+            className="inline-flex items-center gap-1.5 text-[12px] font-medium text-fg-subtle transition-colors hover:text-fg"
+          >
+            {showMore ? (
+              <ChevronUp className="size-3.5" />
+            ) : (
+              <ChevronDown className="size-3.5" />
+            )}
+            {showMore ? "Hide additional details" : "Add more details"}
+          </button>
+
+          {showMore && (
+            <div className="mt-3 space-y-3">
+              <div className="grid grid-cols-3 gap-3">
+                <Field label="Year">
+                  <NumberInput
+                    value={year}
+                    onChange={(e) => setYear(e.target.value)}
+                    placeholder="2018"
+                  />
+                </Field>
+                <Field label="Make">
+                  <TextInput
+                    value={make}
+                    onChange={(e) => setMake(e.target.value)}
+                    placeholder="Sea Ray"
+                  />
+                </Field>
+                <Field label="Model">
+                  <TextInput
+                    value={model}
+                    onChange={(e) => setModel(e.target.value)}
+                    placeholder="SLX 280"
+                  />
+                </Field>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Fuel">
+                  <Select value={fuelType} onChange={(v) => setFuelType(v as typeof fuelType)}>
+                    <option value="gasoline">Gasoline</option>
+                    <option value="diesel">Diesel</option>
+                    <option value="electric">Electric</option>
+                    <option value="none">None</option>
+                  </Select>
+                </Field>
+                <Field label="Draft (ft)">
+                  <NumberInput
+                    step="0.1"
+                    value={draftFt}
+                    onChange={(e) => setDraftFt(e.target.value)}
+                    placeholder="3"
+                  />
+                </Field>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Hull VIN" hint="Auto-fills from a COI upload.">
+                  <TextInput
+                    value={hullVin}
+                    onChange={(e) => setHullVin(e.target.value)}
+                    placeholder="USA-SER-1234567"
+                  />
+                </Field>
+                <Field label="Registration" hint="Auto-fills from a COI upload.">
+                  <TextInput
+                    value={registration}
+                    onChange={(e) => setRegistration(e.target.value)}
+                    placeholder="MI 1234 AB"
+                  />
+                </Field>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </CreateSheet>
