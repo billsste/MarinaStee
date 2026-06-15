@@ -965,24 +965,33 @@ function AssignHolderWizardInner({
               </p>
             )}
 
-            <FieldLabel
-              label="Attachments (optional)"
-              hint="PDFs, DOCX, signed copies, addenda. Stored with the contract."
-            >
+            <FieldLabel label="Attachments (optional)">
               <div className="space-y-2">
-                <label className="inline-flex w-full cursor-pointer items-center justify-center gap-2 rounded-[10px] border border-dashed border-hairline-strong bg-surface-2 px-4 py-3 text-[12px] text-fg-subtle hover:bg-surface-3">
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    multiple
-                    accept="application/pdf,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/*"
-                    onChange={handleFileSelect}
-                    className="hidden"
-                  />
-                  <span>+ Add attachment(s)</span>
-                </label>
+                {/* Slim inline-button affordance — replaces the
+                    full-width dashed dropzone that bloated this step
+                    relative to the others. Hint copy collapses into
+                    the placeholder text next to the button. */}
+                <div className="flex items-center gap-2">
+                  <label className="inline-flex cursor-pointer items-center gap-1 rounded-[6px] border border-hairline bg-surface-1 px-2 py-1 text-[12px] font-medium text-fg-subtle transition-colors hover:bg-surface-2">
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      multiple
+                      accept="application/pdf,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/*"
+                      onChange={handleFileSelect}
+                      className="hidden"
+                    />
+                    <Plus className="size-3" />
+                    Add file
+                  </label>
+                  {attachments.length === 0 && (
+                    <span className="text-[11px] text-fg-tertiary">
+                      PDFs, DOCX, signed copies, addenda
+                    </span>
+                  )}
+                </div>
                 {attachments.length > 0 && (
-                  <ul className="space-y-1.5">
+                  <ul className="space-y-1">
                     {attachments.map((a, idx) => (
                       <li
                         key={`${a.name}-${idx}`}
@@ -994,9 +1003,10 @@ function AssignHolderWizardInner({
                         <button
                           type="button"
                           onClick={() => removeAttachment(idx)}
-                          className="text-[11px] text-fg-subtle hover:text-status-danger"
+                          className="rounded-md p-1 text-fg-tertiary transition-colors hover:bg-surface-3 hover:text-status-danger"
+                          aria-label={`Remove ${a.name}`}
                         >
-                          Remove
+                          <X className="size-3.5" />
                         </button>
                       </li>
                     ))}
@@ -1007,67 +1017,75 @@ function AssignHolderWizardInner({
           </div>
         )}
 
-        {/* Step 4 — Review */}
+        {/* Step 4 — Review
+            Flat dl-style rows inside ONE bordered container — beats the
+            previous N-cards-stacked layout that ballooned this step to
+            ~380px tall while the other steps sat at ~280px. Each row is
+            ~36px; 5-6 rows = ~200px. Edit jump-back lives at the right
+            end of each row. Kept inline (not via ReviewBlock) so the
+            shared component used by other wizards isn't disrupted. */}
         {stepIdx === 4 && (
-          <div className="space-y-4">
-            <ReviewBlock
-              label="Holder"
-              value={
-                selectedBoater
-                  ? `${selectedBoater.display_name}${
-                      selectedBoater.code ? ` · ${selectedBoater.code}` : ""
-                    }`
-                  : "—"
-              }
-              onEdit={() => setStepIdx(0)}
-            />
-            {draft.vesselId && (
-              <ReviewBlock
-                label="Vessel"
+          <div className="space-y-3">
+            <dl className="divide-y divide-hairline overflow-hidden rounded-[10px] border border-hairline bg-surface-1">
+              <ReviewRow
+                label="Holder"
                 value={
-                  // Check live (store-backed) vessels first so freshly-
-                  // created ones resolve immediately; fall back to seed.
-                  vesselOptions.find((v) => v.id === draft.vesselId)?.name ??
-                  VESSELS.find((v) => v.id === draft.vesselId)?.name ??
-                  "—"
+                  selectedBoater
+                    ? `${selectedBoater.display_name}${
+                        selectedBoater.code ? ` · ${selectedBoater.code}` : ""
+                      }`
+                    : "—"
                 }
                 onEdit={() => setStepIdx(0)}
               />
-            )}
-            <ReviewBlock
-              label="Pricing"
-              value={`${formatMoney(draft.amount)} / ${
-                draft.cadence === "annual" ? "year" : draft.cadence === "monthly" ? "month" : "season"
-              }${
-                draft.amount !== slipDefaultForCadence(draft.cadence)
-                  ? ` (override — slip default ${formatMoney(slipDefaultForCadence(draft.cadence))})`
-                  : ` · slip default (${slip.slipClass.replace("_", " ")})`
-              }`}
-              onEdit={() => setStepIdx(1)}
-            />
-            {selectedFees.length > 0 && (
-              <ReviewBlock
-                label="Services"
-                value={selectedFees.map((f) => `${f.name} (${formatMoney(f.amount)})`).join(", ")}
-                onEdit={() => setStepIdx(2)}
+              {draft.vesselId && (
+                <ReviewRow
+                  label="Vessel"
+                  value={
+                    // Check live (store-backed) vessels first so freshly-
+                    // created ones resolve immediately; fall back to seed.
+                    vesselOptions.find((v) => v.id === draft.vesselId)?.name ??
+                    VESSELS.find((v) => v.id === draft.vesselId)?.name ??
+                    "—"
+                  }
+                  onEdit={() => setStepIdx(0)}
+                />
+              )}
+              <ReviewRow
+                label="Pricing"
+                value={`${formatMoney(draft.amount)} / ${
+                  draft.cadence === "annual" ? "year" : draft.cadence === "monthly" ? "month" : "season"
+                }${
+                  draft.amount !== slipDefaultForCadence(draft.cadence)
+                    ? ` (override — slip default ${formatMoney(slipDefaultForCadence(draft.cadence))})`
+                    : ` · slip default (${slip.slipClass.replace("_", " ")})`
+                }`}
+                onEdit={() => setStepIdx(1)}
               />
-            )}
-            <ReviewBlock
-              label="Contract"
-              value={
-                selectedTemplate
-                  ? `${selectedTemplate.name} · ${draft.start} → ${draft.end}`
-                  : "—"
-              }
-              onEdit={() => setStepIdx(3)}
-            />
-            {attachments.length > 0 && (
-              <ReviewBlock
-                label="Attachments"
-                value={attachments.map((a) => a.name).join(", ")}
+              {selectedFees.length > 0 && (
+                <ReviewRow
+                  label="Services"
+                  value={selectedFees.map((f) => `${f.name} (${formatMoney(f.amount)})`).join(", ")}
+                  onEdit={() => setStepIdx(2)}
+                />
+              )}
+              <ReviewRow
+                label="Contract"
+                value={
+                  selectedTemplate
+                    ? `${selectedTemplate.name} · ${draft.start} → ${draft.end}`
+                    : "—"
+                }
                 onEdit={() => setStepIdx(3)}
               />
-            )}
+              {attachments.length > 0 && (
+                <ReviewRow
+                  label="Attachments"
+                  value={attachments.map((a) => a.name).join(", ")}
+                  onEdit={() => setStepIdx(3)}
+                />
+              )}
+            </dl>
           </div>
         )}
 
@@ -1432,3 +1450,39 @@ function UtilityToggle({
   );
 }
 
+/*
+ * Compact review row used in Step 5 (Review and draft). Flat dl-style
+ * row — uppercase label + value + Edit affordance — designed to sit
+ * inside a single bordered container with sibling rows separated by
+ * `divide-y`. Replaces the per-row bordered Card pattern that bloated
+ * the review step vs. the others.
+ */
+function ReviewRow({
+  label,
+  value,
+  onEdit,
+}: {
+  label: string;
+  value: string;
+  onEdit: () => void;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3 px-3 py-2">
+      <div className="flex min-w-0 flex-1 items-baseline gap-3">
+        <dt className="w-20 shrink-0 text-[10.5px] font-medium uppercase tracking-wide text-fg-tertiary">
+          {label}
+        </dt>
+        <dd className="min-w-0 flex-1 truncate text-[13px] text-fg">
+          {value}
+        </dd>
+      </div>
+      <button
+        type="button"
+        onClick={onEdit}
+        className="shrink-0 text-[12px] font-medium text-primary hover:underline"
+      >
+        Edit
+      </button>
+    </div>
+  );
+}
