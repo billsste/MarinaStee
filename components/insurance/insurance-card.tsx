@@ -78,7 +78,7 @@ export function InsuranceCard({
           Insurance / COI
           {certs.length > 0 && <Badge tone="neutral" size="sm">{certs.length}</Badge>}
         </h3>
-        <Button variant="primary" size="sm" onClick={() => setAddOpen(true)}>
+        <Button variant="secondary" size="sm" onClick={() => setAddOpen(true)}>
           + Add COI
         </Button>
       </div>

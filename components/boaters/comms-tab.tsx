@@ -40,7 +40,7 @@ export function CommsTab({ boaterId }: { boaterId: string }) {
             Send a welcome message, payment reminder, or arrival reminder — or ask the agent to.
           </p>
           <div className="mt-4 inline-flex">
-            <Button variant="primary" size="md" onClick={() => setNewOpen(true)}>
+            <Button variant="secondary" size="md" onClick={() => setNewOpen(true)}>
               + New message
             </Button>
           </div>
@@ -60,7 +60,7 @@ export function CommsTab({ boaterId }: { boaterId: string }) {
         </p>
         <div className="flex items-center gap-2">
           <Button variant="secondary" size="sm">Templates</Button>
-          <Button variant="primary" size="sm" onClick={() => setNewOpen(true)}>
+          <Button variant="secondary" size="sm" onClick={() => setNewOpen(true)}>
             + New message
           </Button>
         </div>

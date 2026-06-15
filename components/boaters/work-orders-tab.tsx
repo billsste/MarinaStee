@@ -38,7 +38,7 @@ export function WorkOrdersTab({
           <Button variant="ghost" size="sm" asChild>
             <Link href="/work-orders">All work orders →</Link>
           </Button>
-          <Button variant="primary" size="sm" onClick={() => setNewOpen(true)}>
+          <Button variant="secondary" size="sm" onClick={() => setNewOpen(true)}>
             + New work order
           </Button>
         </div>

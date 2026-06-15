@@ -154,7 +154,7 @@ export function VesselsTab({
           title="No vessels on file"
           body="Add a vessel to enable reservations, work orders, and pedestal billing."
           cta={
-            <Button variant="primary" size="md" onClick={() => setAddOpen(true)}>
+            <Button variant="secondary" size="md" onClick={() => setAddOpen(true)}>
               <Plus className="size-3.5" />
               Add vessel
             </Button>
@@ -171,7 +171,7 @@ export function VesselsTab({
         <p className="text-[12px] text-fg-tertiary">
           Click a row to edit. All vessel fields (specs, VIN, registration, hull power, active state) live in the edit dialog.
         </p>
-        <Button variant="primary" size="sm" onClick={() => setAddOpen(true)}>
+        <Button variant="secondary" size="sm" onClick={() => setAddOpen(true)}>
           <Plus className="size-3.5" />
           Add vessel
         </Button>

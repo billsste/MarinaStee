@@ -227,7 +227,7 @@ export function FinancialsTab({
             <FilterPill label="Invoices" active={filter === "invoices"} onClick={() => setFilter("invoices")} />
             <FilterPill label="Payments" active={filter === "payments"} onClick={() => setFilter("payments")} />
             <FilterPill label="Refunds" active={filter === "refunds"} onClick={() => setFilter("refunds")} />
-            <Button variant="primary" size="sm" onClick={() => setPaymentOpen(true)}>
+            <Button variant="secondary" size="sm" onClick={() => setPaymentOpen(true)}>
               + Enter payment
             </Button>
           </div>
