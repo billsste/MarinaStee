@@ -14,6 +14,7 @@ import {
   FieldLabel,
   RailRow,
   ReviewBlock,
+  ReviewList,
 } from "@/components/wizard/wizard-fields";
 import { useWizardDraft } from "@/components/wizard/use-wizard-draft";
 import { NewBoaterSheet } from "@/components/boaters/new-boater-sheet";
@@ -1026,8 +1027,8 @@ function AssignHolderWizardInner({
             shared component used by other wizards isn't disrupted. */}
         {stepIdx === 4 && (
           <div className="space-y-3">
-            <dl className="divide-y divide-hairline overflow-hidden rounded-[10px] border border-hairline bg-surface-1">
-              <ReviewRow
+            <ReviewList>
+              <ReviewBlock
                 label="Holder"
                 value={
                   selectedBoater
@@ -1039,7 +1040,7 @@ function AssignHolderWizardInner({
                 onEdit={() => setStepIdx(0)}
               />
               {draft.vesselId && (
-                <ReviewRow
+                <ReviewBlock
                   label="Vessel"
                   value={
                     // Check live (store-backed) vessels first so freshly-
@@ -1051,7 +1052,7 @@ function AssignHolderWizardInner({
                   onEdit={() => setStepIdx(0)}
                 />
               )}
-              <ReviewRow
+              <ReviewBlock
                 label="Pricing"
                 value={`${formatMoney(draft.amount)} / ${
                   draft.cadence === "annual" ? "year" : draft.cadence === "monthly" ? "month" : "season"
@@ -1063,13 +1064,13 @@ function AssignHolderWizardInner({
                 onEdit={() => setStepIdx(1)}
               />
               {selectedFees.length > 0 && (
-                <ReviewRow
+                <ReviewBlock
                   label="Services"
                   value={selectedFees.map((f) => `${f.name} (${formatMoney(f.amount)})`).join(", ")}
                   onEdit={() => setStepIdx(2)}
                 />
               )}
-              <ReviewRow
+              <ReviewBlock
                 label="Contract"
                 value={
                   selectedTemplate
@@ -1079,13 +1080,13 @@ function AssignHolderWizardInner({
                 onEdit={() => setStepIdx(3)}
               />
               {attachments.length > 0 && (
-                <ReviewRow
+                <ReviewBlock
                   label="Attachments"
                   value={attachments.map((a) => a.name).join(", ")}
                   onEdit={() => setStepIdx(3)}
                 />
               )}
-            </dl>
+            </ReviewList>
           </div>
         )}
 
@@ -1450,39 +1451,3 @@ function UtilityToggle({
   );
 }
 
-/*
- * Compact review row used in Step 5 (Review and draft). Flat dl-style
- * row — uppercase label + value + Edit affordance — designed to sit
- * inside a single bordered container with sibling rows separated by
- * `divide-y`. Replaces the per-row bordered Card pattern that bloated
- * the review step vs. the others.
- */
-function ReviewRow({
-  label,
-  value,
-  onEdit,
-}: {
-  label: string;
-  value: string;
-  onEdit: () => void;
-}) {
-  return (
-    <div className="flex items-center justify-between gap-3 px-3 py-2">
-      <div className="flex min-w-0 flex-1 items-baseline gap-3">
-        <dt className="w-20 shrink-0 text-[10.5px] font-medium uppercase tracking-wide text-fg-tertiary">
-          {label}
-        </dt>
-        <dd className="min-w-0 flex-1 truncate text-[13px] text-fg">
-          {value}
-        </dd>
-      </div>
-      <button
-        type="button"
-        onClick={onEdit}
-        className="shrink-0 text-[12px] font-medium text-primary hover:underline"
-      >
-        Edit
-      </button>
-    </div>
-  );
-}

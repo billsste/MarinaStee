@@ -12,6 +12,7 @@ import {
   CadenceCard,
   FieldLabel,
   ReviewBlock,
+  ReviewList,
 } from "@/components/wizard/wizard-fields";
 import { useWizardDraft } from "@/components/wizard/use-wizard-draft";
 import {
@@ -1148,7 +1149,8 @@ export function MemberSetupWizard({
 
       {/* Step 4 — Review */}
       {stepIdx === 4 && (
-        <div className="space-y-4">
+        <div className="space-y-3">
+          <ReviewList>
           <ReviewBlock
             label="Identity"
             value={`${fullName} · ${draft.email}${
@@ -1231,6 +1233,7 @@ export function MemberSetupWizard({
               onEdit={() => setStepIdx(3)}
             />
           )}
+          </ReviewList>
         </div>
       )}
 

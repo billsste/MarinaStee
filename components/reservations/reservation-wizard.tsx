@@ -11,6 +11,7 @@ import {
   FieldLabel,
   RailRow,
   ReviewBlock,
+  ReviewList,
 } from "@/components/wizard/wizard-fields";
 import { useWizardDraft } from "@/components/wizard/use-wizard-draft";
 import { NewBoaterSheet } from "@/components/boaters/new-boater-sheet";
@@ -900,7 +901,8 @@ export function ReservationWizard({
 
             {/* Step 4 — Review */}
             {stepIdx === 4 && (
-              <div className="space-y-4">
+              <div className="space-y-3">
+                <ReviewList>
                 <ReviewBlock
                   label="Holder"
                   value={
@@ -966,6 +968,7 @@ export function ReservationWizard({
                     onEdit={() => setStepIdx(3)}
                   />
                 )}
+                </ReviewList>
               </div>
             )}
 

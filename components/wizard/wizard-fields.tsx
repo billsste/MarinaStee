@@ -57,9 +57,30 @@ export function RailRow({ label, value }: { label: string; value: string }) {
 }
 
 /**
+ * Container for ReviewBlock rows on the final step of a wizard. ONE
+ * bordered card, rows separated by a divider — beats N bordered cards
+ * stacked with gaps. Use as: `<ReviewList><ReviewBlock ... /></ReviewList>`.
+ *
+ * Why this shape: the per-row bordered Card pattern bloated review
+ * steps (~380px on a 6-row review) compared to other wizard steps
+ * (~280px). Wrapping flat rows in one container brings the review
+ * step back to ~36px per row + 1px dividers.
+ */
+export function ReviewList({ children }: { children: React.ReactNode }) {
+  return (
+    <dl className="divide-y divide-hairline overflow-hidden rounded-[10px] border border-hairline bg-surface-1">
+      {children}
+    </dl>
+  );
+}
+
+/**
  * Review-step row with Edit jump-back. `capitalize` opts in to capitalizing
  * the value text — useful for enum-like values ("transient", "monthly")
  * where the source data is lowercase.
+ *
+ * Designed to sit inside a `<ReviewList>` — the row carries no border
+ * of its own; the parent provides the container border + dividers.
  */
 export function ReviewBlock({
   label,
@@ -73,24 +94,24 @@ export function ReviewBlock({
   capitalize?: boolean;
 }) {
   return (
-    <div className="flex items-start justify-between gap-3 rounded-[10px] border border-hairline bg-surface-1 px-3 py-2.5">
-      <div className="min-w-0 flex-1">
-        <div className="text-[11px] uppercase tracking-wide text-fg-tertiary">
+    <div className="flex items-center justify-between gap-3 px-3 py-2">
+      <div className="flex min-w-0 flex-1 items-baseline gap-3">
+        <dt className="w-20 shrink-0 text-[10.5px] font-medium uppercase tracking-wide text-fg-tertiary">
           {label}
-        </div>
-        <div
+        </dt>
+        <dd
           className={cn(
-            "mt-0.5 text-[13px] text-fg",
+            "min-w-0 flex-1 truncate text-[13px] text-fg",
             capitalize && "capitalize"
           )}
         >
           {value}
-        </div>
+        </dd>
       </div>
       <button
         type="button"
         onClick={onEdit}
-        className="text-[12px] text-primary hover:underline"
+        className="shrink-0 text-[12px] font-medium text-primary hover:underline"
       >
         Edit
       </button>
