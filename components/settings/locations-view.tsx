@@ -223,7 +223,7 @@ export function PosLocationsView() {
           Click a row to edit. Locations show up in the POS Terminal and on
           receipts; items in the Catalog reference these.
         </p>
-        <Button variant="primary" size="sm" onClick={openCreate}>
+        <Button variant="secondary" size="sm" onClick={openCreate}>
           <Plus className="size-3.5" />
           New location
         </Button>

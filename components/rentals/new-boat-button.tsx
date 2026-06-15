@@ -34,7 +34,7 @@ export function NewBoatButton({
 
   return (
     <>
-      <Button variant="primary" size={size} onClick={() => setOpen(true)}>
+      <Button variant="secondary" size={size} onClick={() => setOpen(true)}>
         <Plus className="size-3.5" />
         New boat
       </Button>

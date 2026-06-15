@@ -169,7 +169,7 @@ export function DocksView() {
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-end">
-        <Button variant="primary" size="sm" onClick={openAdd}>
+        <Button variant="secondary" size="sm" onClick={openAdd}>
           <Plus className="size-3.5" />
           New dock
         </Button>

@@ -163,7 +163,7 @@ export function InventoryView() {
     <div className="space-y-3">
       <div className="flex items-center justify-between">
         <h2 className="text-[14px] font-medium text-fg">Groups & slips</h2>
-        <Button variant="primary" size="sm" onClick={openAddGroup}>
+        <Button variant="secondary" size="sm" onClick={openAddGroup}>
           <Plus className="size-3.5" />
           New group
         </Button>
