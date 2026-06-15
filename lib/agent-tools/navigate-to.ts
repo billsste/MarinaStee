@@ -42,6 +42,12 @@ export const NavigateToTool = defineTool({
           "Substituted into [param] segments of the route. Required when the catalog entry lists params (e.g. {id: 'b_42'} for members.detail). Omit otherwise.",
         additionalProperties: { type: "string" },
       },
+      query: {
+        type: "object",
+        description:
+          "Optional query-string params appended to the URL (e.g. {assign: 'A02'} on services.roster opens the wizard pre-targeted to slip A02). Use ONLY when the destination page documents support for the key — don't make up keys.",
+        additionalProperties: { type: "string" },
+      },
       rationale: {
         type: "string",
         description:
@@ -87,6 +93,21 @@ export const NavigateToTool = defineTool({
             ? err.message
             : `Could not resolve path for '${routeKey}'.`,
       };
+    }
+
+    // Append query string if the agent passed one. URLSearchParams handles
+    // encoding + multiple keys without us hand-rolling joiners.
+    const rawQuery =
+      typeof ev.input.query === "object" && ev.input.query !== null
+        ? (ev.input.query as Record<string, unknown>)
+        : {};
+    const queryEntries = Object.entries(rawQuery).filter(
+      ([, v]) => v != null && String(v).length > 0
+    );
+    if (queryEntries.length > 0) {
+      const qs = new URLSearchParams();
+      for (const [k, v] of queryEntries) qs.set(k, String(v));
+      path = `${path}?${qs.toString()}`;
     }
 
     const rationale =

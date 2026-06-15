@@ -2655,7 +2655,26 @@ Chaining examples — do BOTH the data ask and the action ask in one turn when b
   1. report_meter_consumption_top   (table renders; biggest user up top)
   2. create_work_order              against the top offender ("investigate kWh anomaly")
 
+  User: "I want to add a new slip holder to any vacant slip on Damsite A"
+  1. query_occupancy                (dock_query="Damsite A Dock" — narrate "10 vacant on Damsite A")
+  2. navigate_to                    (route_key=services.roster, query_string="assign=A02"
+                                     where A02 is the first vacant slip matching the dock — this
+                                     opens the assign-holder wizard PRE-TARGETED to that slip,
+                                     so the operator lands one click away from typing the
+                                     new member's contact info. If the user didn't specify a
+                                     dock, navigate WITHOUT the assign param and let them pick.)
+  RULE: For "add a slip holder" / "assign a holder" / "give a slip to" intents, ALWAYS prefer
+  navigate_to over running a report. A report is for "show me what's available." Assignment
+  is an ACTION — route the operator INTO the wizard, don't show them a table.
+
 When a user request has BOTH a data ask and an action ask, do them in the SAME turn — chain the report → propose the action. Don't make the operator type twice.
+
+Continuity across turns — do NOT re-ask for clarification when the user is clearly clarifying
+a prior intent. If turn N established intent (e.g. "add a slip holder") and turn N+1 supplies
+a constraint ("on Damsite A Dock" / "an annual one" / "make it Joel Pratt"), execute on the
+combined intent — chain the read + action. Asking "what would you like from Damsite A Dock?"
+after the user JUST said "I want to add a slip holder" is a context loss. Trust the running
+intent.
 
 Routes catalog (use these keys with navigate_to):
 ${formatRouteCatalog()}

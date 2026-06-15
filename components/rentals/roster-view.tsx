@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Plus, Search, Sparkles, UserPlus } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -162,6 +162,24 @@ export function RosterView() {
     setAssignSlipId(slip.id);
     setAssignOpen(true);
   }
+
+  // Deep-link support: when the URL carries ?assign=<slipId>, open the
+  // assign-holder wizard for that slip on mount. Lets the agent route
+  // ("I want to add a holder to A02") chain directly into the wizard
+  // instead of the operator having to find + click the row. Strips the
+  // param from the URL after consuming so a reload doesn't re-open.
+  const searchParams = useSearchParams();
+  React.useEffect(() => {
+    const targetSlipId = searchParams?.get("assign");
+    if (!targetSlipId) return;
+    const slip = slips.find((s) => s.id === targetSlipId);
+    if (!slip) return;
+    openAssign(slip);
+    const url = new URL(window.location.href);
+    url.searchParams.delete("assign");
+    router.replace(url.pathname + url.search, { scroll: false });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // "New slip" still uses the lightweight RecordEditDialog — it's an
   // identity-only create flow (no assignment context yet). Repurposed
