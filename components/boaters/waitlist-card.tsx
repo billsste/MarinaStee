@@ -6,7 +6,6 @@ import {
   CalendarClock,
   CheckCircle2,
   ChevronRight,
-  Flame,
   MessageSquare,
   Anchor as AnchorIcon,
 } from "lucide-react";
@@ -218,7 +217,7 @@ function WaitlistEntryRow({
         {!interestConfirmed && (
           <Button
             size="sm"
-            variant="primary"
+            variant="secondary"
             onClick={() => confirmWaitlistInterest(entry.id, "Confirmed from profile")}
           >
             <CheckCircle2 className="size-3.5" /> Mark interest confirmed
@@ -226,9 +225,6 @@ function WaitlistEntryRow({
         )}
         <Button size="sm" variant="secondary" onClick={onJumpToQueue}>
           <MessageSquare className="size-3.5" /> Send template
-        </Button>
-        <Button size="sm" variant="secondary" onClick={onJumpToQueue}>
-          <Flame className="size-3.5" /> Fire offer
         </Button>
         <Button size="sm" variant="secondary" onClick={onJumpToQueue}>
           <AnchorIcon className="size-3.5" /> Convert to slip holder
