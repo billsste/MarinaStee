@@ -210,7 +210,7 @@ export function CatalogManager() {
             />
             Show inactive
           </label>
-          <Button variant="primary" size="sm" onClick={() => openAdd(null)}>
+          <Button variant="secondary" size="sm" onClick={() => openAdd(null)}>
             <Plus className="size-3.5" />
             New item
           </Button>

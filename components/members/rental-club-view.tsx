@@ -508,7 +508,7 @@ export function RentalClubView() {
             <div className="ml-auto flex items-center gap-2">
               <ReactivationButton subscriptions={subscriptions} />
               <PostClubBillingButton activeCount={stats.activeCount} mrr={stats.mrr} />
-              <Button variant="primary" size="sm" onClick={openNewSub}>
+              <Button variant="secondary" size="sm" onClick={openNewSub}>
                 <Plus className="size-3.5" />
                 New club member
               </Button>
@@ -713,7 +713,7 @@ export function NewBookingButton({
 
   return (
     <>
-      <Button variant="primary" size="sm" onClick={() => setOpen(true)}>
+      <Button variant="secondary" size="sm" onClick={() => setOpen(true)}>
         <Plus className="size-3.5" />
         New booking
       </Button>

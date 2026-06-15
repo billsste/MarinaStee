@@ -416,7 +416,7 @@ export function BoaterList() {
 
         <div className="ml-auto flex items-center gap-1.5">
           <Button
-            variant="primary"
+            variant="secondary"
             size="sm"
             onClick={() => setWizardOpen(true)}
           >

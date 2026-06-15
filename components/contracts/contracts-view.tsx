@@ -263,7 +263,7 @@ export function ContractsView() {
             ]}
           />
 
-          <Button variant="primary" size="sm" onClick={() => setWizardOpen(true)}>
+          <Button variant="secondary" size="sm" onClick={() => setWizardOpen(true)}>
             <Plus className="size-3.5" />
             New contract
           </Button>

@@ -251,7 +251,7 @@ function UnifiedBookingsTab() {
           />
         </TabStrip>
 
-        <Button variant="primary" size="sm" onClick={() => setNewOpen(true)}>
+        <Button variant="secondary" size="sm" onClick={() => setNewOpen(true)}>
           <Plus className="size-3.5" /> New booking
         </Button>
       </div>
