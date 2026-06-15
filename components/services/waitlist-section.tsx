@@ -679,13 +679,42 @@ export function WaitlistSection() {
         onOpenChange={(next) => {
           if (!next) setLogCallEntryId(null);
         }}
-        onAccepted={({ entryId }) => {
-          // After "accept" is logged, route the operator to the
-          // existing applicant sheet so they can pick the slip via
-          // the convert-to-slip flow. The call log already has the
-          // tentatively-accepted slip id stored; the sheet just gives
-          // them the rich slip picker + wizard.
-          setSelectedApplicantId(entryId);
+        onAccepted={({ entryId, slipId }) => {
+          // Skip the applicant-sheet middle step — go straight to the
+          // AssignHolderWizard with the slip already chosen + applicant
+          // data prefilled from the waitlist entry. Mirrors the Slips
+          // page flow exactly: click slip → wizard fills out → contract
+          // drafts → signature link mints. The Log Call modal already
+          // captured the operator's slip pick, so opening the sheet to
+          // ask for a slip a second time was redundant.
+          const entry = entries.find((e) => e.id === entryId);
+          if (!entry) return;
+
+          // Build prefill from the waitlist entry's contact info.
+          // Falls back to the email localpart when guest_name isn't
+          // populated (defense against legacy seed rows).
+          const fullName =
+            entry.guest_name && entry.guest_name.trim().length > 0
+              ? entry.guest_name
+              : entry.guest_email
+                ? entry.guest_email.split("@")[0].replace(/[._-]+/g, " ")
+                : "";
+          // guest_name is "Last, First" by our convention; the wizard
+          // wants first + last separately.
+          const [lastPart, firstPart] = fullName.includes(",")
+            ? fullName.split(",").map((p) => p.trim())
+            : ["", fullName];
+
+          setWizardArgs({
+            slipId,
+            prefill: {
+              first_name: firstPart || "",
+              last_name: lastPart || "",
+              email: entry.guest_email,
+              phone: entry.guest_phone,
+            },
+            waitlistEntryId: entryId,
+          });
         }}
       />
 
