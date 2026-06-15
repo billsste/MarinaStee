@@ -60,10 +60,21 @@ import { cn } from "@/lib/utils";
 // Mirrors ROSTER_COLS in components/rentals/roster-view.tsx so the
 // waitlist table reads at the same density as the slip roster.
 // Columns: [checkbox] / RANK or SLIP / WANTS (preferred dock) /
-// APPLICANT / VESSEL / CURRENT (slip-holder upgrading?) / CADENCE /
-// SIGNAL / STATUS / ACTION.
+// APPLICANT / VESSEL / CADENCE / SIGNAL / STATUS / ACTION.
+//
+// The CURRENT slip column was removed — it was "—" on ~95% of rows
+// (only set when an existing slip-holder is upgrading to a better
+// tier). When set, it surfaces as "currently A29 (DSM)" in the
+// Applicant cell's title tooltip so the operator still sees the
+// upgrading-tier context on hover without an always-present column.
+//
+// Each `minmax(<floor>, …fr)` column has an explicit pixel floor sized
+// to its widest realistic content so the row never truncates names or
+// vessel specs. Earlier version used `minmax(0, …fr)` which let fr
+// columns shrink to a few pixels when fixed columns ate all the
+// available width.
 const WAITLIST_COLS =
-  "28px 56px 88px minmax(0, 1.7fr) minmax(0, 1.4fr) 96px 88px 140px 90px 130px";
+  "28px 44px 88px minmax(140px, 1.9fr) minmax(150px, 1.5fr) 80px 112px 76px 100px";
 
 const OFFER_TONE: Record<
   WaitlistOfferStatus,
@@ -579,9 +590,6 @@ export function WaitlistSection() {
             <span>Wants</span>
             <span>Applicant</span>
             <span>Vessel</span>
-            <span title="Current slip — set when this applicant is also a slip-holder upgrading to a better tier">
-              Current
-            </span>
             <span>Cadence</span>
             <span>
               {tab === "queue"
@@ -764,6 +772,17 @@ function WaitlistRow({
     boater?.display_name ?? entry.guest_name ?? "Unknown applicant";
   const email = boater?.primary_contact?.email ?? entry.guest_email;
 
+  // Current slip — only set when this applicant is also a slip-holder
+  // upgrading to a better tier. Surfaced as an Applicant-cell tooltip
+  // rather than its own column (was "—" on ~95% of rows).
+  const currentSlipLabel = React.useMemo(() => {
+    if (!entry.boater_id) return undefined;
+    const reservation = getCurrentReservation(entry.boater_id);
+    if (!reservation?.slip_id) return undefined;
+    const slip = SLIPS.find((s) => s.id === reservation.slip_id);
+    return slip ? `${reservation.slip_id} (${slip.dock})` : reservation.slip_id;
+  }, [entry.boater_id]);
+
   // Match-quality chips — same idea as the legacy single-column view.
   const sizeFits = entry.loa_inches
     ? SLIPS.some((s) => s.max_loa_inches >= (entry.loa_inches ?? 0))
@@ -867,13 +886,21 @@ function WaitlistRow({
       </span>
 
       {/* Applicant — mirrors MEMBER column on the roster. Single
-          line; email goes to the `title` tooltip so row height stays
-          consistent across every waitlist stage (queue/offers/stale/
-          archive). See marina-stee/CLAUDE.md §"List-page UX
-          consistency" rule #9 — secondary IDs never get a second line.
-          Link stopPropagation so opening the member page doesn't also
-          fire the sheet behind it. */}
-      <div className="min-w-0" title={email ? `${displayName} · ${email}` : undefined}>
+          line; secondary context (email, current slip if upgrading)
+          goes into the `title` tooltip so row height stays consistent
+          across every waitlist stage. See marina-stee/CLAUDE.md
+          §"List-page UX consistency" rule #9. Link stopPropagation so
+          opening the member page doesn't also fire the sheet behind it. */}
+      <div
+        className="min-w-0"
+        title={[
+          displayName,
+          email,
+          currentSlipLabel ? `currently ${currentSlipLabel}` : null,
+        ]
+          .filter(Boolean)
+          .join(" · ")}
+      >
         {boater ? (
           <Link
             href={`/members/${boater.id}`}
@@ -895,13 +922,10 @@ function WaitlistRow({
         {entry.beam_inches ? ` · ${formatInches(entry.beam_inches)} beam` : ""}
       </span>
 
-      {/* Current slip — set when this applicant is also a slip-holder
-          upgrading to a better tier. Cheap per-row lookup: the active
-          reservation set is short and getCurrentReservation does the
-          today-window check. */}
-      <CurrentSlipCell entry={entry} />
-
-      {/* Cadence — mirrors CADENCE column on the roster */}
+      {/* Cadence — mirrors CADENCE column on the roster.
+          The CURRENT slip column was retired; if the applicant is an
+          existing slip-holder upgrading to a better tier, that context
+          surfaces in the Applicant cell's title tooltip. */}
       <span className="text-[12px] capitalize text-fg-subtle">
         {entry.reservation_type}
       </span>
@@ -1061,39 +1085,6 @@ function WaitlistRow({
         )}
       </div>
     </li>
-  );
-}
-
-/**
- * Current slip cell — shows the slip the applicant currently holds, if
- * any. Empty for waitlist-only prospects (the common case). When set,
- * surfaces the "upgrading" pattern at a glance: "A29 → wants Covered".
- *
- * Renders as compact text (slip id + dock) so the column stays narrow.
- * Lives as its own component so the per-row reservation lookup +
- * boater context stays local — no need to thread current-slip state
- * down through WaitlistRow props.
- */
-function CurrentSlipCell({ entry }: { entry: WaitlistEntry }) {
-  // Guest entries (no boater) can't have a current slip.
-  if (!entry.boater_id) {
-    return <span className="text-[12px] text-fg-tertiary">—</span>;
-  }
-  const reservation = getCurrentReservation(entry.boater_id);
-  const slipId = reservation?.slip_id;
-  if (!slipId) {
-    return <span className="text-[12px] text-fg-tertiary">—</span>;
-  }
-  const slip = SLIPS.find((s) => s.id === slipId);
-  return (
-    <span className="flex min-w-0 flex-col text-[12px] text-fg-subtle">
-      <span className="font-medium text-fg tabular">{slipId}</span>
-      {slip && (
-        <span className="truncate text-[11px] text-fg-tertiary">
-          {slip.dock}
-        </span>
-      )}
-    </span>
   );
 }
 
