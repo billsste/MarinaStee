@@ -763,28 +763,23 @@ function AssignHolderWizardInner({
           </div>
         )}
 
-        {/* Step 1 — Pricing (slip-intrinsic, override allowed) */}
+        {/* Step 1 — Pricing (slip-intrinsic, override allowed)
+            Collapsed from 3 stacked blocks to 2: slip context strip + cadence
+            picker. The original layout had a top "Slip default" callout AND
+            a bottom "Annual rate" callout — both stated the same $3,350 the
+            selected cadence card already shows. One-line strip preserves
+            the slip-class + LOA anchor without competing with the picker. */}
         {stepIdx === 1 && (
           <div className="space-y-4">
-            <div className="rounded-[10px] border border-primary/30 bg-primary-soft/30 p-3">
-              <div className="text-[11px] uppercase tracking-wide text-primary">
-                Slip default
-              </div>
-              <div className="mt-0.5 flex items-baseline gap-2">
-                <span className="text-[13px] font-medium capitalize text-fg">
-                  {slip.slipClass.replace("_", " ")}
-                </span>
-                <span className="text-[12px] text-fg-subtle">
-                  · {Math.round(slip.loaInches / 12)}'
-                </span>
-                <span className="ml-auto money-display text-[20px] text-fg">
-                  {formatMoney(slip.defaultAnnualRate)}
-                </span>
-                <span className="text-[11px] text-fg-tertiary">/ year</span>
-              </div>
-              <p className="mt-1 text-[11px] text-fg-tertiary">
-                Rate pulled from slip {slip.id}. To change a rate, update it in Services → Rates.
-              </p>
+            <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 border-b border-hairline pb-3 text-[12px] text-fg-subtle">
+              <span className="font-medium capitalize text-fg">
+                {slip.slipClass.replace("_", " ")}
+              </span>
+              <span>·</span>
+              <span>{Math.round(slip.loaInches / 12)}'</span>
+              <span className="ml-auto text-[11px] text-fg-tertiary">
+                Rates pulled from Services → Rates · slip {slip.id}
+              </span>
             </div>
 
             <FieldLabel label="Billing cadence">
@@ -832,99 +827,92 @@ function AssignHolderWizardInner({
                 />
               </div>
             </FieldLabel>
-
-            {/* Rate is read-only — always sourced from Services → Rates.
-                Displayed so the operator can confirm before continuing. */}
-            <div className="rounded-[10px] border border-hairline bg-surface-2 px-4 py-3">
-              <div className="flex items-baseline justify-between gap-3">
-                <span className="text-[12px] text-fg-subtle">
-                  {draft.cadence === "annual"
-                    ? "Annual rate"
-                    : draft.cadence === "monthly"
-                    ? "Monthly rate"
-                    : "Seasonal rate"}
-                </span>
-                <span className="money-display text-[22px] text-fg">
-                  {formatMoney(slipDefaultForCadence(draft.cadence))}
-                  <span className="ml-1 text-[12px] font-normal text-fg-tertiary">
-                    {draft.cadence === "annual"
-                      ? "/ year"
-                      : draft.cadence === "monthly"
-                      ? "/ month"
-                      : "/ season"}
-                  </span>
-                </span>
-              </div>
-              <p className="mt-1 text-[11px] text-fg-tertiary">
-                From Services → Rates. Change the rate there to apply it to all new contracts.
-              </p>
-            </div>
           </div>
         )}
 
-        {/* Step 2 — Services */}
+        {/* Step 2 — Services
+            Refactored from a static wall of fee cards (6+ visible at all
+            times) to a typeahead Combobox + a compact added-list below.
+            Same Combobox component used by Member + Contract template
+            pickers so the wizard's interaction vocabulary stays uniform.
+            Skip the step if none apply — subtitle already says so. */}
         {stepIdx === 2 && (
-          <div className="space-y-3">
-            <p className="text-[12px] text-fg-subtle">
-              Optional add-ons billed alongside the slip. Skip if none apply — you can add them later from the member's Financials tab.
-            </p>
+          <div className="space-y-4">
             {fees.length === 0 ? (
               <div className="rounded-[10px] border border-dashed border-hairline-strong bg-surface-2 p-6 text-center text-[13px] text-fg-subtle">
                 No additional fees configured. Add on the Fees tab of <strong>/services/rates</strong>.
               </div>
             ) : (
-              <ul className="space-y-1.5">
-                {fees.map((f) => {
-                  const checked = draft.selectedFeeIds.includes(f.id);
-                  return (
-                    <li key={f.id}>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setDraft((d) => ({
-                            ...d,
-                            selectedFeeIds: checked
-                              ? d.selectedFeeIds.filter((x) => x !== f.id)
-                              : [...d.selectedFeeIds, f.id],
-                          }))
-                        }
-                        className={cn(
-                          "flex w-full items-start justify-between gap-3 rounded-[10px] border px-3 py-2.5 text-left transition-colors",
-                          checked
-                            ? "border-primary bg-primary-soft/40"
-                            : "border-hairline bg-surface-1 hover:bg-surface-2"
-                        )}
-                      >
-                        <div className="min-w-0 flex-1">
-                          <span className="text-[13px] font-medium text-fg">
-                            {f.name}
-                          </span>
-                          {f.description && (
-                            <p className="mt-0.5 text-[11px] text-fg-subtle">
-                              {f.description}
-                            </p>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <span className="money-display text-[15px] text-fg">
-                            {formatMoney(f.amount)}
-                          </span>
-                          <span
-                            className={cn(
-                              "flex size-5 items-center justify-center rounded-full border",
-                              checked
-                                ? "border-primary bg-primary text-on-primary"
-                                : "border-hairline-strong"
-                            )}
+              <>
+                <FieldLabel
+                  label="Add a fee"
+                  hint="Search by name. Picked fees bill alongside the slip."
+                >
+                  <Combobox
+                    // Combobox value stays empty — selecting a fee adds it
+                    // to selectedFeeIds and the picker clears for the next add.
+                    value=""
+                    onChange={(feeId) => {
+                      if (!feeId) return;
+                      setDraft((d) =>
+                        d.selectedFeeIds.includes(feeId)
+                          ? d
+                          : { ...d, selectedFeeIds: [...d.selectedFeeIds, feeId] }
+                      );
+                    }}
+                    options={fees
+                      .filter((f) => !draft.selectedFeeIds.includes(f.id))
+                      .map((f) => ({
+                        value: f.id,
+                        label: f.name,
+                        hint: `· ${formatMoney(f.amount)}`,
+                      }))}
+                    placeholder="Search fees…"
+                    searchPlaceholder="Type a fee name…"
+                  />
+                </FieldLabel>
+
+                {draft.selectedFeeIds.length > 0 && (
+                  <FieldLabel
+                    label={`Added (${draft.selectedFeeIds.length})`}
+                  >
+                    <ul className="space-y-1.5">
+                      {draft.selectedFeeIds.map((id) => {
+                        const fee = fees.find((f) => f.id === id);
+                        if (!fee) return null;
+                        return (
+                          <li
+                            key={id}
+                            className="flex items-center justify-between gap-3 rounded-[8px] border border-hairline bg-surface-2 px-3 py-2"
                           >
-                            {checked && <Check className="size-3" />}
-                          </span>
-                        </div>
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
+                            <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-fg">
+                              {fee.name}
+                            </span>
+                            <span className="money-display text-[14px] text-fg">
+                              {formatMoney(fee.amount)}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setDraft((d) => ({
+                                  ...d,
+                                  selectedFeeIds: d.selectedFeeIds.filter(
+                                    (x) => x !== id
+                                  ),
+                                }))
+                              }
+                              className="rounded-md p-1 text-fg-tertiary transition-colors hover:bg-surface-3 hover:text-status-danger"
+                              aria-label={`Remove ${fee.name}`}
+                            >
+                              <X className="size-3.5" />
+                            </button>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </FieldLabel>
+                )}
+              </>
             )}
           </div>
         )}
