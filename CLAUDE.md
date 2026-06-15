@@ -121,6 +121,44 @@ const FIELDS: FieldSpec<T>[] = React.useMemo(() => [
 
 The dialog itself is canonical — don't write a bespoke modal per surface.
 
+## Wizard primitives (BLOCKING for every multi-step wizard)
+
+All multi-step wizards (slip-assign, reservation, contract, member-setup, future flows) share primitives in `components/wizard/wizard-fields.tsx`. Use them — don't roll bespoke versions per wizard, otherwise the steps drift visually and the modal feels patchwork.
+
+### Step rhythm
+
+Every step's content container is `space-y-4` (or `space-y-3` for the review step where rows have their own dividers). Each step should target ~280-300px tall — the modal feels like one product when adjacent steps don't swing more than ~80px in height. If a step is taller, ask whether redundant blocks can collapse (two callouts stating the same number → one) or whether a static list can become a typeahead.
+
+### Optional add-ons → Combobox typeahead, NEVER a wall of cards
+
+When a step asks the operator to pick from a catalog (fees, services, vessels, templates) and the list could exceed ~3 items, use the shared `<Combobox>` + a compact "Added (N)" chip list below for picks. Never render the full catalog as stacked radio cards — that pattern bloated the slip-assign Services step from ~600px to ~180px once converted, and it reads as "make-shift AI tool" to operators. Reference: `app/services/[id]/assign/assign-slip-client.tsx` Step 3.
+
+### Review step uses `ReviewList` + `ReviewBlock`
+
+The final "Review and confirm" step of every wizard MUST use the shared shape:
+
+```tsx
+import { ReviewList, ReviewBlock } from "@/components/wizard/wizard-fields";
+
+<ReviewList>
+  <ReviewBlock label="Holder" value={...} onEdit={() => setStepIdx(0)} />
+  <ReviewBlock label="Pricing" value={...} onEdit={() => setStepIdx(1)} />
+  {/* … */}
+</ReviewList>
+```
+
+- `<ReviewList>` is the bordered container; rows separated by `divide-y`
+- `<ReviewBlock>` is a flat row — uppercase 80px-wide label · value · Edit link. NO per-row border (the container provides it)
+- The wrapper is what made all 4 wizards' review steps consistent in one refactor. A future wizard that uses bare `<ReviewBlock>` without `<ReviewList>` will render borderless rows on a bare background — that's a smell, wrap it.
+
+### Attachment uploads → slim inline button, NEVER a full-width dropzone
+
+When a step optionally accepts file uploads (signed contract copies, COI PDFs, vendor bill receipts), use a compact inline `<label>` that wraps a hidden `<input type="file">` styled as a small outlined button (`px-2 py-1 text-[12px]` with a `<Plus className="size-3" />` icon). Place hint copy ("PDFs, DOCX, signed copies") inline next to it; hide the hint once a file is added. Uploaded files render as the same compact-row pattern Step 3's added fees use, with an X-icon remove button. The previous "full-width dashed dropzone" pattern (`border-dashed border-hairline-strong p-6 text-center`) was ~60px tall and bloated the step relative to the rest of the wizard — don't reintroduce it.
+
+### When to add a new primitive
+
+If you find yourself writing the same row/card/section structure across two wizards, extract it into `wizard-fields.tsx` instead of duplicating. That file is the single source of truth for wizard tone — if it's not there, every future wizard has to re-derive it.
+
 ## Open commitments (track these before "v1 done")
 
 - **Backlog discipline**: Marina Stee is currently driven by the in-session `TaskCreate` list. When this becomes a real product, build its own backlog system (or use Stee-Suite for the *build-side* roadmap while keeping *product-side* customer tickets in the carve-out support backend above).
