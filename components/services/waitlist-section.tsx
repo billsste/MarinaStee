@@ -395,22 +395,6 @@ export function WaitlistSection() {
           Offers stage. Replaces the "1 pending" badge that used to
           live on the Offers tab. Clicking it switches the Stage
           filter so the operator lands on the offer list. */}
-      {pendingOfferCount > 0 && tab !== "offers" && (
-        <button
-          type="button"
-          onClick={() => setTab("offers")}
-          className="flex w-full items-center justify-between gap-3 rounded-[10px] border border-status-warn/30 bg-status-warn/10 px-3 py-2 text-left text-[12px] text-status-warn transition-colors hover:bg-status-warn/15"
-        >
-          <span className="inline-flex items-center gap-2 font-medium">
-            <Sparkles className="size-3.5" />
-            {pendingOfferCount} offer{pendingOfferCount === 1 ? "" : "s"} awaiting response
-          </span>
-          <span className="text-[11px] text-status-warn/80">
-            View offers →
-          </span>
-        </button>
-      )}
-
       {/* ── Filter bar — canonical single-row toolbar (same shape as
                 /services/roster, /services/rates, /services/meters).
                 ALL filter axes live as ListFilterSelect dropdowns —
@@ -432,13 +416,19 @@ export function WaitlistSection() {
           />
         </div>
         <ListFilterSelect
-          label="Stage"
+          label="Status"
           value={tab}
           onChange={(v) => setTab(v as WaitlistTab)}
           options={[
-            { value: "queue", label: `Queue · ${partitions.queue.length}` },
+            {
+              value: "queue",
+              label: `Waiting · ${partitions.queue.length}`,
+            },
             { value: "stale", label: `Stale · ${partitions.stale.length}` },
-            { value: "archive", label: `Archive · ${partitions.archive.length}` },
+            {
+              value: "archive",
+              label: `Archived · ${partitions.archive.length}`,
+            },
           ]}
         />
         <ListFilterSelect
@@ -492,20 +482,14 @@ export function WaitlistSection() {
             Clear
           </Button>
         )}
-        <div className="ml-auto inline-flex items-center gap-2 text-[11px] text-fg-tertiary">
-          <span className="inline-flex items-center gap-1">
-            <Filter className="size-3" />
-            Showing {visible.length} of {partitions[tab].length}
-          </span>
-          <Button
-            variant="primary"
-            size="sm"
-            onClick={() => setNewApplicantOpen(true)}
-          >
-            <Plus className="size-3.5" />
-            New applicant
-          </Button>
-        </div>
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={() => setNewApplicantOpen(true)}
+        >
+          <Plus className="size-3.5" />
+          New applicant
+        </Button>
       </div>
 
       {/* ── Bulk action bar (only when selection exists) ──── */}
