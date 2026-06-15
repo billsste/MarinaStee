@@ -29,7 +29,9 @@ import {
 import type { SlipClass, WaitlistEntry, WaitlistOfferStatus } from "@/lib/types";
 import { useTabUrlState } from "@/lib/use-tab-url-state";
 import { ListFilterSelect } from "@/components/ui/list-filter-select";
+import { Plus } from "lucide-react";
 import { WaitlistFireOfferModal } from "./waitlist-fire-offer-modal";
+import { WaitlistNewApplicantSheet } from "./waitlist-new-applicant-sheet";
 import { WaitlistLogCallModal } from "./waitlist-log-call-modal";
 import { WaitlistApplicantSheet } from "./waitlist-applicant-sheet";
 import { AssignHolderWizard } from "@/app/services/[id]/assign/assign-slip-client";
@@ -149,6 +151,7 @@ export function WaitlistSection() {
     "queue",
   );
   const [fireOpen, setFireOpen] = React.useState(false);
+  const [newApplicantOpen, setNewApplicantOpen] = React.useState(false);
   const [prefilledSlipId, setPrefilledSlipId] = React.useState<string | undefined>();
   // ── Log Call modal — primary action per Steven's "phone-first"
   //    flow. Opens with a single entry's context; closes after the
@@ -434,7 +437,6 @@ export function WaitlistSection() {
           onChange={(v) => setTab(v as WaitlistTab)}
           options={[
             { value: "queue", label: `Queue · ${partitions.queue.length}` },
-            { value: "offers", label: `Offers · ${partitions.offers.length}` },
             { value: "stale", label: `Stale · ${partitions.stale.length}` },
             { value: "archive", label: `Archive · ${partitions.archive.length}` },
           ]}
@@ -490,9 +492,19 @@ export function WaitlistSection() {
             Clear
           </Button>
         )}
-        <div className="ml-auto inline-flex items-center gap-1 text-[11px] text-fg-tertiary">
-          <Filter className="size-3" />
-          Showing {visible.length} of {partitions[tab].length}
+        <div className="ml-auto inline-flex items-center gap-2 text-[11px] text-fg-tertiary">
+          <span className="inline-flex items-center gap-1">
+            <Filter className="size-3" />
+            Showing {visible.length} of {partitions[tab].length}
+          </span>
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={() => setNewApplicantOpen(true)}
+          >
+            <Plus className="size-3.5" />
+            New applicant
+          </Button>
         </div>
       </div>
 
@@ -716,6 +728,14 @@ export function WaitlistSection() {
           }}
         />
       )}
+
+      {/* Operator-side intake — opens from the "+ New applicant" button
+          in the toolbar. Lands the entry directly on the queue with
+          source="manual". Same fields as the public /apply form. */}
+      <WaitlistNewApplicantSheet
+        open={newApplicantOpen}
+        onOpenChange={setNewApplicantOpen}
+      />
     </section>
   );
 }
@@ -768,8 +788,21 @@ function WaitlistRow({
   const boater = entry.boater_id
     ? BOATERS.find((b) => b.id === entry.boater_id)
     : undefined;
+  // Display-name fallback chain. "Unknown applicant" is the absolute
+  // last resort — surfaces only when both the linked Boater AND
+  // entry.guest_name are missing AND there's no email to derive a
+  // human-readable label from. Falling back to email-localpart catches
+  // public-apply submissions where the transfer-from-Application
+  // didn't write first/last name.
   const displayName =
-    boater?.display_name ?? entry.guest_name ?? "Unknown applicant";
+    boater?.display_name ??
+    (entry.guest_name && entry.guest_name.trim().length > 0
+      ? entry.guest_name
+      : undefined) ??
+    (entry.guest_email
+      ? entry.guest_email.split("@")[0].replace(/[._-]+/g, " ")
+      : undefined) ??
+    "Unknown applicant";
   const email = boater?.primary_contact?.email ?? entry.guest_email;
 
   // Current slip — only set when this applicant is also a slip-holder
