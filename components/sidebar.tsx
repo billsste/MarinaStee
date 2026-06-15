@@ -127,11 +127,17 @@ export function Sidebar() {
     [ledger, workOrders, communications, insurance]
   );
 
-  // Expanded vs collapsed. Hydration-safe pattern: render the collapsed
-  // (narrow) shell on SSR + first client paint, then read the stored
-  // preference in an effect and apply it. Avoids layout-shift hydration
-  // mismatch when the user previously expanded.
-  const [expanded, setExpanded] = React.useState(false);
+  // Expanded vs collapsed. Default expanded on SSR + first client paint
+  // so navigating between pages doesn't flash a collapsed → expanded
+  // transition every time. The effect then reads the stored preference;
+  // for users who explicitly collapsed the sidebar, there's a single
+  // one-frame expand → collapse flicker on each nav (acceptable for a
+  // minority preference). For default users (vast majority), zero flash.
+  // Earlier pattern initialized to `false` here, which caused every
+  // navigation back from a sub-page to flash collapsed before the
+  // useEffect could read localStorage and re-expand — Steven flagged
+  // this as "the sidebar disappeared after I clicked back."
+  const [expanded, setExpanded] = React.useState(true);
   React.useEffect(() => {
     setExpanded(readExpandedPref());
   }, []);

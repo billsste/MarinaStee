@@ -831,7 +831,13 @@ function WaitlistRow({
   return (
     <li
       className={cn(
-        "group grid cursor-pointer items-center gap-x-3 px-3 py-2 text-[13px] transition-colors",
+        // min-h locks every row to the same height across every stage
+        // (queue/offers/stale/archive). Queue's "Log call" button is
+        // the tallest action element; we anchor to that height so
+        // rows without actions don't render shorter. See CLAUDE.md
+        // §"List-page UX consistency" rule #9 — uniform single-line
+        // rows across every list page in the app.
+        "group grid min-h-[45px] cursor-pointer items-center gap-x-3 px-3 py-2 text-[13px] transition-colors",
         selected ? "bg-primary/5" : "hover:bg-surface-2",
       )}
       style={{ gridTemplateColumns: WAITLIST_COLS }}
@@ -860,10 +866,14 @@ function WaitlistRow({
         {entry.preferred_dock ?? "any"}
       </span>
 
-      {/* Applicant — mirrors MEMBER column on the roster. Link
-          stopPropagation so opening the member page doesn't also fire
-          the sheet behind it. */}
-      <div className="min-w-0">
+      {/* Applicant — mirrors MEMBER column on the roster. Single
+          line; email goes to the `title` tooltip so row height stays
+          consistent across every waitlist stage (queue/offers/stale/
+          archive). See marina-stee/CLAUDE.md §"List-page UX
+          consistency" rule #9 — secondary IDs never get a second line.
+          Link stopPropagation so opening the member page doesn't also
+          fire the sheet behind it. */}
+      <div className="min-w-0" title={email ? `${displayName} · ${email}` : undefined}>
         {boater ? (
           <Link
             href={`/members/${boater.id}`}
@@ -874,11 +884,6 @@ function WaitlistRow({
           </Link>
         ) : (
           <span className="block truncate font-medium text-fg">{displayName}</span>
-        )}
-        {email && (
-          <span className="block truncate text-[11px] text-fg-tertiary">
-            {email}
-          </span>
         )}
       </div>
 
@@ -901,57 +906,104 @@ function WaitlistRow({
         {entry.reservation_type}
       </span>
 
-      {/* Signal column — varies per tab. Holds the
-          context-relevant chip cluster (match quality / countdown /
-          stale signal / archive reason). */}
-      <div className="flex min-w-0 flex-wrap items-center gap-1">
-        {variant === "queue" && sizeFits && (
-          <Badge tone="ok" size="sm" title="Vessel size fits available slips">
-            size fits
-          </Badge>
-        )}
-        {variant === "queue" && classMatch && (
-          <Badge tone="info" size="sm" title="Preferred dock has matching slips">
-            dock match
-          </Badge>
-        )}
-        {variant === "offers" && entry.offer_status === "pending" && remaining && (
-          <span className="inline-flex items-center gap-1 text-[11px] text-status-warn tabular">
-            <Clock className="size-3" />
-            {remaining}
-          </span>
-        )}
-        {variant === "offers" && entry.offer_responded_at && (
-          <span className="text-[11px] text-fg-tertiary tabular">
-            responded {new Date(entry.offer_responded_at).toLocaleDateString()}
-          </span>
-        )}
-        {variant === "stale" && (entry.decline_count ?? 0) >= STALE_DECLINE_COUNT && (
-          <Badge tone="danger" size="sm">
-            {entry.decline_count} declines
-          </Badge>
-        )}
-        {variant === "stale" && ageDays !== null && ageDays >= STALE_NO_CONTACT_DAYS && (
-          <Badge tone="warn" size="sm">
-            {Math.round(ageDays / 30)} mo silent
-          </Badge>
-        )}
-        {variant === "stale" && !lastContact && (
-          <Badge tone="warn" size="sm">
-            never contacted
-          </Badge>
-        )}
-        {variant === "archive" && entry.archive_reason && (
-          <Badge tone="neutral" size="sm">
-            {archiveReasonLabel(entry.archive_reason)}
-          </Badge>
-        )}
-        {variant === "archive" && entry.archived_at && (
-          <span className="text-[11px] text-fg-tertiary">
-            {new Date(entry.archived_at).toLocaleDateString()}
-          </span>
-        )}
-      </div>
+      {/* Signal column — varies per tab. ONE badge / span per row;
+          secondary signals collapse into the cell's `title` tooltip
+          so row height stays consistent across every stage. See
+          CLAUDE.md §"List-page UX consistency" rule #9. */}
+      {(() => {
+        // Queue: combine size-fits + dock-match into a single line.
+        if (variant === "queue") {
+          const matches: string[] = [];
+          if (sizeFits) matches.push("size fits");
+          if (classMatch) matches.push("dock match");
+          if (matches.length === 0) {
+            return <span className="truncate text-[11px] text-fg-tertiary">—</span>;
+          }
+          return (
+            <div
+              className="flex min-w-0 flex-nowrap items-center gap-1 overflow-hidden"
+              title={matches.join(" · ")}
+            >
+              {sizeFits && (
+                <Badge tone="ok" size="sm">
+                  size fits
+                </Badge>
+              )}
+              {classMatch && (
+                <Badge tone="info" size="sm">
+                  dock match
+                </Badge>
+              )}
+            </div>
+          );
+        }
+        // Offers: countdown OR responded-date (mutually exclusive states).
+        if (variant === "offers") {
+          if (entry.offer_status === "pending" && remaining) {
+            return (
+              <span className="inline-flex min-w-0 items-center gap-1 truncate text-[11px] text-status-warn tabular">
+                <Clock className="size-3 shrink-0" />
+                {remaining}
+              </span>
+            );
+          }
+          if (entry.offer_responded_at) {
+            return (
+              <span className="truncate text-[11px] text-fg-tertiary tabular">
+                responded {new Date(entry.offer_responded_at).toLocaleDateString()}
+              </span>
+            );
+          }
+          return <span className="truncate text-[11px] text-fg-tertiary">—</span>;
+        }
+        // Stale: precedence — declines > never_contacted > months_silent.
+        // Secondary signals go in title so the operator can see the full
+        // picture on hover without breaking row height.
+        if (variant === "stale") {
+          const signals: string[] = [];
+          if ((entry.decline_count ?? 0) >= STALE_DECLINE_COUNT) {
+            signals.push(`${entry.decline_count} declines`);
+          }
+          if (!lastContact) {
+            signals.push("never contacted");
+          } else if (ageDays !== null && ageDays >= STALE_NO_CONTACT_DAYS) {
+            signals.push(`${Math.round(ageDays / 30)} mo silent`);
+          }
+          if (signals.length === 0) {
+            return <span className="truncate text-[11px] text-fg-tertiary">—</span>;
+          }
+          const primary = signals[0];
+          const tone = primary.includes("decline") ? "danger" : "warn";
+          return (
+            <span title={signals.join(" · ")}>
+              <Badge tone={tone} size="sm">
+                {primary}
+              </Badge>
+            </span>
+          );
+        }
+        // Archive: reason badge + date as inline secondary. Date moved
+        // into the badge's title tooltip so the row stays single-line.
+        if (variant === "archive") {
+          if (entry.archive_reason) {
+            const dateLabel = entry.archived_at
+              ? new Date(entry.archived_at).toLocaleDateString()
+              : undefined;
+            const title = dateLabel
+              ? `${archiveReasonLabel(entry.archive_reason)} · ${dateLabel}`
+              : archiveReasonLabel(entry.archive_reason);
+            return (
+              <span title={title}>
+                <Badge tone="neutral" size="sm">
+                  {archiveReasonLabel(entry.archive_reason)}
+                </Badge>
+              </span>
+            );
+          }
+          return <span className="truncate text-[11px] text-fg-tertiary">—</span>;
+        }
+        return null;
+      })()}
 
       {/* Status badge */}
       <span>{statusBadge}</span>
