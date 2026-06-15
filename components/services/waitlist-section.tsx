@@ -445,18 +445,6 @@ export function WaitlistSection() {
           ]}
         />
         <ListFilterSelect
-          label="Length"
-          value={lengthBand}
-          onChange={(v) => setLengthBand(v as LengthBand)}
-          options={[
-            { value: "all", label: "All lengths" },
-            { value: "under_25", label: "≤ 25'" },
-            { value: "26_35", label: "26-35'" },
-            { value: "36_45", label: "36-45'" },
-            { value: "over_46", label: "46'+" },
-          ]}
-        />
-        <ListFilterSelect
           label="Cadence"
           value={cadence}
           onChange={(v) => setCadence(v as CadenceFilter)}
