@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { RosterView } from "@/components/rentals/roster-view";
 
 export const metadata = { title: "Slips — Marina Stee" };
@@ -9,6 +10,16 @@ export const metadata = { title: "Slips — Marina Stee" };
 // 800-slip marinas + 500-person waitlists need each surface to scroll
 // independently — the waitlist now lives at /services/waitlist with
 // its own 4-tab structure.
+//
+// RosterView calls useSearchParams() to support the agent's deep-link
+// ?assign=<slipId> pattern. Next.js Turbopack prod build requires
+// useSearchParams() consumers to sit inside a Suspense boundary so
+// the page can stream static markup while the search params resolve.
+// Wrapping here keeps the consumer code clean.
 export default function SlipsRosterPage() {
-  return <RosterView />;
+  return (
+    <Suspense fallback={null}>
+      <RosterView />
+    </Suspense>
+  );
 }
