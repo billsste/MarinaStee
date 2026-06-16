@@ -253,7 +253,6 @@ export function NewClubBookingSheet({
                 type="date"
                 value={date}
                 onChange={(e) => setDate(e.target.value)}
-                min={new Date().toISOString().slice(0, 10)}
                 className="block w-full rounded-[8px] border border-hairline bg-surface-2 py-2 pl-8 pr-2.5 text-[13px] text-fg focus:border-primary focus:outline-none"
               />
             </div>

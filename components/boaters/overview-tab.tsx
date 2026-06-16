@@ -175,6 +175,7 @@ export function OverviewTab({
       primary_contact: {
         ...boater.primary_contact,
         email: values.email || "",
+        email_secondary: values.email_secondary || undefined,
         phone: values.phone || "",
       },
       address: {
@@ -542,6 +543,7 @@ export function OverviewTab({
           first_name: boater.first_name,
           last_name: boater.last_name,
           email: boater.primary_contact.email,
+          email_secondary: boater.primary_contact.email_secondary,
           phone: boater.primary_contact.phone,
           address_line1: boater.address.line1,
           address_city: boater.address.city,
@@ -579,6 +581,7 @@ type BoaterContactForm = {
   first_name: string;
   last_name: string;
   email?: string;
+  email_secondary?: string;
   phone?: string;
   address_line1: string;
   address_city: string;
@@ -594,6 +597,13 @@ const CONTACT_FIELDS: FieldSpec<BoaterContactForm>[] = [
   { key: "last_name", label: "Last name", kind: "text", col: 2 },
   { key: "email", label: "Email", kind: "text", col: 2 },
   { key: "phone", label: "Phone", kind: "text", col: 2 },
+  {
+    key: "email_secondary",
+    label: "Secondary email",
+    kind: "text",
+    col: 2,
+    hint: "Optional — for Mailchimp lists, billing CC, spouse, etc.",
+  },
   { key: "address_line1", label: "Address", kind: "text" },
   { key: "address_city", label: "City", kind: "text", col: 2 },
   { key: "address_state", label: "State", kind: "text", col: 2 },

@@ -974,14 +974,17 @@ export function NewBookingWizard({
 
       {stepIdx === 2 && draft.type === "club" && (
         <div className="space-y-4">
-          <FieldLabel label="Date" required>
+          <FieldLabel
+            label="Date"
+            required
+            hint="Back-dating allowed — staff can log past bookings that weren't entered the same day (Nicole + Lilly feedback)."
+          >
             <input
               type="date"
               value={draft.clubDate}
               onChange={(e) =>
                 setDraft((d) => ({ ...d, clubDate: e.target.value }))
               }
-              min={todayIso()}
               className="h-10 w-full rounded-[8px] border border-hairline bg-surface-2 px-3 text-[14px] text-fg focus:border-hairline-strong focus:outline-none"
             />
           </FieldLabel>

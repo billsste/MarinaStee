@@ -333,8 +333,16 @@ export function BoaterList() {
         b.display_name.toLowerCase().includes(q) ||
         b.code?.toLowerCase().includes(q) ||
         b.primary_contact.email?.toLowerCase().includes(q) ||
+        // Secondary email — added so a Mailchimp-only or spouse address
+        // still resolves the boater. Lilly's feedback row 24.
+        b.primary_contact.email_secondary?.toLowerCase().includes(q) ||
         b.primary_contact.phone?.includes(q) ||
-        r.currentReservation?.slip_id.toLowerCase().includes(q)
+        // Match on slip ID from either an active reservation OR an
+        // executed contract. Garrett: "Cant search up people by slip
+        // number in the search bar." Slip holders (contract-based) AND
+        // transients (reservation-based) both resolve now.
+        r.currentReservation?.slip_id.toLowerCase().includes(q) ||
+        r.contractSlipId?.toLowerCase().includes(q)
       );
     });
   }, [rows, query, cadence, status, segment]);

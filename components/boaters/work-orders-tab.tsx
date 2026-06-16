@@ -27,14 +27,36 @@ export function WorkOrdersTab({
   const live = useWorkOrdersForBoater(boaterId);
   const items = live.length > 0 ? live : workOrders;
   const [newOpen, setNewOpen] = React.useState(false);
+  // TA / mechanical-services feedback row 10: "service order history tab
+  // would be awesome." Toggle between the live kanban (current work) and
+  // a flat chronological list (history across all years/statuses).
+  const [view, setView] = React.useState<"kanban" | "history">("kanban");
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3">
         <p className="text-[13px] text-fg-subtle">
-          Drag-or-ask to move between columns. Open any card for the full quote, signature, and payment flow.
+          {view === "kanban"
+            ? "Drag-or-ask to move between columns. Open any card for the full quote, signature, and payment flow."
+            : "Full service history — chronological across all statuses + years."}
         </p>
         <div className="flex items-center gap-2">
+          <div className="inline-flex overflow-hidden rounded-[8px] border border-hairline">
+            <button
+              type="button"
+              onClick={() => setView("kanban")}
+              className={`px-2.5 py-1 text-[12px] font-medium transition-colors ${view === "kanban" ? "bg-surface-2 text-fg" : "text-fg-tertiary hover:bg-surface-2"}`}
+            >
+              Kanban
+            </button>
+            <button
+              type="button"
+              onClick={() => setView("history")}
+              className={`px-2.5 py-1 text-[12px] font-medium transition-colors ${view === "history" ? "bg-surface-2 text-fg" : "text-fg-tertiary hover:bg-surface-2"}`}
+            >
+              History
+            </button>
+          </div>
           <Button variant="ghost" size="sm" asChild>
             <Link href="/work-orders">All work orders →</Link>
           </Button>
@@ -44,30 +66,34 @@ export function WorkOrdersTab({
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        {COLUMNS.map((col) => {
-          const cards = items.filter((w) => w.status === col.key);
-          return (
-            <div key={col.key} className="rounded-[12px] border border-hairline bg-surface-1">
-              <div className="flex items-center justify-between border-b border-hairline px-3 py-2">
-                <h3 className="text-[12px] font-medium uppercase tracking-wide text-fg-subtle">
-                  {col.label}
-                </h3>
-                <Badge tone="neutral" size="sm">{cards.length}</Badge>
+      {view === "kanban" ? (
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {COLUMNS.map((col) => {
+            const cards = items.filter((w) => w.status === col.key);
+            return (
+              <div key={col.key} className="rounded-[12px] border border-hairline bg-surface-1">
+                <div className="flex items-center justify-between border-b border-hairline px-3 py-2">
+                  <h3 className="text-[12px] font-medium uppercase tracking-wide text-fg-subtle">
+                    {col.label}
+                  </h3>
+                  <Badge tone="neutral" size="sm">{cards.length}</Badge>
+                </div>
+                <div className="space-y-2 p-2">
+                  {cards.length === 0 ? (
+                    <div className="rounded-[8px] border border-dashed border-hairline px-3 py-6 text-center text-[12px] text-fg-tertiary">
+                      None
+                    </div>
+                  ) : (
+                    cards.map((w) => <WorkOrderCard key={w.id} w={w} />)
+                  )}
+                </div>
               </div>
-              <div className="space-y-2 p-2">
-                {cards.length === 0 ? (
-                  <div className="rounded-[8px] border border-dashed border-hairline px-3 py-6 text-center text-[12px] text-fg-tertiary">
-                    None
-                  </div>
-                ) : (
-                  cards.map((w) => <WorkOrderCard key={w.id} w={w} />)
-                )}
-              </div>
-            </div>
-          );
-        })}
-      </div>
+            );
+          })}
+        </div>
+      ) : (
+        <WorkOrderHistory items={items} />
+      )}
 
       <NewWorkOrderWizard
         open={newOpen}
@@ -111,5 +137,81 @@ function WorkOrderCard({ w }: { w: WorkOrder }) {
         {w.due_date && !w.start_date && <span>· due {w.due_date}</span>}
       </div>
     </Link>
+  );
+}
+
+/*
+ * History view — flat chronological list of all this boater's work
+ * orders across every status + year. Sorted newest-first by end_date
+ * (when present, else start_date, else due_date). Lets staff scan
+ * "when did we last winterize this vessel" / "have they had recurring
+ * pedestal issues" without flipping between kanban columns.
+ *
+ * Built per TA's feedback (Doc 1, row 10): "A service order history
+ * tab would be awesome, especially when we start doing mechanical
+ * services."
+ */
+function WorkOrderHistory({ items }: { items: WorkOrder[] }) {
+  const ordered = React.useMemo(() => {
+    const dateOf = (w: WorkOrder) =>
+      w.end_date ?? w.start_date ?? w.due_date ?? "";
+    return [...items].sort((a, b) => dateOf(b).localeCompare(dateOf(a)));
+  }, [items]);
+
+  if (ordered.length === 0) {
+    return (
+      <div className="rounded-[12px] border border-dashed border-hairline bg-surface-1 p-8 text-center text-[13px] text-fg-subtle">
+        No work orders on file for this boater yet.
+      </div>
+    );
+  }
+
+  const STATUS_TONE: Record<WorkOrderStatus, "neutral" | "info" | "warn" | "ok" | "danger"> = {
+    open: "neutral",
+    scheduled: "info",
+    in_progress: "warn",
+    blocked: "danger",
+    completed: "ok",
+    cancelled: "danger",
+  };
+
+  return (
+    <div className="overflow-hidden rounded-[12px] border border-hairline bg-surface-1">
+      <div className="grid grid-cols-[88px_minmax(0,1fr)_120px_140px_100px] items-center gap-x-3 border-b border-hairline bg-surface-2 px-3 py-2 text-[10px] uppercase tracking-wide text-fg-tertiary">
+        <span>Date</span>
+        <span>Subject</span>
+        <span>Assignee</span>
+        <span>Activity</span>
+        <span>Status</span>
+      </div>
+      <ul className="divide-y divide-hairline">
+        {ordered.map((w) => {
+          const assignee = getUser(w.assignee_user_id);
+          const displayDate = w.end_date ?? w.start_date ?? w.due_date ?? "—";
+          return (
+            <li key={w.id}>
+              <Link
+                href={`/work-orders/${w.id}`}
+                className="grid grid-cols-[88px_minmax(0,1fr)_120px_140px_100px] items-center gap-x-3 px-3 py-2 text-[13px] transition-colors hover:bg-surface-2"
+              >
+                <span className="tabular text-fg-subtle">{displayDate}</span>
+                <span className="min-w-0 truncate font-medium text-fg" title={w.subject}>
+                  {w.subject}
+                </span>
+                <span className="truncate text-fg-subtle">
+                  {assignee?.name ?? "—"}
+                </span>
+                <span className="truncate text-fg-subtle">
+                  {w.activity_type ? w.activity_type.replace("_", " ") : "—"}
+                </span>
+                <Badge tone={STATUS_TONE[w.status]} size="sm">
+                  {w.status.replace("_", " ")}
+                </Badge>
+              </Link>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
   );
 }
