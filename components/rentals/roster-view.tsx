@@ -84,6 +84,7 @@ const SLIP_FIELDS: FieldSpec<Slip>[] = [
   { key: "max_loa_inches", label: "Max LOA (inches)", kind: "number", col: 2 },
   { key: "max_beam_inches", label: "Max beam (inches)", kind: "number", col: 2 },
   { key: "has_power", label: "Power available", kind: "boolean" },
+  { key: "amperage", label: "Amperage (A)", kind: "number", col: 2 },
   { key: "has_water", label: "Water available", kind: "boolean" },
   {
     key: "default_annual_rate",

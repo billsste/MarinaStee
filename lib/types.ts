@@ -479,6 +479,13 @@ export interface Contact {
   name: string;
   role: ContactRole;
   email?: string;
+  /**
+   * Optional secondary email. Lilly's feedback: "be able to have two
+   * separate emails for each customer to pull reports and send mail chimp
+   * emails." Use for billing CC, spouse's address, distribution-list,
+   * etc. Primary `email` stays the canonical contact channel.
+   */
+  email_secondary?: string;
   phone?: string;
   preferred_channel: CommunicationChannel;
   can_be_billed: boolean;
@@ -892,6 +899,13 @@ export interface Slip {
   default_annual_rate: number;      // dollars / year
   default_monthly_rate?: number;    // optional — for split billing
   default_seasonal_rate?: number;   // 6mo
+
+  /**
+   * Optional shore-power amperage available at this slip. Chenoa's feedback:
+   * "Slip shows what amp they have on it." Renders on the slip card so
+   * staff can match large vessels (50A) to the right slip at a glance.
+   */
+  amperage?: number;
 
   /**
    * Optional explicit FK to a SlipType. When null/undefined, the system

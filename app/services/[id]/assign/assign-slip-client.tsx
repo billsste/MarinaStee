@@ -66,6 +66,7 @@ type SlipMeta = {
   defaultAnnualRate: number;
   defaultMonthlyRate?: number;
   defaultSeasonalRate?: number;
+  amperage?: number;
 };
 
 const STORAGE_KEY_PREFIX = "marina_assign_slip_draft_";
@@ -170,6 +171,7 @@ export function AssignHolderWizard({
     defaultAnnualRate: liveSlip.default_annual_rate,
     defaultMonthlyRate: liveSlip.default_monthly_rate,
     defaultSeasonalRate: liveSlip.default_seasonal_rate,
+    amperage: liveSlip.amperage,
   };
   return (
     <AssignHolderWizardInner
@@ -319,6 +321,20 @@ function AssignHolderWizardInner({
             v.co_owner_ids.includes(selectedBoater.id)
         )
     : [];
+
+  // Boat-too-big warning. Chenoa: "Home screen … alerts if a boat is too
+  // big to be in a slip." Compares the picked vessel's LOA/beam to the
+  // slip's max LOA/beam. We surface as a soft warning (not a block) —
+  // staff sometimes assigns oversize vessels intentionally (overhang
+  // arrangements, end-of-pier slips).
+  const pickedVessel = vesselOptions.find((v) => v.id === draft.vesselId);
+  const vesselTooBig =
+    pickedVessel != null &&
+    ((pickedVessel.loa_inches != null &&
+      pickedVessel.loa_inches > slip.loaInches) ||
+      (pickedVessel.beam_inches != null &&
+        slip.beamInches > 0 &&
+        pickedVessel.beam_inches > slip.beamInches));
 
   // Slip-intrinsic defaults — pre-fill the cadence amount.
   const slipDefaultForCadence = (c: CadenceKind): number => {
@@ -542,6 +558,9 @@ function AssignHolderWizardInner({
           <RailRow label="Max Beam" value={`${Math.round(slip.beamInches / 12)}'`} />
         )}
         <RailRow label="Power" value={slip.hasPower ? "Yes" : "No"} />
+        {slip.amperage != null && (
+          <RailRow label="Amperage" value={`${slip.amperage}A`} />
+        )}
         <RailRow label="Water" value={slip.hasWater ? "Yes" : "No"} />
         {slip.defaultAnnualRate > 0 && (
           <RailRow
@@ -761,6 +780,29 @@ function AssignHolderWizardInner({
                 />
               )}
             </FieldLabel>
+
+            {vesselTooBig && pickedVessel && (
+              <div className="rounded-[10px] border border-status-warn/30 bg-status-warn/10 px-3 py-2.5 text-[12px] text-status-warn">
+                <span className="font-medium">Heads-up:</span>{" "}
+                {pickedVessel.name} ({pickedVessel.loa_inches != null
+                  ? `${Math.round(pickedVessel.loa_inches / 12)}' LOA`
+                  : "no LOA on file"}
+                {pickedVessel.beam_inches != null
+                  ? ` · ${Math.round(pickedVessel.beam_inches / 12)}' beam`
+                  : ""}
+                ) exceeds slip {slip.number}{" "}
+                {slip.loaInches > 0
+                  ? `(${Math.round(slip.loaInches / 12)}' LOA`
+                  : ""}
+                {slip.beamInches > 0
+                  ? ` · ${Math.round(slip.beamInches / 12)}' beam)`
+                  : slip.loaInches > 0
+                    ? ")"
+                    : ""}
+                . You can still assign — overhang/end-of-pier arrangements
+                stay valid — but confirm the fit before continuing.
+              </div>
+            )}
           </div>
         )}
 

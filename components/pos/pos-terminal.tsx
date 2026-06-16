@@ -27,6 +27,7 @@ import {
   BOATERS,
   formatMoney,
   getOpenBalance,
+  getCreditOnAccount,
   initialsOf,
 } from "@/lib/mock-data";
 import type { PosCatalogItem } from "@/lib/types";
@@ -634,6 +635,7 @@ function CustomerPicker({
   if (selection.kind === "boater") {
     const b = selection.boater;
     const balance = getOpenBalance(b.id);
+    const credit = getCreditOnAccount(b.id);
     return (
       <div className="rounded-[10px] border border-primary/30 bg-primary-soft/40 p-3">
         <div className="flex items-start gap-3">
@@ -649,6 +651,11 @@ function CustomerPicker({
               <Badge tone={balance > 0 ? "warn" : "ok"} size="sm">
                 {balance > 0 ? `${formatMoney(balance)} open` : "Current"}
               </Badge>
+              {credit > 0 && (
+                <Badge tone="info" size="sm">
+                  {formatMoney(credit)} credit
+                </Badge>
+              )}
             </div>
           </div>
           <button

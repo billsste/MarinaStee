@@ -981,6 +981,10 @@ function makeSlip(
     default_monthly_rate: Math.round((annual * 1.08) / 12 / 5) * 5,
     // 6-month seasonal at ~60% of annual
     default_seasonal_rate: Math.round((annual * 0.6) / 50) * 50,
+    // Shore-power amperage. Real marinas wire 30A on small slips, 50A on
+    // medium, 50/100A on T-heads. Approximated by LOA band so the seed
+    // is plausible without per-slip configuration.
+    amperage: loa >= 40 ? 50 : loa >= 28 ? 30 : 20,
   };
 }
 
@@ -3958,6 +3962,28 @@ export function getOpenBalance(boaterId: string) {
   return getLedgerForBoater(boaterId)
     .filter((l) => l.type === "invoice")
     .reduce((sum, e) => sum + e.open_balance, 0);
+}
+
+/**
+ * Caroline's feedback: "Being able to see credit amount when checking out
+ * slip customers." Returns the unapplied credit a boater has on file —
+ * sum of "credit" ledger entries that haven't been consumed by invoices.
+ * Positive = money the marina owes the boater (prepay, refund credit,
+ * comp). Zero = no credit. Operators see this on the POS member panel so
+ * they know to apply it before swiping a card.
+ */
+export function getCreditOnAccount(boaterId: string) {
+  const entries = getLedgerForBoater(boaterId);
+  const credits = entries
+    .filter((l) => l.type === "credit")
+    .reduce((sum, e) => sum + Math.abs(e.amount), 0);
+  // Subtract any credit already absorbed by invoice payments (allocated_to).
+  // For now we treat all credit entries as "applied if open_balance == 0".
+  const remaining = entries
+    .filter((l) => l.type === "credit")
+    .reduce((sum, e) => sum + Math.max(0, e.open_balance), 0);
+  // If remaining is tracked use it; else fall back to gross credits.
+  return remaining > 0 ? remaining : credits;
 }
 
 export function getReservationsForDate(dateISO: string) {
