@@ -2,9 +2,10 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { Plus, Search } from "lucide-react";
+import { Plus, Search, Send } from "lucide-react";
 import { type ServiceLabel } from "./boater-row";
 import { MemberSetupWizard } from "./member-setup-wizard";
+import { BulkMessageSheet } from "@/components/comms/bulk-message-sheet";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -49,6 +50,7 @@ export function BoaterList() {
   // launchers previously landed on this boater-list page and split the
   // operator's attention between a quick sheet and the full wizard.
   const [wizardOpen, setWizardOpen] = React.useState(false);
+  const [bulkMsgOpen, setBulkMsgOpen] = React.useState(false);
 
   // Live club roster — drives the "Rental Club" quick filter AND the
   // Service column derivation. Indexed by boater_id for O(1) lookup
@@ -423,6 +425,16 @@ export function BoaterList() {
         />
 
         <div className="ml-auto flex items-center gap-1.5">
+          {filtered.length > 0 && (
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => setBulkMsgOpen(true)}
+            >
+              <Send className="size-3.5" />
+              Email all ({filtered.length})
+            </Button>
+          )}
           <Button
             variant="secondary"
             size="sm"
@@ -487,6 +499,13 @@ export function BoaterList() {
       </div>
 
       <MemberSetupWizard open={wizardOpen} onOpenChange={setWizardOpen} />
+
+      <BulkMessageSheet
+        open={bulkMsgOpen}
+        onOpenChange={setBulkMsgOpen}
+        recipients={filtered.map((r) => r.boater)}
+        filterSummary={`${filtered.length} ${filtered.length === 1 ? "member" : "members"} matching current filters`}
+      />
     </div>
   );
 }
