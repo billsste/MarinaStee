@@ -1397,7 +1397,16 @@ function BoatRentalsStrip({
                     </span>
                     <span className="text-[13px] text-fg">{boat?.name ?? "—"}</span>
                   </div>
-                  <div className="text-[11px] text-fg-tertiary">
+                  {/* suppressHydrationWarning — r.start_at / r.end_at are
+                      relative timestamps in the mock seed (rentals are
+                      computed against "now" at module-load), so server
+                      and client legitimately render different values.
+                      The date is informational; the client value is the
+                      truth. Same pattern as the waitlist position badge. */}
+                  <div
+                    className="text-[11px] text-fg-tertiary"
+                    suppressHydrationWarning
+                  >
                     {new Date(r.start_at).toLocaleString(undefined, {
                       month: "short",
                       day: "numeric",

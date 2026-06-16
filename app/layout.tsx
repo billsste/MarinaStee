@@ -77,31 +77,23 @@ export default function RootLayout({
     <html
       lang="en"
       suppressHydrationWarning
-      className={`${fraunces.variable} ${outfit.variable} ${plexMono.variable} h-full antialiased`}
+      className={`${fraunces.variable} ${outfit.variable} ${plexMono.variable} light h-full antialiased`}
     >
-      <head>
-        {/*
-         * Pre-hydration theme bootstrap. v1 is light-only, so we hard-code
-         * `light` on <html> and ignore any persisted `marina-stee-theme`
-         * value left over from when the toggle existed. This also defeats
-         * the browser-level `prefers-color-scheme: dark` so a user with a
-         * dark OS still gets the brand light treatment.
-         *
-         * If dark mode comes back later as a v2 skin, re-introduce the
-         * localStorage read here AND restore the ThemeToggle component.
-         * suppressHydrationWarning silences React 19's "script tag inside
-         * component" console error while still letting the script run
-         * before React paints (no FOUC).
-         */}
-        {/* eslint-disable-next-line @next/next/no-sync-scripts */}
-        <script
-          suppressHydrationWarning
-          dangerouslySetInnerHTML={{
-            __html:
-              "document.documentElement.classList.remove('dark');document.documentElement.classList.add('light');",
-          }}
-        />
-      </head>
+      {/*
+       * v1 is light-only — `light` class is now baked into the SSR
+       * className above. Previously we ran an inline pre-hydration
+       * <script> to strip `dark` + add `light`, but Next.js 16 emits
+       * a "Encountered a script tag while rendering React component"
+       * console warning for that pattern. With light baked statically
+       * there's nothing to bootstrap; the ThemeProvider below picks up
+       * `defaultTheme="light"` and the brand renders consistently
+       * regardless of OS prefers-color-scheme or stale localStorage.
+       *
+       * If dark mode comes back as a v2 skin: switch className to a
+       * dynamic value AND restore the ThemeToggle component. For
+       * persisted-preference bootstrap, use next/script with
+       * strategy="beforeInteractive" rather than a raw inline tag.
+       */}
       <body className="min-h-full">
         <ConvexClerkProvider>
           <ThemeProvider defaultTheme="light">

@@ -123,8 +123,18 @@ function WaitlistEntryRow({
           <div className="mt-1 flex flex-wrap items-center gap-1.5">
             <StatusBadge status={status} />
             {position > 0 && (
+              // suppressHydrationWarning: position + totalActive are
+              // derived from the client store, which can legitimately
+              // differ from the SSR seed (e.g. a "+ New applicant"
+              // added this session). The number is informational, not
+              // load-bearing — let React adopt the client value silently
+              // instead of throwing a hydration mismatch. Tracks the
+              // same root cause as the layout.tsx pre-hydration script
+              // fix shipped alongside this.
               <Badge tone="neutral" size="sm">
-                #{position} of {totalActive}
+                <span suppressHydrationWarning>
+                  #{position} of {totalActive}
+                </span>
               </Badge>
             )}
             {interestConfirmed && (
