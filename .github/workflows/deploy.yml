@@ -137,5 +137,8 @@ jobs:
       - name: Report image hash
         if: always()
         run: |
-          ssh root@${{ secrets.SERVER_HOST }} \
+          # `if: always()` means this can fire when the trust step was skipped
+          # (e.g. earlier failure path), so add StrictHostKeyChecking=accept-new
+          # inline rather than relying on ~/.ssh/known_hosts being populated.
+          ssh -o StrictHostKeyChecking=accept-new root@${{ secrets.SERVER_HOST }} \
             "docker inspect \$(docker compose -f /opt/apps/marina-stee/docker-compose.yml ps -q app) --format '{{.Image}}'"
