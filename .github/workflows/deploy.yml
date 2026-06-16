@@ -110,23 +110,20 @@ jobs:
           docker save ${{ steps.tags.outputs.image_latest }} | \
             ssh root@${{ secrets.SERVER_HOST }} "docker load"
 
-      - name: Swap container + prune + report image hash
+      - name: Swap container + prune
         run: |
-          # Image-hash report folded INTO this step so we use the same
-          # SSH session that just succeeded. The previous standalone
-          # `Report image hash` step with `if: always()` was failing
-          # intermittently with "Permission denied (publickey)" — the
-          # webfactory/ssh-agent SSH_AUTH_SOCK didn't reliably propagate
-          # to that step, especially when it ran after earlier failures.
-          # Inlining here means the hash echoes only on a successful
-          # swap (which is when you actually want it).
+          # Kept minimal. An earlier revision added a `docker inspect`
+          # echo here to surface the running image hash as a GHA notice;
+          # under `set -euo pipefail` that call failed the whole step
+          # when the container was still recovering from --force-recreate,
+          # bringing prod down. Image hash is recoverable via SSH if
+          # you actually need it — not worth the fragility here.
           ssh root@${{ secrets.SERVER_HOST }} bash <<EOF
           set -euo pipefail
           cd /opt/apps/marina-stee
           export APP_IMAGE="${{ steps.tags.outputs.image_latest }}"
           docker compose up -d --force-recreate app
           docker image prune -f
-          echo "::notice title=Container image::\$(docker inspect \$(docker compose ps -q app) --format '{{.Image}}')"
           EOF
 
       - name: SCP smoke script
